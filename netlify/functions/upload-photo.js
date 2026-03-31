@@ -30,36 +30,63 @@ exports.handler = async function (event) {
       };
     }
 
-    if (imageUrl.includes(".supabase.co/storage/")) {
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: imageUrl, skipped: true })
-      };
-    }
-
-    const imageResp = await fetch(imageUrl);
-    if (!imageResp.ok) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ error: `Failed to fetch source image: ${imageResp.status}` })
-      };
-    }
-
-    const contentType = imageResp.headers.get("content-type") || "image/jpeg";
-    const ext = contentType.includes("png")
-      ? "png"
-      : contentType.includes("webp")
-      ? "webp"
-      : "jpg";
-
     const safeDealer = String(dealerSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const safeStock = String(stockNum).replace(/[^a-z0-9-]/gi, "-");
     const safeIndex = Number.isFinite(Number(index)) ? Number(index) : 0;
-    const path = `${safeDealer}/${safeStock}/${safeIndex}.${ext}`;
 
-    const bytes = await imageResp.arrayBuffer();
+    let contentType = "image/jpeg";
+    let ext = "jpg";
+    let bodyBytes;
+
+    if (imageUrl.startsWith("data:")) {
+      const match = imageUrl.match(/^data:(.*?);base64,(.*)$/);
+      if (!match) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Invalid data URL" })
+        };
+      }
+
+      contentType = match[1] || "image/jpeg";
+      const base64Data = match[2];
+
+      if (contentType.includes("png")) ext = "png";
+      else if (contentType.includes("webp")) ext = "webp";
+      else if (contentType.includes("gif")) ext = "gif";
+      else ext = "jpg";
+
+      bodyBytes = Buffer.from(base64Data, "base64");
+    } else {
+      if (imageUrl.includes(".supabase.co/storage/")) {
+        return {
+          statusCode: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: imageUrl, skipped: true })
+        };
+      }
+
+      const imageResp = await fetch(imageUrl);
+      if (!imageResp.ok) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: `Failed to fetch source image: ${imageResp.status}` })
+        };
+      }
+
+      contentType = imageResp.headers.get("content-type") || "image/jpeg";
+
+      if (contentType.includes("png")) ext = "png";
+      else if (contentType.includes("webp")) ext = "webp";
+      else if (contentType.includes("gif")) ext = "gif";
+      else ext = "jpg";
+
+      const arrayBuffer = await imageResp.arrayBuffer();
+      bodyBytes = Buffer.from(arrayBuffer);
+    }
+
+    const path = `${safeDealer}/${safeStock}/${safeIndex}.${ext}`;
 
     const uploadResp = await fetch(
       `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${path}`,
@@ -71,7 +98,7 @@ exports.handler = async function (event) {
           "Content-Type": contentType,
           "x-upsert": "true"
         },
-        body: bytes
+        body: bodyBytes
       }
     );
 
