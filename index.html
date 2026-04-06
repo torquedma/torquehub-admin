@@ -9099,25 +9099,6 @@ Call ${dealer.phone}
 Tell 'em Torque sent ya!
 
 #${v.make.replace(/\s/g,'')} #WorkTruck #CommercialTruck #${dealer.name.replace(/[^a-zA-Z0-9]/g,'')} #NorthCarolinaTrucks #MachineryPete #TractorHouse #Fastline #TorqueDMA`;
-}
-
-function buildTorqueDMADX(v, dealer) {
-  return `Money-Making Trucks & Equipment
-
-${v.year} ${v.make} ${v.model} — $${v.price.replace('$','')}
-
-${v.description.split('\n').map(l => l.trim() ? '— ' + l.replace(/^[•\-]\s*/,'') : '').filter(Boolean).join('\n')}
-
-${dealer.name} — ${dealer.city}
-Call ${dealer.phone}
-
-👀 Check the comments for complete listing & financing 👇
-Tell 'em Torque sent ya!
-
-#${v.make.replace(/\s/g,'')} #WorkTruck #CommercialTruck #${dealer.name.replace(/[^a-zA-Z0-9]/g,'')} #NorthCarolinaTrucks #MachineryPete #TractorHouse #Fastline #TorqueDMA`;
-}
-
-const DEALER_INFO = {
   'Auto Connection 210': { name: 'Auto Connection 210', phone: '910-490-2596', city: 'Angier, NC', website: 'www.autoconnection210.com' },
   'Davenport Motors': { name: 'Davenport Motors', phone: '252-809-2172', city: 'Plymouth, NC', website: '' },
   "HGR's Truck & Trailer Sales": { name: 'HGRsTruckAndTrailer', phone: '910-425-6104', city: 'Hope Mills, NC', website: '' },
@@ -9160,29 +9141,7 @@ function generateAllDX() {
     'FBBP':       tmpl ? tmpl.fbbp(v)    : '(No FBBP template for this dealer)',
     'Groups':     buildGroupsDX(v, dealerInfo),
     'Reels':      buildReelsDX(v, dealerInfo),
-    'Marketplace': buildMarketplaceDX(v)
-
-function buildTorqueDMADX(v, dealer) {
-  const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
-  const descLines = v.description.split('\n')
-    .map(l => l.trim())
-    .filter(l => l && !skipPatterns.test(l.replace(/^[•\-—]\s*/,'')))
-    .map(l => '— ' + l.replace(/^[•\-—]\s*/,''))
-    .join('\n');
-  return `Money-Making Trucks & Equipment
-
-${v.year} ${v.make} ${v.model} — $${v.price.replace('$','')}
-
-${descLines}
-
-${dealer.name} — ${dealer.city}
-Call ${dealer.phone}
-
-👀 Check the comments for complete listing & financing 👇
-Tell 'em Torque sent ya!
-
-#${v.make.replace(/\s/g,'')} #WorkTruck #CommercialTruck #${dealer.name.replace(/[^a-zA-Z0-9]/g,'')} #NorthCarolinaTrucks #MachineryPete #TractorHouse #Fastline #TorqueDMA`;
-
+    'Marketplace': buildMarketplaceDX(v),
     'Torque DMA': buildTorqueDMADX(v, dealerInfo)
   };
 
@@ -9199,6 +9158,8 @@ Tell 'em Torque sent ya!
   });
 
   document.getElementById('all-dx-modal').style.display = 'block';
+}
+
 }
 
 function switchDXTab(name) {
