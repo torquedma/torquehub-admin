@@ -8844,7 +8844,7 @@ Key Specs:
 Highlights:
 ${v.description}
 
-Price: $${v.price}
+Price: $${v.price.replace('$','')}
 
 Location:
 Auto Connection 210
@@ -8857,7 +8857,7 @@ Call: 910-490-2596`,
 📞 Call 910-490-2596
 
 🚛 ${v.year} ${v.make} ${v.model}
-💰 $${v.price}
+💰 $${v.price.replace('$','')}
 
 🔑 Key Features:
 ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWith('•') || t.startsWith('\t•')) && !t.match(/^[\t•\s]*(Key Specs|Additional Features|Highlights|Rollback Equipment|Price|Location|Stock|VIN|Call|Contact|Features)[\s:]*/i) && t.replace(/^[\t•\s]+/,'').length > 2; }).map(l => '✅ ' + l.trim().replace(/^•\s*/,'')).join('\n')}
@@ -8876,7 +8876,7 @@ ${v.mileage ? '• Hours/Miles: ' + v.mileage : ''}
 
 ${v.description}
 
-Price: $${v.price}
+Price: $${v.price.replace('$','')}
 
 Location: Davenport Motors - Plymouth, NC
 Call: 252-809-2172 for more details or to schedule a viewing.`,
@@ -8886,7 +8886,7 @@ Call: 252-809-2172 for more details or to schedule a viewing.`,
 📞 Call/text 252-809-2172
 
 🏗️ ${v.year} ${v.make} ${v.model}
-💰 $${v.price}
+💰 $${v.price.replace('$','')}
 
 🔑 Key Features:
 ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWith('•') || t.startsWith('\t•')) && !t.match(/^[\t•\s]*(Key Specs|Additional Features|Highlights|Rollback Equipment|Price|Location|Stock|VIN|Call|Contact|Features)[\s:]*/i) && t.replace(/^[\t•\s]+/,'').length > 2; }).map(l => '✅ ' + l.trim().replace(/^•\s*/,'')).join('\n')}
@@ -8897,7 +8897,7 @@ ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWi
 
   "HGR's Truck & Trailer Sales": {
     backend: (v) => `${v.year} ${v.make} ${v.model}
-Price: $${v.price}
+Price: $${v.price.replace('$','')}
 ${v.stock ? 'Stock: ' + v.stock : ''}
 
 ${v.description}
@@ -8909,7 +8909,7 @@ Located at HGR's Truck & Trailer Sales in Hope Mills, NC.`,
 📞 Call 910-425-6104
 
 🚛 ${v.year} ${v.make} ${v.model}
-💰 $${v.price}
+💰 $${v.price.replace('$','')}
 ${v.stock ? '🆔 Stock #: ' + v.stock : ''}
 
 🔑 Key Features:
@@ -8923,7 +8923,7 @@ ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWi
 ${v.engine ? 'Engine: ' + v.engine : ''}
 ${v.transmission ? 'Transmission: ' + v.transmission : ''}
 ${v.description}
-Price: $${v.price}
+Price: $${v.price.replace('$','')}
 Location: Fat Daddy's Truck Sales - Goldsboro, NC
 Call: 919-759-5434`,
 
@@ -8932,7 +8932,7 @@ Call: 919-759-5434`,
 📞 Call 919-759-5434
 
 🚛 ${v.year} ${v.make} ${v.model}
-💰 $${v.price}
+💰 $${v.price.replace('$','')}
 
 🔑 Key Features:
 ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWith('•') || t.startsWith('\t•')) && !t.match(/^[\t•\s]*(Key Specs|Additional Features|Highlights|Rollback Equipment|Price|Location|Stock|VIN|Call|Contact|Features)[\s:]*/i) && t.replace(/^[\t•\s]+/,'').length > 2; }).map(l => '✅ ' + l.trim().replace(/^•\s*/,'')).join('\n')}
@@ -8947,7 +8947,7 @@ ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWi
 Key Specs:
 ${v.description}
 
-Price: $${v.price}
+Price: $${v.price.replace('$','')}
 
 Location: Dick Smith Equipment
 3741 US Hwy 70 W, Goldsboro, NC 27530
@@ -8958,7 +8958,7 @@ Call: 919-734-1191`,
 📞 Call 919-734-1191
 
 🚜 ${v.year} ${v.make} ${v.model}
-💰 Price: $${v.price}
+💰 Price: $${v.price.replace('$','')}
 
 🔑 Key Features:
 ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWith('•') || t.startsWith('\t•')) && !t.match(/^[\t•\s]*(Key Specs|Additional Features|Highlights|Rollback Equipment|Price|Location|Stock|VIN|Call|Contact|Features)[\s:]*/i) && t.replace(/^[\t•\s]+/,'').length > 2; }).map(l => '✅ ' + l.trim().replace(/^•\s*/,'')).join('\n')}
@@ -8970,7 +8970,7 @@ ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWi
   'Impex Heavy Metal': {
     backend: (v) => `${v.year} ${v.make} ${v.model}
 
-Price: $${v.price}
+Price: $${v.price.replace('$','')}
 ${v.stock ? 'Stock #: ' + v.stock : ''}
 ${v.mileage ? 'Miles show ' + v.mileage : ''}
 
@@ -8987,7 +8987,7 @@ Call: 336-493-7049`,
 📞 Call 336-493-7049
 
 🚚 ${v.year} ${v.make} ${v.model}
-💰 Price: $${v.price}
+💰 Price: $${v.price.replace('$','')}
 ${v.stock ? '🆔 Stock #: ' + v.stock : ''}
 
 🔑 Key Features:
@@ -8997,7 +8997,7 @@ ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWi
   },
 
   "Joe's Tractor Sales": {
-    backend: (v) => `${v.year} ${v.make} ${v.model} — $${v.price}
+    backend: (v) => `${v.year} ${v.make} ${v.model} — $${v.price.replace('$','')}
 
 ${v.description}
 
@@ -9010,7 +9010,7 @@ Call 336-885-4582`,
 📞 Call 336-885-4582
 
 🚜 ${v.year} ${v.make} ${v.model}
-💰 $${v.price}
+💰 $${v.price.replace('$','')}
 
 🔑 Key Features:
 ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWith('•') || t.startsWith('\t•')) && !t.match(/^[\t•\s]*(Key Specs|Additional Features|Highlights|Rollback Equipment|Price|Location|Stock|VIN|Call|Contact|Features)[\s:]*/i) && t.replace(/^[\t•\s]+/,'').length > 2; }).map(l => '✅ ' + l.trim().replace(/^•\s*/,'')).join('\n')}
@@ -9021,7 +9021,7 @@ ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWi
 
   'Wilson Trailer Sales & Service': {
     backend: (v) => `${v.year} ${v.make} ${v.model}
-$${v.price}
+$${v.price.replace('$','')}
 ${v.stock ? 'Stock #' + v.stock : ''}
 
 ${v.description}
@@ -9035,7 +9035,7 @@ Call 252-429-8805 and ask for trailer sales`,
 📞 Call 252-429-8805 and ask for trailer sales
 
 🚛 ${v.year} ${v.make} ${v.model}
-💰 Price: $${v.price}
+💰 Price: $${v.price.replace('$','')}
 ${v.stock ? '🆔 Stock #: ' + v.stock : ''}
 
 🔑 Key Features:
@@ -9047,7 +9047,7 @@ ${v.description.split('\n').filter(l => { const t = l.trim(); return (t.startsWi
 
 function buildGroupsDX(v, dealer) {
   return `🚛 ${v.year} ${v.make} ${v.model}
-💰 $${v.price}
+💰 $${v.price.replace('$','')}
 ${v.mileage ? '📍 ' + v.mileage + ' miles' : ''}
 📞 ${dealer.phone}
 ${dealer.website ? '🌐 ' + dealer.website : ''}`.trim();
@@ -9061,14 +9061,14 @@ function buildReelsDX(v, dealer) {
   return `${v.year} ${v.make} ${v.model}
 
 ${v.engine ? v.engine + ' • ' : ''}${v.mileage ? v.mileage + ' miles' : ''}
-$${v.price} • ${dealer.name} — ${dealer.city}
+$${v.price.replace('$','')} • ${dealer.name} — ${dealer.city}
 Call ${dealer.phone}
 ${tags}`;
 }
 
 function buildMarketplaceDX(v) {
   return `${v.year} ${v.make} ${v.model}
-$${v.price}
+$${v.price.replace('$','')}
 ${v.stock ? 'Stock #' + v.stock : ''}
 ${v.vin ? 'VIN: ' + v.vin : ''}
 
@@ -9078,7 +9078,7 @@ ${v.description}`;
 function buildTorqueDMADX(v, dealer) {
   return `Money-Making Trucks & Equipment
 
-${v.year} ${v.make} ${v.model} — $${v.price}
+${v.year} ${v.make} ${v.model} — $${v.price.replace('$','')}
 
 ${v.description.split('\n').map(l => l.trim() ? '— ' + l.replace(/^[•\-]\s*/,'') : '').filter(Boolean).join('\n')}
 
