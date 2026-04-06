@@ -9160,18 +9160,7 @@ function generateAllDX() {
     'FBBP':       tmpl ? tmpl.fbbp(v)    : '(No FBBP template for this dealer)',
     'Groups':     buildGroupsDX(v, dealerInfo),
     'Reels':      buildReelsDX(v, dealerInfo),
-    'Marketplace': function buildMarketplaceDX(v) {
-  const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
-  const desc = v.description.split('\n')
-    .filter(l => !skipPatterns.test(l.trim()))
-    .join('\n').trim();
-  return `${v.year} ${v.make} ${v.model}
-$${v.price.replace('$','')}
-${v.stock ? 'Stock #' + v.stock : ''}
-${v.vin ? 'VIN: ' + v.vin : ''}
-
-${desc}`;
-}
+    'Marketplace': buildMarketplaceDX(v)
 
 function buildTorqueDMADX(v, dealer) {
   const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
