@@ -9066,7 +9066,18 @@ Call ${dealer.phone}
 ${tags}`;
 }
 
-function buildMarketplaceDX(v) {
+function function buildMarketplaceDX(v) {
+  const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
+  const desc = v.description.split('\n')
+    .filter(l => !skipPatterns.test(l.trim()))
+    .join('\n').trim();
+  return `${v.year} ${v.make} ${v.model}
+$${v.price.replace('$','')}
+${v.stock ? 'Stock #' + v.stock : ''}
+${v.vin ? 'VIN: ' + v.vin : ''}
+
+${desc}`;
+}(v) {
   return `${v.year} ${v.make} ${v.model}
 $${v.price.replace('$','')}
 ${v.stock ? 'Stock #' + v.stock : ''}
@@ -9075,7 +9086,27 @@ ${v.vin ? 'VIN: ' + v.vin : ''}
 ${v.description}`;
 }
 
-function buildTorqueDMADX(v, dealer) {
+function function buildTorqueDMADX(v, dealer) {
+  const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
+  const descLines = v.description.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !skipPatterns.test(l.replace(/^[•\-—]\s*/,'')))
+    .map(l => '— ' + l.replace(/^[•\-—]\s*/,''))
+    .join('\n');
+  return `Money-Making Trucks & Equipment
+
+${v.year} ${v.make} ${v.model} — $${v.price.replace('$','')}
+
+${descLines}
+
+${dealer.name} — ${dealer.city}
+Call ${dealer.phone}
+
+👀 Check the comments for complete listing & financing 👇
+Tell 'em Torque sent ya!
+
+#${v.make.replace(/\s/g,'')} #WorkTruck #CommercialTruck #${dealer.name.replace(/[^a-zA-Z0-9]/g,'')} #NorthCarolinaTrucks #MachineryPete #TractorHouse #Fastline #TorqueDMA`;
+}(v, dealer) {
   return `Money-Making Trucks & Equipment
 
 ${v.year} ${v.make} ${v.model} — $${v.price.replace('$','')}
@@ -9135,8 +9166,39 @@ function generateAllDX() {
     'FBBP':       tmpl ? tmpl.fbbp(v)    : '(No FBBP template for this dealer)',
     'Groups':     buildGroupsDX(v, dealerInfo),
     'Reels':      buildReelsDX(v, dealerInfo),
-    'Marketplace': buildMarketplaceDX(v),
-    'Torque DMA': buildTorqueDMADX(v, dealerInfo)
+    'Marketplace': function buildMarketplaceDX(v) {
+  const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
+  const desc = v.description.split('\n')
+    .filter(l => !skipPatterns.test(l.trim()))
+    .join('\n').trim();
+  return `${v.year} ${v.make} ${v.model}
+$${v.price.replace('$','')}
+${v.stock ? 'Stock #' + v.stock : ''}
+${v.vin ? 'VIN: ' + v.vin : ''}
+
+${desc}`;
+}(v),
+    'Torque DMA': function buildTorqueDMADX(v, dealer) {
+  const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
+  const descLines = v.description.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !skipPatterns.test(l.replace(/^[•\-—]\s*/,'')))
+    .map(l => '— ' + l.replace(/^[•\-—]\s*/,''))
+    .join('\n');
+  return `Money-Making Trucks & Equipment
+
+${v.year} ${v.make} ${v.model} — $${v.price.replace('$','')}
+
+${descLines}
+
+${dealer.name} — ${dealer.city}
+Call ${dealer.phone}
+
+👀 Check the comments for complete listing & financing 👇
+Tell 'em Torque sent ya!
+
+#${v.make.replace(/\s/g,'')} #WorkTruck #CommercialTruck #${dealer.name.replace(/[^a-zA-Z0-9]/g,'')} #NorthCarolinaTrucks #MachineryPete #TractorHouse #Fastline #TorqueDMA`;
+}(v, dealerInfo)
   };
 
   const tabsEl = document.getElementById('dx-tabs');
