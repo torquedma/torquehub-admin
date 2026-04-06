@@ -9066,7 +9066,7 @@ Call ${dealer.phone}
 ${tags}`;
 }
 
-function function buildMarketplaceDX(v) {
+function buildMarketplaceDX(v) {
   const skipPatterns = /^(price|location|call|key specs|highlights|rollback equipment):/i;
   const desc = v.description.split('\n')
     .filter(l => !skipPatterns.test(l.trim()))
