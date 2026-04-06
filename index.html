@@ -9099,7 +9099,7 @@ Call ${dealer.phone}
 Tell 'em Torque sent ya!
 
 #${v.make.replace(/\s/g,'')} #WorkTruck #CommercialTruck #${dealer.name.replace(/[^a-zA-Z0-9]/g,'')} #NorthCarolinaTrucks #MachineryPete #TractorHouse #Fastline #TorqueDMA`;
-}(v) {
+}
   return `${v.year} ${v.make} ${v.model}
 $${v.price.replace('$','')}
 ${v.stock ? 'Stock #' + v.stock : ''}
