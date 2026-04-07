@@ -1498,10 +1498,10 @@ document.querySelector('.sidebar').classList.toggle('open');
             <option value="New">New</option>
           </select>
         </div>
-        <div class="edit-field"><label class="edit-label">Miles / Hours</label><input class="edit-input" id="edit-mileage" type="text" placeholder="e.g. 85,000 mi or 1,200 hrs"></div>
+        <div class="edit-field"><label class="edit-label">Miles / Hours</label><div style="display:flex;gap:6px"><input class="edit-input" id="edit-mileage" type="text" placeholder="e.g. 130,831" oninput="this.value=this.value.replace(/[^0-9]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,',')" style="flex:1"><select class="edit-input" id="edit-mileage-unit" style="width:90px"><option value="mi">Miles</option><option value="hrs">Hours</option><option value="other">Other</option></select></div></div>
         <div class="edit-field"><label class="edit-label">Fuel Type</label><input class="edit-input" id="edit-fuel" type="text" placeholder="Diesel, Gas…"></div>
         <div class="edit-field"><label class="edit-label">Engine</label><input class="edit-input" id="edit-engine" type="text" placeholder="e.g. 6.7L Cummins Diesel"></div>
-        <div class="edit-field"><label class="edit-label">Transmission</label><input class="edit-input" id="edit-transmission" type="text" placeholder="e.g. Allison 2500"></div>
+        <div class="edit-field"><label class="edit-label">Transmission</label><div style="display:flex;gap:6px"><select class="edit-input" id="edit-transmission-type" style="width:120px"><option value="">Select…</option><option value="Automatic">Automatic</option><option value="Manual">Manual</option><option value="Other">Other</option></select><input class="edit-input" id="edit-transmission" type="text" placeholder="e.g. Allison 2500" style="flex:1"></div></div>
         <div class="edit-field"><label class="edit-label">Drivetrain</label><input class="edit-input" id="edit-drivetrain" type="text" placeholder="e.g. 4x4, RWD, 6x4"></div>
         <div class="edit-field"><label class="edit-label">Engine Notes</label><input class="edit-input" id="edit-engine-desc" type="text" placeholder="Additional engine details…"></div>
         <div class="edit-field"><label class="edit-label">Transmission Notes</label><input class="edit-input" id="edit-trans-desc" type="text" placeholder="Additional transmission details…"></div>
