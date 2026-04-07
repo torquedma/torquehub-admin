@@ -2384,8 +2384,8 @@ function saveListingEdits() {
   saveAppSession();
 
   // Save to Supabase
-  if (u.id) {
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?id=eq.${u.id}`, {
+  if (u.stock) {
+    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u.stock}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -2411,7 +2411,7 @@ function saveListingEdits() {
   // Save photos to Supabase
   if (u.id) {
     const photos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url, name: p.name }));
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?id=eq.${u.id}`, {
+    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u.stock}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
