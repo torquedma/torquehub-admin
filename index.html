@@ -5776,7 +5776,7 @@ function saveListingEdits() {
 
   // Save to Supabase
   if (u._id) {
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?id=eq.${u._id}`, {
+    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?id=eq.${u.id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -5802,7 +5802,7 @@ function saveListingEdits() {
   // Save photos to Supabase
   if (u._id) {
     const photos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url, name: p.name }));
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?id=eq.${u._id}`, {
+    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?id=eq.${u.id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -8277,6 +8277,7 @@ async function loadApp() {
     }
 
     INVENTORY = allInventory.map(item => ({
+      id: item.id,
       year: item.year,
       make: item.make,
       model: item.model,
