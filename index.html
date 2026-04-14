@@ -2355,7 +2355,9 @@ function saveListingEdits() {
   u.fuel      = document.getElementById("edit-fuel").value.trim();
   u.mileage   = document.getElementById("edit-mileage").value.trim();
   u.engine    = document.getElementById("edit-engine").value.trim();
-  u.transmission = document.getElementById("edit-transmission").value.trim();
+  const transType = document.getElementById("edit-transmission-type")?.value || "";
+  const transText = document.getElementById("edit-transmission").value.trim();
+  u.transmission = transType && transType !== "Other" ? (transText ? transType + " - " + transText : transType) : transText;
   u.drivetrain = document.getElementById("edit-drivetrain").value.trim();
   u.engine_description = document.getElementById("edit-engine-desc").value.trim();
   u.transmission_description = document.getElementById("edit-trans-desc").value.trim();
