@@ -2306,7 +2306,8 @@ function openPhotoModal(listingKey) {
   document.getElementById("edit-make").value = u.make || "";
   document.getElementById("edit-model").value = u.model || "";
   document.getElementById("edit-price").value = u.price || "";
-  document.getElementById("edit-stock").value = u.stock || "";
+  const stockVal = u.stock || "";
+  document.getElementById("edit-stock").value = stockVal.startsWith("NEW-") ? "" : stockVal;
   document.getElementById("edit-days").value = u.days || "";
   document.getElementById("edit-condition").value = u.condition || "Used";
   document.getElementById("edit-fuel").value = u.fuel || "";
