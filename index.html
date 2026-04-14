@@ -3992,6 +3992,7 @@ function openAddListingModal() {
 
   refreshAllViews();
   openPhotoModal(getListingKey(newUnit));
+  document.getElementById('new-stock').value = '';
 }
 
 function closeAddListingModal() {
@@ -4074,6 +4075,7 @@ function createListing() {
   closeAddListingModal();
   refreshAllViews();
   openPhotoModal(getListingKey(newUnit));
+  document.getElementById('new-stock').value = '';
 }
 
 async function decodeVinAndFill(vin, map) {
