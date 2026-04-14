@@ -4541,7 +4541,7 @@ function init() {
   showBookmarkletHint();
   renderDashboardStats();
   renderSettings();
-  syncDavenportFromBackend();
+  // syncDavenportFromBackend(); // disabled - data in Supabase
   // Route to correct view based on URL hash
   const initialView = getViewFromHash();
   if (initialView !== "dashboard") {
