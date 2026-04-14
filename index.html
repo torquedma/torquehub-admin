@@ -2311,7 +2311,16 @@ function openPhotoModal(listingKey) {
   document.getElementById("edit-fuel").value = u.fuel || "";
   document.getElementById("edit-mileage").value = u.mileage || "";
   document.getElementById("edit-engine").value = u.engine || "";
-  document.getElementById("edit-transmission").value = u.transmission || "";
+  const transVal = u.transmission || "";
+  const transTypes = ["Automatic", "Manual", "Other"];
+  const matchedType = transTypes.find(t => transVal.startsWith(t));
+  if (matchedType) {
+    document.getElementById("edit-transmission-type").value = matchedType;
+    document.getElementById("edit-transmission").value = transVal.replace(matchedType + " - ", "").trim();
+  } else {
+    document.getElementById("edit-transmission-type").value = "";
+    document.getElementById("edit-transmission").value = transVal;
+  }
   document.getElementById("edit-drivetrain").value = u.drivetrain || "";
   document.getElementById("edit-engine-desc").value = u.engine_description || "";
   document.getElementById("edit-trans-desc").value = u.transmission_description || "";
