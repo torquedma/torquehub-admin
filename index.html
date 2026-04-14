@@ -3961,7 +3961,7 @@ function refreshAllViews() {
 function openAddListingModal() {
   const dealer = (invDealerFilter && DEALERS.some(d => d.name === invDealerFilter)) ? invDealerFilter : (DEALERS[0] ? DEALERS[0].name : '');
   const tempStock = 'NEW-' + Date.now();
-  const newUnit = { year: '', make: '', model: '', dealer, condition: 'Used', price: '$xx,xxx', stock: tempStock, days: '0', fuel: '', vin: '', description: '', category: 'Trucks', subcategory: '' };
+  const newUnit = { year: '', make: '', model: '', dealer, condition: 'Used', price: '', stock: tempStock, days: '0', fuel: '', vin: '', description: '', category: 'Trucks', subcategory: '' };
   INVENTORY.unshift(newUnit);
   saveAppSession();
 
@@ -3978,7 +3978,7 @@ function openAddListingModal() {
       stock: tempStock,
       dealer: newUnit.dealer,
       year: '', make: '', model: '',
-      condition: 'Used', price: '$xx,xxx',
+      condition: 'Used', price: '',
       days: '0', fuel: '', vin: '',
       description: '', category: 'Trucks',
       subcategory: '', sold: false, featured: 0, photos: []
