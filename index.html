@@ -2420,8 +2420,8 @@ function saveListingEdits() {
     }).catch(err => console.warn('Supabase save error:', err.message));
 
   // Save photos to Supabase
-  if (u.id) {
-    const photos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url, name: p.name }));
+  if (u.stock) {
+    const photos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
     fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u.stock}`, {
       method: 'PATCH',
       headers: {
