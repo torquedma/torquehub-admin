@@ -3761,7 +3761,7 @@ function confirmMarkSold() {
   closeSaleModal();
   saveAppSession();
   if (u.dealer === 'Davenport Inc.') {
-    pushDealerInventoryToBackend('Davenport Inc.').catch(err => console.warn('Netlify save failed:', err.message));
+    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+u.stock,{method:'DELETE',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg'}}).then(r=>console.log('Deleted:',u.stock));
   }
   renderInventory();
   renderCategoryWidget();
@@ -3774,7 +3774,7 @@ function unmarkSold(key) {
   u.keepPublic = false;
   saveAppSession();
   if (u.dealer === 'Davenport Inc.') {
-    pushDealerInventoryToBackend('Davenport Inc.').catch(err => console.warn('Netlify save failed:', err.message));
+    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+u.stock,{method:'DELETE',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg'}}).then(r=>console.log('Deleted:',u.stock));
   }
   renderInventory();
   renderCategoryWidget();
@@ -3788,7 +3788,7 @@ function removeListing(key) {
   INVENTORY.splice(idx, 1);
   saveAppSession();
   if (u.dealer === 'Davenport Inc.') {
-    pushDealerInventoryToBackend('Davenport Inc.').catch(err => console.warn('Netlify save failed:', err.message));
+    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+u.stock,{method:'DELETE',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg'}}).then(r=>console.log('Deleted:',u.stock));
   }
   renderInventory();
   renderDealerTable();
