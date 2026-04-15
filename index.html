@@ -2442,7 +2442,7 @@ function saveListingEdits() {
 
   currentListingKey = newKey;
   if (u.stock) {
-    pushDealerInventoryToBackend('Davenport Inc.', { toast:true }).catch(err => console.warn('Netlify save failed:', err.message));
+    pushDealerInventoryToBackend('Davenport Motors', { toast:true }).catch(err => console.warn('Netlify save failed:', err.message));
   }
 
   // Update modal header
@@ -4573,7 +4573,7 @@ function init() {
 const PUBLISH_DEALERS = [
   {
     name: 'Davenport Motors',
-    dealerKey: 'Davenport Inc.',
+    dealerKey: 'Davenport Motors',
     functionUrl: 'https://davenportmotors.net/.netlify/functions/inventory',
     url: 'https://davenportmotors.net',
   },
