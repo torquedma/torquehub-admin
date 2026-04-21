@@ -4644,7 +4644,7 @@ function buildDealerPayload(dealerKey) {
         days: u.days, fuel: u.fuel || null, vin: u.vin || null,
         description: u.description || null, color: u.color || null,
         mileage: u.mileage || null, photos,
-        siteTag: u.siteTag || null, subcategory: u.subcategory || null,
+        siteTag: u.siteTag || null, subcategory: u.subcategory || null, featured: u.featured || 0,
       };
     });
 }
