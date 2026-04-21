@@ -26,7 +26,7 @@ function supabaseFetch(path, method, body) {
         'apikey': SUPABASE_KEY,
         'Authorization': 'Bearer ' + SUPABASE_KEY,
         'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
+        'Prefer': 'return=representation',
         ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {})
       }
     };
@@ -66,7 +66,24 @@ function parseXml(xml) {
     if (modelType.includes('truck')) category = 'Trucks';
     else if (modelType.includes('equipment') || modelType.includes('construction')) category = 'Construction';
     else if (modelType.includes('farm') || modelType.includes('agri')) category = 'Farm';
-    items.push({ stock, year: parseInt(get('year')) || null, make: get('manufacturer'), model: get('model_name'), price, condition, color: get('color'), vin: get('vin') || null, description: desc, category, subcategory: get('model_type'), fuel: null, dealer: DEALER, sold: false, featured: 0, photos, status: 'active' });
+    items.push({
+      stock,
+      year: get('year') || null,
+      make: get('manufacturer'),
+      model: get('model_name'),
+      price,
+      condition,
+      color: get('color') || null,
+      vin: get('vin') || null,
+      description: desc,
+      category,
+      subcategory: get('model_type') || null,
+      fuel: null,
+      dealer: DEALER,
+      sold: false,
+      featured: 0,
+      photos
+    });
   }
   return items;
 }
@@ -78,17 +95,28 @@ exports.handler = async (event) => {
     const feedItems = parseXml(xml);
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
+
     const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock', 'GET');
     const existingStocks = new Set(JSON.parse(existing.body).map(r => r.stock));
     const feedStocks = new Set(feedItems.map(i => i.stock));
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s));
-    for (const stock of toDelete) await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'DELETE');
-    let inserted = 0, updated = 0;
-    for (const item of feedItems) {
-      if (existingStocks.has(item.stock)) { await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', item); updated++; }
-      else { await supabaseFetch('/rest/v1/inventory', 'POST', [item]); inserted++; }
+
+    for (const stock of toDelete) {
+      await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'DELETE');
     }
-    const result = { success: true, inserted, updated, deleted: toDelete.length, total: feedItems.length };
+
+    let inserted = 0, updated = 0, errors = 0;
+    for (const item of feedItems) {
+      if (existingStocks.has(item.stock)) {
+        const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', item);
+        if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
+      } else {
+        const r = await supabaseFetch('/rest/v1/inventory', 'POST', [item]);
+        if (r.status >= 400) { console.error('POST error', r.status, r.body.slice(0,200)); errors++; } else inserted++;
+      }
+    }
+
+    const result = { success: true, inserted, updated, deleted: toDelete.length, errors, total: feedItems.length };
     console.log('Done:', result);
     return { statusCode: 200, body: JSON.stringify(result) };
   } catch (err) {
