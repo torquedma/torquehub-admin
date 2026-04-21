@@ -2429,7 +2429,8 @@ function saveListingEdits() {
   // Auto-publish to dealer sites
   console.log("Auto-publish check:", u?.dealer, PUBLISH_DEALERS?.length);
   const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === u.dealer);
-  if (dealerPub) pushDealerInventoryToBackend(u.dealer).catch(err => console.warn("Auto-publish failed:", err.message));
+  if (dealerPub) pushDealerInventoryToBackend(u.dealer).then(r=>console.log("Auto-publish result:",JSON.stringify(r))).catch(err => console.warn("Auto-publish failed:", err.message));
+  else console.warn("No dealer config found for:", u.dealer);
 }
 
 function closeModal() {
