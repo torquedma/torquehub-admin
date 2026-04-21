@@ -2399,6 +2399,11 @@ function saveListingEdits() {
 
   // Save to Supabase
   if (u.stock) {
+    const origStock = u._originalStock || oldKey;
+    if (origStock && origStock.startsWith("NEW-") && u.stock !== origStock) {
+      fetch("https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq."+origStock,{method:"DELETE",headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg"}});
+      u._originalStock = u.stock;
+    }
     fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u._originalStock || oldKey}`, {
       method: 'PATCH',
       headers: {
