@@ -2410,10 +2410,6 @@ function saveListingEdits() {
   }
 
   currentListingKey = newKey;
-  if (u.stock) {
-    pushDealerInventoryToBackend('Davenport Motors', { toast:true }).catch(err => console.warn('Netlify save failed:', err.message));
-  }
-
   // Update modal header
   document.getElementById("modal-title").textContent = `${u.year} ${u.make} ${u.model}`;
   document.getElementById("modal-sub").textContent = `Stock #${u.stock || "N/A"} · ${u.dealer}`;
