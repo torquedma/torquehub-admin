@@ -2427,6 +2427,7 @@ function saveListingEdits() {
   msg.classList.add("show");
   setTimeout(() => msg.classList.remove("show"), 2500);
   // Auto-publish to dealer sites
+  console.log("Auto-publish check:", u?.dealer, PUBLISH_DEALERS?.length);
   const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === u.dealer);
   if (dealerPub) pushDealerInventoryToBackend(u.dealer).catch(err => console.warn("Auto-publish failed:", err.message));
 }
