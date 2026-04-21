@@ -2296,6 +2296,7 @@ function openPhotoModal(listingKey) {
   if (!u) return;
 
   currentListingKey = listingKey;
+  if (u) u._originalStock = u.stock;
   if (!PHOTO_STORE[listingKey]) PHOTO_STORE[listingKey] = [];
 
   document.getElementById("modal-title").textContent = `${u.year} ${u.make} ${u.model}`;
@@ -2398,7 +2399,7 @@ function saveListingEdits() {
 
   // Save to Supabase
   if (u.stock) {
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${oldKey}`, {
+    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u._originalStock || oldKey}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
