@@ -1682,15 +1682,7 @@ document.querySelector('.sidebar').classList.toggle('open');
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ===================== DATA =====================
-let DEALERS = [
-  {"name":"Auto Connection 210 LLC","count":50,"cats":["Trucks"],"avg_days":148,"status":"Active"},
-  {"name":"Davenport Inc.","count":42,"cats":["Construction"],"avg_days":1026,"status":"Active"},
-  {"name":"Fat Daddy's Truck Sales","count":21,"cats":["Trucks"],"avg_days":506,"status":"Active"},
-  {"name":"HGR's Truck and Trailer","count":144,"cats":["Trailers"],"avg_days":208,"status":"Active"},
-  {"name":"Wilson Trailer Sales & Service","count":16,"cats":["Trailers"],"avg_days":599,"status":"Active"},
-  {"name":"Dick Smith Equipment","count":0,"cats":["Construction"],"avg_days":0,"status":"Active"},
-  {"name":"Impex Heavy Metal","count":0,"cats":["Trucks"],"avg_days":0,"status":"Active"}
-];
+let DEALERS = [];
 let INVENTORY = [];
 
 const CAT_ICONS = { Trucks: "🚚", Construction: "🏗️", Farm: "🌾", Trailers: "🚛" };
@@ -4886,7 +4878,7 @@ async function loadApp() {
       price: item.price,
       dealer: item.dealer,
       stock: item.stock,
-      days: item.days,
+      days: item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 86400000) : (item.days || 0),
       fuel: item.fuel,
       description: item.description,
       category: item.category,
