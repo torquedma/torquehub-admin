@@ -73,7 +73,6 @@ function parseXml(xml) {
       model: get('model_name'),
       price,
       condition,
-      color: get('color') || null,
       vin: get('vin') || null,
       description: desc,
       category,
