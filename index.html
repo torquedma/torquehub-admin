@@ -2398,7 +2398,7 @@ function saveListingEdits() {
 
   // Save to Supabase
   if (u.stock) {
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u.stock}`, {
+    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${oldKey}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
