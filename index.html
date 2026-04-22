@@ -2458,7 +2458,7 @@ function filterNoPhotos() {
   invCatFilter = 'All';
   invCondFilter = 'All';
   invPage = 1;
-  window._customFilter = u => getPhotoCount(u) === 0 && !u.sold;
+  window._customFilter = u => (!u.photos || u.photos.length === 0) && !u.sold;
   renderInventory();
 }
 
