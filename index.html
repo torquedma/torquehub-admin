@@ -2427,6 +2427,30 @@ function saveListingEdits() {
   else console.warn("No dealer config found for:", u.dealer);
 }
 
+function generateDX() {
+  const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
+  if (!u) return;
+  const title = [u.year, u.make, u.model].filter(Boolean).join(' ');
+  const price = u.price || 'Call';
+  const specs = [];
+  if (u.make) specs.push('Make: ' + u.make);
+  if (u.model) specs.push('Model: ' + u.model);
+  if (u.year) specs.push('Year: ' + u.year);
+  if (u.mileage) specs.push('Mileage: ' + u.mileage);
+  if (u.engine) specs.push('Engine: ' + u.engine);
+  if (u.transmission) specs.push('Transmission: ' + u.transmission);
+  if (u.drivetrain) specs.push('Drivetrain: ' + u.drivetrain);
+  if (u.fuel) specs.push('Fuel: ' + u.fuel);
+  if (u.vin) specs.push('VIN: ' + u.vin);
+  if (u.stock) specs.push('Stock #: ' + u.stock);
+  const desc = (u.description || '').trim();
+  const dx = title + '\n\nKey Specs:\n' + specs.join('\n') + (desc ? '\n\nFeatures:\n' + desc : '') + '\n\nPrice: ' + price + '\n\nLocation: ' + (u.dealer || '');
+  navigator.clipboard.writeText(dx).then(() => {
+    const msg = document.getElementById('edit-saved-msg');
+    if (msg) { msg.textContent = '✓ DX Copied'; msg.classList.add('show'); setTimeout(() => { msg.textContent = '✓ Saved'; msg.classList.remove('show'); }, 2500); }
+  }).catch(() => { prompt('Copy your DX:', dx); });
+}
+
 function closeModal() {
   document.getElementById("photo-modal").classList.remove("open");
   currentListingKey = null;
