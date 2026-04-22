@@ -2102,12 +2102,9 @@ function setInvCatFilter(cat, el) {
   renderInventory();
 }
 function setInvCondFilter(cond, el) {
-  if (invCondFilter === cond) { invCondFilter = "All"; el.classList.remove("active"); }
-  else {
-    invCondFilter = cond;
-    document.querySelectorAll("#view-inventory .filter-chip[onclick*=Cond]").forEach(c => c.classList.remove("active"));
-    el.classList.add("active");
-  }
+  document.querySelectorAll("#view-inventory .filter-chip[onclick*=Cond]").forEach(c => c.classList.remove("active"));
+  if (invCondFilter === cond) { invCondFilter = "All"; }
+  else { invCondFilter = cond; el.classList.add("active"); }
   invPage = 1; renderInventory();
 }
 
