@@ -4901,6 +4901,7 @@ async function loadApp() {
       dealer: item.dealer,
       stock: item.stock,
       days: item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 86400000) : (item.days || 0),
+      created_at: item.created_at || null,
       fuel: item.fuel,
       description: item.description,
       category: item.category,
