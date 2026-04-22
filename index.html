@@ -2207,7 +2207,7 @@ function renderInventory() {
       <td style="font-size:12px;color:var(--text3)">${u.days}d</td>
       <td style="font-size:12px;color:var(--text3)">${u.fuel||"—"}</td>
       <td>${photoBadge}</td>
-      <td class="action-cell">${photoCount > 0 ? `<button class="sold-btn" style="margin-right:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}')">⬇ Photos</button>` : ''}${soldBtn}${removeBtn}</td>
+      <td class="action-cell">${photoCount > 0 ? `<button class="sold-btn" style="margin-right:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}')">⬇ Photos</button>` : ''}${u.description ? `<button class="sold-btn" style="margin-right:4px;background:#6366f1;color:#fff" onclick="event.stopPropagation();copyDX('${key.replace(/'/g,"\\'")}')">📋 DX</button>` : ''}${soldBtn}${removeBtn}</td>
 
     </tr>`;
   }).join("");
@@ -2470,6 +2470,16 @@ function filterMissingDesc() {
   invPage = 1;
   window._customFilter = u => (!u.description || u.description.trim() === '') && !u.sold;
   renderInventory();
+}
+
+function copyDX(key) {
+  const u = INVENTORY.find(u => getListingKey(u) === key);
+  if (!u || !u.description) return;
+  navigator.clipboard.writeText(u.description).then(() => {
+    alert('DX copied to clipboard!');
+  }).catch(() => {
+    prompt('Copy your DX:', u.description);
+  });
 }
 
 function closeModal() {
