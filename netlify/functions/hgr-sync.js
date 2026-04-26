@@ -70,13 +70,21 @@ function parseXml(xml) {
       stock,
       year: get('year') || null,
       make: get('manufacturer'),
-      model: get('model_name'),
+      model: (function() {
+        var full = get('model_name');
+        if (!full) return '';
+        // Take only first 2 words max — strip verbose marketing text
+        var words = full.trim().split(/\s+/);
+        return words.slice(0, 2).join(' ');
+      })(),
+      model_full: get('model_name'),
       price,
       condition,
       vin: get('vin') || null,
       description: desc,
       category,
       subcategory: get('model_type') || null,
+      notes: get('model_name') || null,
       fuel: null,
       dealer: DEALER,
       sold: false,
