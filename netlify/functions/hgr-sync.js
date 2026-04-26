@@ -72,28 +72,41 @@ function parseXml(xml) {
       make: get('manufacturer'),
       model: (function() {
         var modelName = get('model_name');
-        var modelType = get('model_type');
-        // Extract size — patterns like 8x20, 8.5x24, 34', 16+4, 5x8
-        var sizeMatch = modelName.match(/\b(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?|'|\+\d+))/i);
+        var rawType = get('model_type');
+
+        // Size: 8x20, 8.5x24, 34', 16+4, 5x8
+        var sizeMatch = modelName.match(/(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?)?'?(?:\+\d+)?)/i);
         var size = sizeMatch ? sizeMatch[1] : '';
-        // Get type from model_type, fallback to extracting from model_name
-        var type = modelType || '';
-        if (!type) {
-          // Try to grab type from end of model_name after last " / " or " - "
-          var typeMatch = modelName.match(/[\/ ]([A-Za-z][A-Za-z\s]+Trailer)\s*$/i);
-          if (typeMatch) type = typeMatch[1];
-        }
-        // Clean up type — remove trailing "Trailer", simplify slashes
-        type = type
-          .replace(/\s*\/\s*trailer\s*$/i, '')
-          .replace(/\s*trailer\s*$/i, '')
-          .replace(/\s*\/\s*/g, '/')
-          .trim();
-        // Combine size + type
-        if (size && type) return size + ' ' + type;
-        if (size) return size;
-        if (type) return type;
-        return modelName.split(/\s+/).slice(0, 3).join(' ');
+
+        // Key descriptors to keep from model_name
+        var keepers = ['gooseneck','tandem','aluminum','vnose','tilt','dovetail','telescoping'];
+        var descs = [];
+        modelName.toLowerCase().split(/\s+/).forEach(function(w) {
+          var clean = w.replace(/[^a-z]/g,'');
+          if (keepers.indexOf(clean) !== -1) descs.push(clean.charAt(0).toUpperCase() + clean.slice(1));
+        });
+
+        // Clean type label
+        var typeMap = {
+          'car / racing trailer': 'Car/Racing',
+          'cargo / enclosed trailer': 'Cargo/Enclosed',
+          'equipment trailer': 'Equipment',
+          'dump trailer': 'Dump',
+          'utility trailer': 'Utility',
+          'vending / concession trailer': 'Vending/Concession',
+          'other trailer': 'Other',
+          'landscape': 'Landscape',
+          'motorcycle trailer': 'Motorcycle'
+        };
+        var type = typeMap[rawType.toLowerCase()] || rawType
+          .replace(/\s*\/\s*[Tt]railer\s*$/,'').replace(/\s*[Tt]railer\s*$/,'')
+          .replace(/\s*\/\s*/g,'/').trim();
+
+        var parts = [];
+        if (size) parts.push(size);
+        if (descs.length) parts.push(descs.join(' '));
+        if (type) parts.push(type);
+        return parts.length ? parts.join(' ') : modelName.split(/\s+/).slice(0,3).join(' ');
       })(),
 
       price,
