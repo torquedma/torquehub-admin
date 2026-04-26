@@ -433,7 +433,7 @@
   .dx-tools-head {
     display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;
   }
-  .dx-tools-title {
+  .dx-tools-title 
     font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text2);
   }
   .dx-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
@@ -449,6 +449,7 @@
 
 </style>
 </head>
+>
 
 <button class="menu-toggle" style="position:fixed;top:15px;left:15px;z-index:300;font-size:22px;background:#0f1923;color:white;border:none;padding:8px 12px;border-radius:6px;">☰</button>
 <script>
@@ -1551,13 +1552,9 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:6px;grid-column:1/-1">
           <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
             <label class="edit-label" style="margin:0">Description</label>
-            <div style="display:flex;gap:6px;align-items:center">
-              <button class="dx-btn primary" onclick="generateTorqueHubDX()" title="Generate Torque Hub DX from listing specs">⚡ Generate Torque Hub DX</button>
-              <button class="dx-btn" onclick="lockManualDX()" title="Lock this description so feed sync won't overwrite it" id="dx-lock-btn">🔒 Lock DX</button>
-              <button class="dx-btn" onclick="useFeedDX()" title="Restore original feed description">↩ Feed DX</button>
-            </div>
+            
+            
           </div>
-          <div id="dx-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px;margin-bottom:4px">🔒 Manual DX Locked — feed sync won't overwrite</div>
           <textarea class="edit-input" id="edit-description" rows="5" placeholder="Vehicle description…" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5;grid-column:1/-1"></textarea>
         </div>
       </div>
@@ -2336,11 +2333,6 @@ function openPhotoModal(listingKey) {
   document.getElementById("edit-description").value = u.description || "";
   document.getElementById("edit-notes").value = u.notes || "";
   document.getElementById("edit-prod-status").value = u.prod_status || "";
-  // DX lock indicator
-  const dxInd = document.getElementById('dx-lock-indicator');
-  const dxBtn = document.getElementById('dx-lock-btn');
-  if (dxInd) dxInd.style.display = u.dx_locked ? 'block' : 'none';
-  if (dxBtn) { dxBtn.textContent = u.dx_locked ? '🔒 DX Locked' : '🔒 Lock DX'; dxBtn.style.background = u.dx_locked ? '#d1fae5' : ''; dxBtn.style.color = u.dx_locked ? '#065f46' : ''; }
   setListingStatus(u.status || 'published');
   document.getElementById("edit-saved-msg").classList.remove("show");
 
@@ -2358,82 +2350,6 @@ function formatPriceInput(el) {
   if (!isNaN(num)) el.value = '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 function unformatPriceInput(el) { el.value = el.value.replace(/[^0-9.]/g, ''); }
-function generateTorqueHubDX() {
-  const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
-  if (!u) return;
-
-  const dealer = DEALERS.find(d => d.name === u.dealer) || {};
-  const title = [u.year, u.make, u.model, u.subcategory || u.category].filter(Boolean).join(' ');
-  const lines = [];
-
-  lines.push(title);
-  lines.push('');
-  lines.push('Key Specs:');
-  if (u.engine) lines.push('Engine: ' + u.engine);
-  if (u.horsepower) lines.push('Horsepower: ' + u.horsepower);
-  if (u.transmission) lines.push('Transmission: ' + u.transmission);
-  if (u.drivetrain) lines.push('Drivetrain: ' + u.drivetrain);
-  if (u.mileage) lines.push('Mileage: ' + u.mileage);
-  if (u.hours) lines.push('Hours: Shows ' + u.hours);
-  if (u.vin) lines.push('VIN: ' + u.vin);
-  if (u.stock) lines.push('Stock #: ' + u.stock);
-  lines.push('');
-  lines.push('Why Choose This Unit?');
-  lines.push('Ready for commercial, farm, or jobsite use.');
-  lines.push('Built for buyers who need equipment that goes to work.');
-  lines.push('');
-  const price = u.price ? 'Priced at ' + u.price : 'Call for Price';
-  lines.push(price);
-  if (dealer.name) lines.push('Location: ' + dealer.name);
-  if (dealer.address) lines.push(dealer.address.replace(/
-/g, ', '));
-  if (dealer.phone) lines.push('Call: ' + dealer.phone);
-
-  const dx = lines.filter(l => l !== undefined).join('
-');
-  const field = document.getElementById('edit-description');
-  if (field) field.value = dx;
-  u.description = dx;
-
-  // Store raw_description if not already saved
-  if (!u.raw_description) u.raw_description = u.description;
-
-  showToastIfAvailable('Torque Hub DX generated. Review before saving.');
-}
-
-function lockManualDX() {
-  const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
-  if (!u) return;
-  u.dx_locked = true;
-  const btn = document.getElementById('dx-lock-btn');
-  if (btn) { btn.textContent = '🔒 DX Locked'; btn.style.background = '#d1fae5'; btn.style.color = '#065f46'; }
-  const ind = document.getElementById('dx-lock-indicator');
-  if (ind) ind.style.display = 'block';
-  alert('DX locked. Feed sync will not overwrite this description.');
-}
-
-function useFeedDX() {
-  const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
-  if (!u) return;
-  if (!u.raw_description) { alert('No feed DX saved for this listing.'); return; }
-  if (!confirm('Restore original feed description? This will replace current text.')) return;
-  const field = document.getElementById('edit-description');
-  if (field) field.value = u.raw_description;
-  u.description = u.raw_description;
-  u.dx_locked = false;
-}
-
-function showToastIfAvailable(msg) {
-  const existing = document.getElementById('th-toast');
-  if (existing) existing.remove();
-  const toast = document.createElement('div');
-  toast.id = 'th-toast';
-  toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f1923;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.2)';
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
-
 function saveListingEdits() {
   const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
   if (!u) return;
