@@ -73,19 +73,26 @@ function parseXml(xml) {
       model: (function() {
         var modelName = get('model_name');
         var modelType = get('model_type');
-        // Extract size — look for patterns like 8x20, 8.5x24, 34', 16+4
-        var sizeMatch = modelName.match(/\b(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?|'|\+\d+)?)\b/i);
+        // Extract size — patterns like 8x20, 8.5x24, 34', 16+4, 5x8
+        var sizeMatch = modelName.match(/\b(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?|'|\+\d+))/i);
         var size = sizeMatch ? sizeMatch[1] : '';
-        // Simplify model_type — strip trailing "Trailer" and "/ "
-        var type = modelType
+        // Get type from model_type, fallback to extracting from model_name
+        var type = modelType || '';
+        if (!type) {
+          // Try to grab type from end of model_name after last " / " or " - "
+          var typeMatch = modelName.match(/[\/ ]([A-Za-z][A-Za-z\s]+Trailer)\s*$/i);
+          if (typeMatch) type = typeMatch[1];
+        }
+        // Clean up type — remove trailing "Trailer", simplify slashes
+        type = type
           .replace(/\s*\/\s*trailer\s*$/i, '')
           .replace(/\s*trailer\s*$/i, '')
           .replace(/\s*\/\s*/g, '/')
           .trim();
-        // Combine
+        // Combine size + type
         if (size && type) return size + ' ' + type;
-        if (type) return type;
         if (size) return size;
+        if (type) return type;
         return modelName.split(/\s+/).slice(0, 3).join(' ');
       })(),
 
