@@ -75,10 +75,32 @@ function parseXml(xml) {
         var rawType = get('model_type');
 
         // Size: 8x20, 8.5x24, 34', 16+4, 5x8
-        // Handle both 8x20 and 22 x 83 formats
-        var sizeMatch = modelName.match(/(\d+(?:\.\d+)?\s*x\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?'|\d+(?:\+\d+))/i);
-        if (sizeMatch) sizeMatch[1] = sizeMatch[1].replace(/\s*x\s*/,'x');
-        var size = sizeMatch ? sizeMatch[1] : '';
+        // Handle size formats: 8x20 (ft x ft), 22x83 (ft x in), 101x24 (in x ft), 34', 16+4
+        var sizeMatch = modelName.match(/(\d+(?:\.\d+)?)'|(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)|(\d+(?:\+\d+))/i);
+        var size = '';
+        if (sizeMatch) {
+          if (sizeMatch[1]) {
+            // Feet only like 34'
+            size = sizeMatch[1] + "'";
+          } else if (sizeMatch[2] && sizeMatch[3]) {
+            var w = parseFloat(sizeMatch[2]);
+            var l = parseFloat(sizeMatch[3]);
+            if (w <= 15) {
+              // Both feet: 8x20, 8.5x30
+              size = sizeMatch[2] + 'x' + sizeMatch[3];
+            } else if (w <= 53) {
+              // Length(ft) x Width(in): 22x83 → 22'x83"
+              size = sizeMatch[2] + "'x" + sizeMatch[3] + '"';
+            } else {
+              // Width(in) x Length(ft): 101x24 → 101"x24'
+              size = sizeMatch[2] + '"x' + sizeMatch[3] + "'";
+            }
+          } else if (sizeMatch[4]) {
+            // Like 16+4
+            size = sizeMatch[4];
+          }
+        }
+
 
         // Key descriptors to keep from model_name
         var keepers = ['gooseneck','tandem','aluminum','vnose','tilt','dovetail','telescoping','deckover'];
