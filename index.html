@@ -72,6 +72,15 @@
   .lead-source-phone { background:#fef3c7; color:#92400e; }
   .lead-source-form { background:#ede9fe; color:#5b21b6; }
   .lead-source-manual { background:#f3f4f6; color:#374151; }
+  .lead-source-homepage { background:#fef3c7; color:#92400e; }
+  .lead-source-listing { background:#dbeafe; color:#1e40af; }
+  .lead-source-finance { background:#d1fae5; color:#065f46; }
+  .lead-source-qr { background:#fce7f3; color:#9d174d; }
+  .lead-source-reel { background:#ede9fe; color:#5b21b6; }
+  .lead-source-featured { background:#fef9c3; color:#713f12; }
+  .lead-source-facebook { background:#dbeafe; color:#1d4ed8; }
+  .lead-source-instagram { background:#fce7f3; color:#be185d; }
+  .lead-source-groups { background:#e0e7ff; color:#3730a3; }
   .lead-status-new { color:#e8410a; font-weight:600; }
   .lead-status-read { color:var(--text2); }
   .lead-status-closed { color:var(--text3); }
@@ -1278,6 +1287,15 @@ document.querySelector('.sidebar').classList.toggle('open');
         <option value="phone">Phone</option>
         <option value="form">Form</option>
         <option value="manual">Manual</option>
+        <option value="homepage">Homepage</option>
+        <option value="listing">Listing</option>
+        <option value="finance">Finance</option>
+        <option value="qr">QR Code</option>
+        <option value="reel">Reel</option>
+        <option value="featured">Featured</option>
+        <option value="facebook">Facebook</option>
+        <option value="instagram">Instagram</option>
+        <option value="groups">Groups</option>
       </select>
       <select class="search-input" id="leads-status-filter" style="width:auto" onchange="renderLeadsView()">
         <option value="">All Status</option>
@@ -5304,7 +5322,13 @@ function renderLeadsView() {
       <td style="font-weight:500">${l.customer_name||'—'}</td>
       <td style="font-size:12px;color:var(--text2)">${l.dealer_name||'—'}</td>
       <td style="font-size:12px;color:var(--text3)">${l.vehicle||'—'}</td>
-      <td><span class="lead-source-badge lead-source-${l.source||'manual'}">${l.source||'manual'}</span></td>
+      <td><span class="lead-source-badge lead-source-${l.source||'manual'}">${{
+  homepage:'🏠 Homepage', listing:'📄 Listing', finance:'💰 Finance',
+  qr:'📱 QR Code', reel:'🎬 Reel', featured:'⭐ Featured',
+  facebook:'📘 Facebook', instagram:'📸 Instagram', groups:'👥 Groups',
+  email:'📧 Email', text:'💬 Text', phone:'📞 Phone',
+  form:'📝 Form', manual:'✏️ Manual'
+}[l.source||'manual'] || l.source || 'manual'}</span></td>
       <td><span class="lead-status-${l.status||'new'}">${l.status||'new'}</span></td>
       <td><button class="secondary-btn" style="font-size:11px;padding:3px 10px" onclick="viewLead('${l.id}')">View</button></td>
     </tr>`).join('');
