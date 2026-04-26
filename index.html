@@ -4779,6 +4779,26 @@ function buildDealerPayload(dealerKey) {
     });
 }
 
+
+function runPublishChecklist(dealerKey) {
+  const listings = INVENTORY.filter(u => u.dealer === dealerKey && !u.sold);
+  const issues = [];
+  listings.forEach(u => {
+    const missing = [];
+    if (!u.year && !u.make && !u.model) missing.push('title');
+    if (!u.price || parseFloat(String(u.price).replace(/[^0-9.]/g,'')) === 0) missing.push('price');
+    if (!u.dealer || u.dealer.trim() === '') missing.push('dealer');
+    if (!u.category || u.category.trim() === '') missing.push('category');
+    const key = getListingKey(u);
+    const photos = (PHOTO_STORE[key] || []);
+    if (photos.length === 0) missing.push('photo');
+    if (missing.length > 0) {
+      issues.push('* ' + [u.year,u.make,u.model].filter(Boolean).join(' ') + ' (' + (u.stock||'no stock') + ') missing: ' + missing.join(', '));
+    }
+  });
+  return issues;
+}
+
 async function publishDealerSites() {
   const cfg = loadPublishConfig();
   const token = (document.getElementById('publish-token')||{}).value?.trim() || cfg.token;
@@ -4810,6 +4830,21 @@ async function publishDealerSites() {
 
   let successCount = 0;
   const errors = [];
+
+  // Ready-to-publish check
+  let allIssues = [];
+  for (const d of dealersToPublish) {
+    const issues = runPublishChecklist(d.dealerKey);
+    if (issues.length > 0) allIssues.push(d.dealerKey + ' has ' + issues.length + ' incomplete listing(s):\n' + issues.slice(0,5).join('\n'));
+  }
+  if (allIssues.length > 0) {
+    const go = confirm('Ready-to-Publish Check:\n\n' + allIssues.join('\n\n') + '\n\nPublish anyway?');
+    if (!go) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Publish Inventory'; }
+      setStatus('Publish cancelled.', '#f59e0b');
+      return;
+    }
+  }
 
   for (const dealer of dealersToPublish) {
     try {
