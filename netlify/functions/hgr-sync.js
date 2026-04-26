@@ -73,9 +73,18 @@ function parseXml(xml) {
       model: (function() {
         var full = get('model_name');
         if (!full) return '';
-        // Take only first 2 words max — strip verbose marketing text
+        // Strip trailing generic trailer-type words and marketing fluff
+        var stopWords = ['trailer', 'car', 'racing', 'other', 'camper', 'with', 'and', 'loaded',
+          'ultimate', 'escape', 'door', 'full', 'bathroom', 'black', 'blackout', 'rear', 'kitchen'];
         var words = full.trim().split(/\s+/);
-        return words.slice(0, 2).join(' ');
+        var result = [];
+        for (var i = 0; i < words.length; i++) {
+          var w = words[i].toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (stopWords.indexOf(w) !== -1) break;
+          result.push(words[i]);
+          if (result.length >= 4) break; // max 4 words
+        }
+        return result.length ? result.join(' ') : words.slice(0, 2).join(' ');
       })(),
 
       price,
