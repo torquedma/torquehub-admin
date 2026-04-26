@@ -136,6 +136,7 @@
   .stat-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
   .stat-icon.orange { background: #fff1ec; } .stat-icon.blue { background: #eff6ff; } .stat-icon.green { background: #f0fdf4; } .stat-icon.amber { background: #fffbeb; }
   .stat-icon.purple { background: #ede9fe; }
+  .stat-icon.red { background: #fee2e2; }
 
   /* MAIN GRID */
   .main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; margin-bottom: 20px; }
@@ -559,6 +560,12 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="label">Total Leads</div>
           <div class="value" id="stat-total-leads">0</div>
           <div class="sub" id="stat-leads-sub">across all dealers</div>
+        </div>
+        <div class="stat-card" onclick="filterNeedsAttention()" style="cursor:pointer" title="Click to view listings that need attention">
+          <div class="stat-icon red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+          <div class="label">Needs Attention</div>
+          <div class="value" id="stat-needs-attention">0</div>
+          <div class="sub" id="stat-needs-attention-sub">missing info</div>
         </div>
       </div>
 
@@ -2469,6 +2476,24 @@ function filterMissingDesc() {
   invCondFilter = 'All';
   invPage = 1;
   window._customFilter = u => (!u.description || u.description.trim() === '') && !u.sold;
+  renderInventory();
+}
+
+function filterNeedsAttention() {
+  showView('inventory', document.querySelector('.nav-item[onclick*=inventory]'));
+  invDealerFilter = '';
+  invCatFilter = 'All';
+  invCondFilter = 'All';
+  invPage = 1;
+  window._customFilter = u => {
+    if (u.sold) return false;
+    const hasPhotos = u.photos && u.photos.length > 0;
+    const hasPrice = u.price && parseFloat(String(u.price).replace(/[^0-9.]/g,'')) > 0;
+    const hasDesc = u.description && u.description.trim() !== '';
+    const hasCat = u.category && u.category.trim() !== '';
+    const hasDealer = u.dealer && u.dealer.trim() !== '';
+    return !hasPhotos || !hasPrice || !hasDesc || !hasCat || !hasDealer;
+  };
   renderInventory();
 }
 
@@ -4545,6 +4570,20 @@ function renderDashboardStats() {
     const sub2 = cards[2].querySelector('.sub');
     if (sub2) sub2.textContent = `${noDesc} missing description`;
   }
+
+  // Needs Attention card
+  const needsAttention = active.filter(u => {
+    const hasPhotos = u.photos && u.photos.length > 0;
+    const hasPrice = u.price && parseFloat(String(u.price).replace(/[^0-9.]/g,'')) > 0;
+    const hasDesc = u.description && u.description.trim() !== '';
+    const hasCat = u.category && u.category.trim() !== '';
+    const hasDealer = u.dealer && u.dealer.trim() !== '';
+    return !hasPhotos || !hasPrice || !hasDesc || !hasCat || !hasDealer;
+  }).length;
+  const naEl = document.getElementById('stat-needs-attention');
+  if (naEl) naEl.textContent = needsAttention;
+  const naSubEl = document.getElementById('stat-needs-attention-sub');
+  if (naSubEl) naSubEl.textContent = needsAttention === 1 ? '1 listing needs info' : `${needsAttention} listings need info`;
   if (cards[3]) {
     cards[3].querySelector('.value').textContent = addedThisMonth;
     const sub3 = cards[3].querySelector('.sub');
