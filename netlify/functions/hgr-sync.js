@@ -71,21 +71,22 @@ function parseXml(xml) {
       year: get('year') || null,
       make: get('manufacturer'),
       model: (function() {
-        var full = get('model_name');
-        if (!full) return '';
-        // Remove make name from front if repeated
-        var make = get('manufacturer');
-        if (make && full.toLowerCase().startsWith(make.toLowerCase())) {
-          full = full.slice(make.length).trim();
-        }
-        // Cut at " with ", " w/", " / ", " - " — everything after is fluff
-        var cutAt = full.search(/ with | w\/| \/ | - /i);
-        if (cutAt > 0) full = full.slice(0, cutAt).trim();
-        // Remove trailing generic type words
-        full = full.replace(/\s*(trailer|car|racing|camper|enclosed|cargo|equipment|dump|flatbed|gooseneck|livestock|utility)\s*$/gi, '').trim();
-        // Cap at 5 words
-        var words = full.trim().split(/\s+/).slice(0, 5);
-        return words.join(' ');
+        var modelName = get('model_name');
+        var modelType = get('model_type');
+        // Extract size — look for patterns like 8x20, 8.5x24, 34', 16+4
+        var sizeMatch = modelName.match(/\b(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?|'|\+\d+)?)\b/i);
+        var size = sizeMatch ? sizeMatch[1] : '';
+        // Simplify model_type — strip trailing "Trailer" and "/ "
+        var type = modelType
+          .replace(/\s*\/\s*trailer\s*$/i, '')
+          .replace(/\s*trailer\s*$/i, '')
+          .replace(/\s*\/\s*/g, '/')
+          .trim();
+        // Combine
+        if (size && type) return size + ' ' + type;
+        if (type) return type;
+        if (size) return size;
+        return modelName.split(/\s+/).slice(0, 3).join(' ');
       })(),
 
       price,
