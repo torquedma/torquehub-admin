@@ -77,7 +77,7 @@ function parseXml(xml) {
         var words = full.trim().split(/\s+/);
         return words.slice(0, 2).join(' ');
       })(),
-      model_full: get('model_name'),
+
       price,
       condition,
       vin: get('vin') || null,
