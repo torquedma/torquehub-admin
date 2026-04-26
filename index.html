@@ -2209,7 +2209,7 @@ function renderInventory() {
       <td style="font-size:12px;color:var(--text3)">${u.days}d</td>
       <td style="font-size:12px;color:var(--text3)">${u.fuel||"—"}</td>
       <td>${photoBadge}</td>
-      <td class="action-cell">${photoCount > 0 ? `<button class="sold-btn" style="margin-right:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}')">⬇ Photos</button>` : ''}${u.description ? `<button class="sold-btn" style="margin-right:4px;background:#6366f1;color:#fff" onclick="event.stopPropagation();copyDX('${key.replace(/'/g,"\\'")}')">📋 DX</button>` : ''}${soldBtn}${removeBtn}</td>
+      <td class="action-cell">${photoCount > 0 ? `<button class="sold-btn" style="margin-right:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}')">⬇ Photos</button>` : ''}${u.description ? `<button class="sold-btn" style="margin-right:4px;background:#6366f1;color:#fff" onclick="event.stopPropagation();copyDX('${key.replace(/'/g,"\\'")}')">📋 DX</button>` : ''}<button class="sold-btn" style="margin-right:4px;background:#0ea5e9;color:#fff" onclick="event.stopPropagation();copyLinks('${key.replace(/'/g,"\\'")}')" title="Copy VDP, Finance & QR links">🔗 Links</button>${soldBtn}${removeBtn}</td>
 
     </tr>`;
   }).join("");
@@ -2490,6 +2490,32 @@ function filterNeedsAttention() {
     return !hasPhotos || !hasPrice || !hasDesc || !hasCat || !hasDealer;
   };
   renderInventory();
+}
+
+function copyLinks(key) {
+  const u = INVENTORY.find(u => getListingKey(u) === key);
+  if (!u) return;
+
+  const stock = encodeURIComponent(u.stock_number || u.stock || '');
+  const dealer = encodeURIComponent(u.dealer || '');
+  const rawPrice = String(u.price || '').replace(/[^0-9.]/g, '');
+  const unitSlug = encodeURIComponent(
+    [u.year, u.make, u.model].filter(Boolean).join('-').toLowerCase().replace(/\s+/g, '-')
+  );
+
+  const vdp = `https://hub.torquedma.com/vehicle.html?stock=${stock}&dealer=${dealer}`;
+  const finance = `https://hub.torquedma.com/finance.html?stock=${stock}&unit=${unitSlug}&price=${rawPrice}&src=listing`;
+  const qr = `https://hub.torquedma.com/finance.html?stock=${stock}&unit=${unitSlug}&price=${rawPrice}&src=qr`;
+
+  const text = `VDP: ${vdp}
+Finance: ${finance}
+QR Finance: ${qr}`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Links copied!\n\n' + text);
+  }).catch(() => {
+    prompt('Copy these links:', text);
+  });
 }
 
 function copyDX(key) {
