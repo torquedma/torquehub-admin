@@ -84,7 +84,6 @@ function parseXml(xml) {
       description: desc,
       category,
       subcategory: get('model_type') || null,
-      notes: get('model_name') || null,
       fuel: null,
       dealer: DEALER,
       sold: false,
