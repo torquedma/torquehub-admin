@@ -75,11 +75,13 @@ function parseXml(xml) {
         var rawType = get('model_type');
 
         // Size: 8x20, 8.5x24, 34', 16+4, 5x8
-        var sizeMatch = modelName.match(/(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?)?'?(?:\+\d+)?)/i);
+        // Handle both 8x20 and 22 x 83 formats
+        var sizeMatch = modelName.match(/(\d+(?:\.\d+)?\s*x\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?'|\d+(?:\+\d+))/i);
+        if (sizeMatch) sizeMatch[1] = sizeMatch[1].replace(/\s*x\s*/,'x');
         var size = sizeMatch ? sizeMatch[1] : '';
 
         // Key descriptors to keep from model_name
-        var keepers = ['gooseneck','tandem','aluminum','vnose','tilt','dovetail','telescoping'];
+        var keepers = ['gooseneck','tandem','aluminum','vnose','tilt','dovetail','telescoping','deckover'];
         var descs = [];
         modelName.toLowerCase().split(/\s+/).forEach(function(w) {
           var clean = w.replace(/[^a-z]/g,'');
