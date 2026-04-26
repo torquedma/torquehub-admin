@@ -433,7 +433,7 @@
   .dx-tools-head {
     display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;
   }
-  .dx-tools-title 
+  .dx-tools-title {
     font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text2);
   }
   .dx-btn-row { display:flex; gap:8px; flex-wrap:wrap; }
@@ -449,7 +449,6 @@
 
 </style>
 </head>
->
 
 <button class="menu-toggle" style="position:fixed;top:15px;left:15px;z-index:300;font-size:22px;background:#0f1923;color:white;border:none;padding:8px 12px;border-radius:6px;">☰</button>
 <script>
@@ -1552,9 +1551,14 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:6px;grid-column:1/-1">
           <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
             <label class="edit-label" style="margin:0">Description</label>
-            
-            
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="dx-btn primary" onclick="generateTorqueHubDX()">&#9889; Torque Hub DX</button>
+              <button class="dx-btn" id="dx-lock-btn" onclick="lockManualDX()">&#128274; Lock DX</button>
+              <button class="dx-btn" onclick="useFeedDX()">&#8617; Feed DX</button>
+            </div>
           </div>
+          <div id="dx-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:3px 8px;border-radius:4px;margin-bottom:4px">&#128274; Manual DX Locked</div>
+          <div style="display:none">x
           <textarea class="edit-input" id="edit-description" rows="5" placeholder="Vehicle description…" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5;grid-column:1/-1"></textarea>
         </div>
       </div>
@@ -2333,6 +2337,10 @@ function openPhotoModal(listingKey) {
   document.getElementById("edit-description").value = u.description || "";
   document.getElementById("edit-notes").value = u.notes || "";
   document.getElementById("edit-prod-status").value = u.prod_status || "";
+  var dxInd = document.getElementById("dx-lock-indicator");
+  var dxBtn = document.getElementById("dx-lock-btn");
+  if (dxInd) dxInd.style.display = u.dx_locked ? "block" : "none";
+  if (dxBtn) { dxBtn.textContent = u.dx_locked ? "DX Locked" : "Lock DX"; dxBtn.style.background = u.dx_locked ? "#d1fae5" : ""; dxBtn.style.color = u.dx_locked ? "#065f46" : ""; }
   setListingStatus(u.status || 'published');
   document.getElementById("edit-saved-msg").classList.remove("show");
 
@@ -2350,6 +2358,68 @@ function formatPriceInput(el) {
   if (!isNaN(num)) el.value = '$' + num.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 function unformatPriceInput(el) { el.value = el.value.replace(/[^0-9.]/g, ''); }
+
+function generateTorqueHubDX() {
+  var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
+  if (!u) return;
+  var dealer = DEALERS.find(function(d){ return d.name === u.dealer; }) || {};
+  var parts = [u.year, u.make, u.model, u.subcategory || u.category].filter(Boolean);
+  var title = parts.join(' ');
+  var lines = [title, ''];
+  lines.push('Key Specs:');
+  if (u.engine) lines.push('Engine: ' + u.engine);
+  if (u.horsepower) lines.push('Horsepower: ' + u.horsepower);
+  if (u.transmission) lines.push('Transmission: ' + u.transmission);
+  if (u.drivetrain) lines.push('Drivetrain: ' + u.drivetrain);
+  if (u.mileage) lines.push('Mileage: ' + u.mileage);
+  if (u.hours) lines.push('Hours: Shows ' + u.hours);
+  if (u.vin) lines.push('VIN: ' + u.vin);
+  if (u.stock) lines.push('Stock #: ' + u.stock);
+  lines.push('');
+  lines.push('Why Choose This Unit?');
+  lines.push('Ready for commercial, farm, or jobsite use.');
+  lines.push('Built for buyers who need equipment that goes to work.');
+  lines.push('');
+  lines.push(u.price ? 'Priced at ' + u.price : 'Call for Price');
+  if (dealer.name) lines.push('Location: ' + dealer.name);
+  if (dealer.phone) lines.push('Call: ' + dealer.phone);
+  var dx = lines.join('\n');
+  var field = document.getElementById('edit-description');
+  if (field) field.value = dx;
+  if (!u.raw_description) u.raw_description = u.description;
+  u.description = dx;
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f1923;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999';
+  t.textContent = 'Torque Hub DX generated. Review before saving.';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 3000);
+}
+
+function lockManualDX() {
+  var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
+  if (!u) return;
+  u.dx_locked = true;
+  var btn = document.getElementById('dx-lock-btn');
+  if (btn) { btn.textContent = 'DX Locked'; btn.style.background = '#d1fae5'; btn.style.color = '#065f46'; }
+  var ind = document.getElementById('dx-lock-indicator');
+  if (ind) ind.style.display = 'block';
+}
+
+function useFeedDX() {
+  var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
+  if (!u) return;
+  if (!u.raw_description) { alert('No feed DX saved for this listing.'); return; }
+  if (!confirm('Restore original feed description?')) return;
+  var field = document.getElementById('edit-description');
+  if (field) field.value = u.raw_description;
+  u.description = u.raw_description;
+  u.dx_locked = false;
+  var btn = document.getElementById('dx-lock-btn');
+  if (btn) { btn.textContent = 'Lock DX'; btn.style.background = ''; btn.style.color = ''; }
+  var ind = document.getElementById('dx-lock-indicator');
+  if (ind) ind.style.display = 'none';
+}
+
 function saveListingEdits() {
   const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
   if (!u) return;
