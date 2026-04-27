@@ -51,6 +51,11 @@ function parseXml(xml) {
       if (!m) return '';
       return (m[1] || m[2] || '').trim();
     };
+    const getAttr = (name) => {
+      const pattern = new RegExp('<name>' + name + '<\/name>\\s*<value>([^<]*)<\/value>', 'i');
+      const m = item.match(pattern);
+      return m ? m[1].trim() : '';
+    };
     const stock = get('stocknumber');
     if (!stock) continue;
     const photos = [];
@@ -166,14 +171,22 @@ function parseXml(xml) {
     });
     // Generate Torque Hub DX after item is built
     const lastItem = items[items.length - 1];
-    const thDX = buildTorqueHubDX(lastItem, rawDesc);
+    const itemAttrs = {
+      width: getAttr('Width'),
+      length: getAttr('Length'),
+      height: getAttr('Height'),
+      gvwr: getAttr('GVWR'),
+      axles: getAttr('Number of Axles')
+    };
+    const thDX = buildTorqueHubDX(lastItem, rawDesc, itemAttrs);
     lastItem.torque_hub_dx = thDX;
     lastItem.description = thDX;
   }
   return items;
 }
 
-function buildTorqueHubDX(item, rawDesc) {
+function buildTorqueHubDX(item, rawDesc, attrs) {
+  attrs = attrs || {};
   const lines = [];
   const title = [item.year, item.make, item.model].filter(Boolean).join(' ');
   if (title) lines.push(title);
@@ -190,24 +203,26 @@ function buildTorqueHubDX(item, rawDesc) {
   }
 
   const specs = [];
-  // Extract size from model field first (most reliable for HGR)
-  const modelStr = item.model || '';
-  let length = '', width = '';
-  const nxmMatch = modelStr.match(/(\d+(?:\.\d+)?)(?:ft)?\s*x\s*(\d+(?:\.\d+)?)/i);
-  const ftMatch = modelStr.match(/^(\d+(?:\.\d+)?)(?:ft|')/i);
-  if (nxmMatch) {
-    const a = parseFloat(nxmMatch[1]), b = parseFloat(nxmMatch[2]);
-    if (b >= 60) { length = nxmMatch[1] + 'ft'; width = nxmMatch[2] + 'in'; }
-    else if (a > 53) { width = nxmMatch[1] + 'in'; length = nxmMatch[2] + 'ft'; }
-    else { width = nxmMatch[1] + 'ft'; length = nxmMatch[2] + 'ft'; }
-  } else if (ftMatch) {
-    length = ftMatch[1] + 'ft';
+  // Use XML attributes first (most accurate)
+  let length = attrs.length ? attrs.length + 'ft' : '';
+  let width = attrs.width ? attrs.width + 'ft' : '';
+  // Fall back to model field size
+  if (!length || !width) {
+    const modelStr = item.model || '';
+    const nxmMatch = modelStr.match(/(\d+(?:\.\d+)?)(?:ft)?\s*x\s*(\d+(?:\.\d+)?)/i);
+    const ftMatch = modelStr.match(/^(\d+(?:\.\d+)?)(?:ft|')/i);
+    if (nxmMatch && !length && !width) {
+      const a = parseFloat(nxmMatch[1]), b = parseFloat(nxmMatch[2]);
+      if (b >= 60) { length = length || nxmMatch[1] + 'ft'; width = width || nxmMatch[2] + 'in'; }
+      else if (a > 53) { width = width || nxmMatch[1] + 'in'; length = length || nxmMatch[2] + 'ft'; }
+      else { width = width || nxmMatch[1] + 'ft'; length = length || nxmMatch[2] + 'ft'; }
+    } else if (ftMatch) {
+      length = length || ftMatch[1] + 'ft';
+    }
   }
-  if (!length) length = parseSpec(/([0-9]+)\s*(?:ft|')\s*(?:long|length|trailer)/i) || '';
-  if (!width) width = parseSpec(/(?:width|wide)[:\s-]*([0-9."]+)/i) || '';
-  const height = parseSpec(/(?:interior\s*height|inside\s*height|int\.\s*height)[:\s-]*([0-9."]+\s*(?:in|inches|ft|')?)/i);
-  const gvwr = parseSpec(/gvwr[:\s-]*([0-9,]+\s*(?:lb|lbs|#)?)/i);
-  const axles = parseSpec(/([0-9]+)\s*axle/i);
+  const height = attrs.height ? attrs.height + 'ft' : parseSpec(/(?:interior\s*height|inside\s*height)[:\s-]*([0-9."]+)/i) || '';
+  const gvwr = attrs.gvwr || parseSpec(/gvwr[:\s-]*([0-9,]+\s*(?:lb|lbs|#)?)/i) || '';
+  const axles = attrs.axles || parseSpec(/([0-9]+)\s*axle/i) || '';
   const axleWeight = parseSpec(/([0-9,]+)\s*(?:lb|lbs|#)\s*axle/i);
   const ramp = parseSpec(/((?:rear\s*)?(?:ramp|gate|door)[^.,]{0,60})/i);
   const electrical = parseSpec(/((?:[0-9]+)\s*amp[^.,]{0,60})/i);
