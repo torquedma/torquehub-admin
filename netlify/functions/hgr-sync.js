@@ -315,7 +315,11 @@ exports.handler = async (event) => {
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s));
 
     for (const stock of toDelete) {
-      await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'DELETE');
+      await supabaseFetch(
+        '/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER),
+        'PATCH',
+        { sold: true, sold_date: new Date().toISOString().split('T')[0], sold_type: 'feed_removed' }
+      );
     }
 
     let inserted = 0, updated = 0, errors = 0;
