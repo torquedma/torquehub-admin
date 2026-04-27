@@ -190,11 +190,21 @@ function buildTorqueHubDX(item, rawDesc) {
   }
 
   const specs = [];
-  // Try XML attributes first, fall back to parsing raw description
-  const length = parseSpec(/(?:length|long)[:\s-]*([0-9.]+\s*(?:ft|'|feet)?)/i) ||
-                 parseSpec(/([0-9.]+)\s*(?:ft|')\s*(?:long|length)/i);
-  const width = parseSpec(/(?:width|wide)[:\s-]*([0-9."]+\s*(?:in|inches|ft|')?)/i) ||
-                parseSpec(/([0-9.]+)\s*(?:wide|width)/i);
+  // Extract size from model field first (most reliable for HGR)
+  const modelStr = item.model || '';
+  let length = '', width = '';
+  const nxmMatch = modelStr.match(/(\d+(?:\.\d+)?)(?:ft)?\s*x\s*(\d+(?:\.\d+)?)/i);
+  const ftMatch = modelStr.match(/^(\d+(?:\.\d+)?)(?:ft|')/i);
+  if (nxmMatch) {
+    const a = parseFloat(nxmMatch[1]), b = parseFloat(nxmMatch[2]);
+    if (b >= 60) { length = nxmMatch[1] + 'ft'; width = nxmMatch[2] + 'in'; }
+    else if (a > 53) { width = nxmMatch[1] + 'in'; length = nxmMatch[2] + 'ft'; }
+    else { width = nxmMatch[1] + 'ft'; length = nxmMatch[2] + 'ft'; }
+  } else if (ftMatch) {
+    length = ftMatch[1] + 'ft';
+  }
+  if (!length) length = parseSpec(/([0-9]+)\s*(?:ft|')\s*(?:long|length|trailer)/i) || '';
+  if (!width) width = parseSpec(/(?:width|wide)[:\s-]*([0-9."]+)/i) || '';
   const height = parseSpec(/(?:interior\s*height|inside\s*height|int\.\s*height)[:\s-]*([0-9."]+\s*(?:in|inches|ft|')?)/i);
   const gvwr = parseSpec(/gvwr[:\s-]*([0-9,]+\s*(?:lb|lbs|#)?)/i);
   const axles = parseSpec(/([0-9]+)\s*axle/i);
