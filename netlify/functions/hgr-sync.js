@@ -92,19 +92,16 @@ function parseXml(xml) {
           var w = parseFloat(nxm[1]);
           var l = parseFloat(nxm[2]);
           if (l >= 60) {
-            // Length(ft) x Width(in): 22x83 → 22'x83"
-            size = nxm[1] + "'x" + nxm[2] + '"';
+            size = nxm[1] + 'ft x ' + nxm[2] + 'in';
           } else if (w > 53) {
-            // Width(in) x Length(ft): 101x24 → 101"x24'
-            size = nxm[1] + '"x' + nxm[2] + "'";
+            size = nxm[1] + 'in x ' + nxm[2] + 'ft';
           } else {
-            // Both feet: 8x20, 8.5x30, 7x16
-            size = nxm[1] + 'x' + nxm[2];
+            size = nxm[1] + 'ft x ' + nxm[2] + 'ft';
           }
         } else if (plusFt) {
-          size = plusFt[1];
+          size = plusFt[1] + 'ft';
         } else if (feet) {
-          size = feet[1] + "'";
+          size = feet[1] + 'ft';
         }
 
         // --- DESCRIPTORS ---
