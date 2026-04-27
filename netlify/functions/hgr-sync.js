@@ -56,8 +56,9 @@ function parseXml(xml) {
       const m = item.match(pattern);
       return m ? m[1].trim() : '';
     };
-    const stock = get('stocknumber');
-    if (!stock) continue;
+    const rawStock = get('stocknumber');
+    if (!rawStock) continue;
+    const stock = rawStock.startsWith('HGR') ? rawStock : 'HGR' + rawStock;
     const photos = [];
     const imgMatches = item.matchAll(/<imageurl>([^<]+)<\/imageurl>/g);
     for (const img of imgMatches) photos.push({ url: img[1].trim(), name: img[1].trim().split('/').pop() });
