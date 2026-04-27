@@ -178,7 +178,6 @@ function parseXml(xml) {
       gvwr: getAttr('GVWR'),
       axles: getAttr('Number of Axles')
     };
-    console.log('ATTRS for', lastItem.stock, JSON.stringify(itemAttrs));
     const thDX = buildTorqueHubDX(lastItem, rawDesc, itemAttrs);
     lastItem.torque_hub_dx = thDX;
     lastItem.description = thDX;
