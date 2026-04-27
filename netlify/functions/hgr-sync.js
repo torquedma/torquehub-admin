@@ -93,8 +93,8 @@ function parseXml(xml) {
           } else if (sizeMatch[2] && sizeMatch[3]) {
             var w = parseFloat(sizeMatch[2]);
             var l = parseFloat(sizeMatch[3]);
-            if (l > 20 && w <= 53) {
-              // Length(ft) x Width(in): 8x20 stays 8x20, 14x83 → 14'x83", 22x83 → 22'x83"
+            if (l >= 60 && w <= 53) {
+              // Length(ft) x Width(in): 14x83 → 14'x83", 22x83 → 22'x83"
               size = sizeMatch[2] + "'x" + sizeMatch[3] + '"';
             } else if (w > 53) {
               // Width(in) x Length(ft): 101x24 → 101"x24'
@@ -119,6 +119,12 @@ function parseXml(xml) {
         });
 
         // Clean type label
+        // For "Other Trailer", extract meaningful type from model_name BEFORE typeMap
+        if (rawType.toLowerCase() === 'other trailer') {
+          if (/camper|rv|travel/i.test(modelName)) rawType = 'Camper';
+          else if (/aerial|tower|bucket/i.test(modelName)) rawType = 'Aerial';
+          else rawType = 'Other';
+        }
         var typeMap = {
           'car / racing trailer': 'Car/Racing',
           'cargo / enclosed trailer': 'Cargo/Enclosed',
@@ -130,12 +136,7 @@ function parseXml(xml) {
           'landscape': 'Landscape',
           'motorcycle trailer': 'Motorcycle'
         };
-        // For "Other Trailer", try to extract meaningful type from model_name
-        if (rawType.toLowerCase() === 'other trailer') {
-          if (/camper|rv|travel/i.test(modelName)) rawType = 'Camper';
-          else if (/aerial|tower|bucket/i.test(modelName)) rawType = 'Aerial';
-          else rawType = '';
-        }
+
         var type = typeMap[rawType.toLowerCase()] || rawType
           .replace(/\s*\/\s*[Tt]railer\s*$/,'').replace(/\s*[Tt]railer\s*$/,'')
           .replace(/\s*\/\s*/g,'/').trim();
