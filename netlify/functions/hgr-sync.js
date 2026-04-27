@@ -66,6 +66,7 @@ function parseXml(xml) {
     if (modelType.includes('truck')) category = 'Trucks';
     else if (modelType.includes('equipment') || modelType.includes('construction')) category = 'Construction';
     else if (modelType.includes('farm') || modelType.includes('agri')) category = 'Farm';
+    const rawDesc = get('description').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
     items.push({
       stock,
       year: get('year') || null,
@@ -151,7 +152,10 @@ function parseXml(xml) {
       price,
       condition,
       vin: get('vin') || null,
-      description: desc,
+      raw_description: rawDesc,
+      description: null, // set below
+      torque_hub_dx: null, // set below
+      description_source: 'torque_hub_dx',
       category,
       subcategory: get('model_type') || null,
       fuel: null,
@@ -160,8 +164,118 @@ function parseXml(xml) {
       featured: 0,
       photos
     });
+    // Generate Torque Hub DX after item is built
+    const lastItem = items[items.length - 1];
+    const thDX = buildTorqueHubDX(lastItem, rawDesc);
+    lastItem.torque_hub_dx = thDX;
+    lastItem.description = thDX;
   }
   return items;
+}
+
+function buildTorqueHubDX(item, rawDesc) {
+  const lines = [];
+  const title = [item.year, item.make, item.model].filter(Boolean).join(' ');
+  if (title) lines.push(title);
+  lines.push('');
+
+  if (item.price && item.price !== 'Call') lines.push('Price: ' + item.price);
+  lines.push('');
+
+  // Parse raw description for specs not in XML fields
+  function parseSpec(pattern) {
+    if (!rawDesc) return '';
+    const m = rawDesc.match(pattern);
+    return m ? m[1].trim() : '';
+  }
+
+  const specs = [];
+  // Try XML attributes first, fall back to parsing raw description
+  const length = parseSpec(/(?:length|long)[:\s-]*([0-9.]+\s*(?:ft|'|feet)?)/i) ||
+                 parseSpec(/([0-9.]+)\s*(?:ft|')\s*(?:long|length)/i);
+  const width = parseSpec(/(?:width|wide)[:\s-]*([0-9."]+\s*(?:in|inches|ft|')?)/i) ||
+                parseSpec(/([0-9.]+)\s*(?:wide|width)/i);
+  const height = parseSpec(/(?:interior\s*height|inside\s*height|int\.\s*height)[:\s-]*([0-9."]+\s*(?:in|inches|ft|')?)/i);
+  const gvwr = parseSpec(/gvwr[:\s-]*([0-9,]+\s*(?:lb|lbs|#)?)/i);
+  const axles = parseSpec(/([0-9]+)\s*axle/i);
+  const axleWeight = parseSpec(/([0-9,]+)\s*(?:lb|lbs|#)\s*axle/i);
+  const ramp = parseSpec(/((?:rear\s*)?(?:ramp|gate|door)[^.
+,]{0,60})/i);
+  const electrical = parseSpec(/((?:[0-9]+)\s*amp[^.
+,]{0,60})/i);
+
+  if (length) specs.push('Length: ' + length);
+  if (width) specs.push('Width: ' + width);
+  if (axles) specs.push('Axles: ' + axles + (axleWeight ? ' x ' + axleWeight + ' lb' : ''));
+  if (gvwr) specs.push('GVWR: ' + gvwr);
+  if (height) specs.push('Interior Height: ' + height);
+  if (ramp) specs.push('Door/Ramp: ' + ramp.replace(/\s+/g,' ').trim());
+  if (electrical) specs.push('Electrical: ' + electrical.replace(/\s+/g,' ').trim());
+  if (item.vin) specs.push('VIN: ' + item.vin);
+  specs.push('Stock #: ' + item.stock);
+
+  if (specs.length) {
+    lines.push('Key Specs:');
+    specs.forEach(s => lines.push(s));
+    lines.push('');
+  }
+
+  // Highlights — parse bullet points from raw description
+  const highlights = [];
+  if (rawDesc) {
+    const bullets = rawDesc.split(/
+/).filter(l => l.match(/^[-*•]|^-[A-Z]/)).slice(0, 5);
+    bullets.forEach(b => {
+      const clean = b.replace(/^[-*•\s]+/,'').replace(/<[^>]+>/g,'').trim();
+      if (clean.length > 10 && clean.length < 120) highlights.push(clean);
+    });
+  }
+  if (highlights.length) {
+    lines.push('Highlights:');
+    highlights.forEach(h => lines.push(h));
+    lines.push('');
+  }
+
+  // Best For — infer from trailer type
+  const modelType = (item.subcategory || '').toLowerCase();
+  const bestFor = [];
+  if (modelType.includes('car') || modelType.includes('racing') || modelType.includes('enclosed')) {
+    bestFor.push('Race teams and motorsports hauling');
+    bestFor.push('Show cars and high-end enclosed transport');
+    bestFor.push('Car dealers and auction transport');
+  } else if (modelType.includes('dump')) {
+    bestFor.push('Contractors and landscapers');
+    bestFor.push('Debris removal and material hauling');
+    bestFor.push('Farm and property cleanup');
+  } else if (modelType.includes('equipment') || modelType.includes('utility')) {
+    bestFor.push('Contractors and equipment haulers');
+    bestFor.push('Landscapers and farm use');
+    bestFor.push('Heavy equipment transport');
+  } else if (modelType.includes('cargo')) {
+    bestFor.push('Mobile businesses and contractors');
+    bestFor.push('Tool and equipment storage');
+    bestFor.push('Enclosed commercial hauling');
+  } else if (modelType.includes('vending') || modelType.includes('concession')) {
+    bestFor.push('Food vendors and mobile businesses');
+    bestFor.push('Event concessions and markets');
+    bestFor.push('Mobile retail and service units');
+  } else {
+    bestFor.push('Commercial and farm use');
+    bestFor.push('General hauling and transport');
+  }
+  if (bestFor.length) {
+    lines.push('Best For:');
+    bestFor.forEach(b => lines.push(b));
+    lines.push('');
+  }
+
+  lines.push('Location:');
+  lines.push("HGR's Truck & Trailer Sales");
+  lines.push('4519 Marracco Dr, Hope Mills, NC 28348');
+  lines.push('');
+  lines.push('Call: 910-425-6104');
+
+  return lines.join('\n');
 }
 
 exports.handler = async (event) => {
