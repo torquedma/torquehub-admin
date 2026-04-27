@@ -2487,6 +2487,23 @@ function saveListingEdits() {
   u.model     = document.getElementById("edit-model").value.trim();
   u.price     = document.getElementById("edit-price").value.trim();
   u.stock     = document.getElementById("edit-stock").value.trim();
+
+  // Duplicate stock # check
+  if (u.stock) {
+    const dupCheck = INVENTORY.find(x => x.stock === u.stock && getListingKey(x) !== currentListingKey);
+    if (dupCheck) {
+      const proceed = confirm(
+        'Warning: Stock # ' + u.stock + ' already exists on another listing:\n' +
+        dupCheck.year + ' ' + dupCheck.make + ' ' + dupCheck.model + ' (' + dupCheck.dealer + ')\n\n' +
+        'Save anyway?'
+      );
+      if (!proceed) {
+        u.stock = document.getElementById("edit-stock").value.trim(); // restore
+        return;
+      }
+    }
+  }
+
   u.days      = document.getElementById("edit-days").value.trim();
   u.condition = document.getElementById("edit-condition").value;
   u.fuel      = document.getElementById("edit-fuel").value.trim();
