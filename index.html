@@ -2657,9 +2657,7 @@ function closeModal() {
 }
 
 // Close on overlay click
-document.getElementById("photo-modal").addEventListener("click", function(e) {
-  if (e.target === this) closeModal();
-});
+// Overlay click disabled — close via Save & Close or X button only
 document.getElementById("sale-modal").addEventListener("click", function(e) {
   if (e.target === this) closeSaleModal();
 });
