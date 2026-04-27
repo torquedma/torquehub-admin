@@ -82,35 +82,32 @@ function parseXml(xml) {
         var modelName = get('model_name');
         var rawType = get('model_type');
 
-        // Size: 8x20, 8.5x24, 34', 16+4, 5x8
-        // Handle size formats: 8x20 (ft x ft), 22x83 (ft x in), 101x24 (in x ft), 34', 16+4
-        var sizeMatch = modelName.match(/(\d+(?:\.\d+)?)'|(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)|(\d+(?:\+\d+))/i);
+        // --- SIZE ---
+        // Try NxM format first (must check before feet-only)
         var size = '';
-        if (sizeMatch) {
-          if (sizeMatch[1]) {
-            // Feet only like 34'
-            size = sizeMatch[1] + "'";
-          } else if (sizeMatch[2] && sizeMatch[3]) {
-            var w = parseFloat(sizeMatch[2]);
-            var l = parseFloat(sizeMatch[3]);
-            if (l >= 60 && w <= 53) {
-              // Length(ft) x Width(in): 14x83 → 14'x83", 22x83 → 22'x83"
-              size = sizeMatch[2] + "'x" + sizeMatch[3] + '"';
-            } else if (w > 53) {
-              // Width(in) x Length(ft): 101x24 → 101"x24'
-              size = sizeMatch[2] + '"x' + sizeMatch[3] + "'";
-            } else {
-              // Both feet: 8x20, 8.5x30, 7x16
-              size = sizeMatch[2] + 'x' + sizeMatch[3];
-            }
-          } else if (sizeMatch[4]) {
-            // Like 16+4
-            size = sizeMatch[4];
+        var nxm = modelName.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/i);
+        var feet = modelName.match(/(\d+(?:\.\d+)?)'(?!\s*x)/);
+        var plusFt = modelName.match(/(\d+\+\d+)/);
+        if (nxm) {
+          var w = parseFloat(nxm[1]);
+          var l = parseFloat(nxm[2]);
+          if (l >= 60) {
+            // Length(ft) x Width(in): 22x83 → 22'x83"
+            size = nxm[1] + "'x" + nxm[2] + '"';
+          } else if (w > 53) {
+            // Width(in) x Length(ft): 101x24 → 101"x24'
+            size = nxm[1] + '"x' + nxm[2] + "'";
+          } else {
+            // Both feet: 8x20, 8.5x30, 7x16
+            size = nxm[1] + 'x' + nxm[2];
           }
+        } else if (plusFt) {
+          size = plusFt[1];
+        } else if (feet) {
+          size = feet[1] + "'";
         }
 
-
-        // Key descriptors to keep from model_name
+        // --- DESCRIPTORS ---
         var keepers = ['gooseneck','tandem','aluminum','vnose','tilt','dovetail','telescoping','deckover'];
         var descs = [];
         modelName.toLowerCase().split(/\s+/).forEach(function(w) {
@@ -118,12 +115,11 @@ function parseXml(xml) {
           if (keepers.indexOf(clean) !== -1) descs.push(clean.charAt(0).toUpperCase() + clean.slice(1));
         });
 
-        // Clean type label
-        // For "Other Trailer", extract meaningful type from model_name BEFORE typeMap
+        // --- TYPE ---
         if (rawType.toLowerCase() === 'other trailer') {
           if (/camper|rv|travel/i.test(modelName)) rawType = 'Camper';
           else if (/aerial|tower|bucket/i.test(modelName)) rawType = 'Aerial';
-          else rawType = 'Other';
+          else rawType = '';
         }
         var typeMap = {
           'car / racing trailer': 'Car/Racing',
@@ -132,29 +128,26 @@ function parseXml(xml) {
           'dump trailer': 'Dump',
           'utility trailer': 'Utility',
           'vending / concession trailer': 'Vending/Concession',
-          'other trailer': null,
           'landscape': 'Landscape',
           'motorcycle trailer': 'Motorcycle'
         };
-
         var type = typeMap[rawType.toLowerCase()] || rawType
           .replace(/\s*\/\s*[Tt]railer\s*$/,'').replace(/\s*[Tt]railer\s*$/,'')
           .replace(/\s*\/\s*/g,'/').trim();
 
+        // --- MODEL CODE FALLBACK (only if no size found) ---
+        var code = '';
+        if (!size) {
+          var codeMatch = modelName.match(/\b([A-Z]?\d+[A-Z]+\d*|[A-Z]+\d+)\b/);
+          if (codeMatch) code = codeMatch[1];
+        }
+
+        // --- ASSEMBLE ---
         var parts = [];
+        if (code) parts.push(code);
         if (size) parts.push(size);
         if (descs.length) parts.push(descs.join(' '));
         if (type) parts.push(type);
-        // If no size found, try to grab model code (like 16LD, 14LD, T8)
-        if (!size) {
-          var codeMatch = modelName.match(/\b([A-Z]?\d+[A-Z]+\d*|[A-Z]+\d+)\b/);
-          if (codeMatch) parts.unshift(codeMatch[1]);
-        }
-        // If no size found, try to grab model code (like 16LD, 14LD, T8)
-        if (!size) {
-          var codeMatch = modelName.match(/\b([A-Z]?\d+[A-Z]+\d*|[A-Z]+\d+)\b/);
-          if (codeMatch) parts.unshift(codeMatch[1]);
-        }
         return parts.length ? parts.join(' ') : modelName.split(/\s+/).slice(0,3).join(' ');
       })(),
 
