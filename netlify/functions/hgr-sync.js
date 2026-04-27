@@ -199,8 +199,8 @@ function buildTorqueHubDX(item, rawDesc) {
   const gvwr = parseSpec(/gvwr[:\s-]*([0-9,]+\s*(?:lb|lbs|#)?)/i);
   const axles = parseSpec(/([0-9]+)\s*axle/i);
   const axleWeight = parseSpec(/([0-9,]+)\s*(?:lb|lbs|#)\s*axle/i);
-  const ramp = parseSpec(/((?:rear\s*)?(?:ramp|gate|door)[^.,\n]{0,60})/i);
-  const electrical = parseSpec(/((?:[0-9]+)\s*amp[^.,\n]{0,60})/i);
+  const ramp = parseSpec(/((?:rear\s*)?(?:ramp|gate|door)[^.,]{0,60})/i);
+  const electrical = parseSpec(/((?:[0-9]+)\s*amp[^.,]{0,60})/i);
 
   if (length) specs.push('Length: ' + length);
   if (width) specs.push('Width: ' + width);
@@ -221,9 +221,9 @@ function buildTorqueHubDX(item, rawDesc) {
   // Highlights — parse bullet points from raw description
   const highlights = [];
   if (rawDesc) {
-    const bullets = rawDesc.split(/\n/).filter(l => l.match(/^[-*•]|^-[A-Z]/)).slice(0, 5);
+    const bullets = rawDesc.split(/\n/).filter(l => l.match(/^[-*]|^-[A-Z]/)).slice(0, 5);
     bullets.forEach(b => {
-      const clean = b.replace(/^[-*•\s]+/,'').replace(/<[^>]+>/g,'').trim();
+      const clean = b.replace(/^[-*\s]+/,'').replace(/<[^>]+>/g,'').trim();
       if (clean.length > 10 && clean.length < 120) highlights.push(clean);
     });
   }
