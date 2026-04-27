@@ -4980,6 +4980,10 @@ function buildDealerPayload(dealerKey) {
         days: u.days, fuel: u.fuel || null, vin: u.vin || null,
         description: u.description || null, color: u.color || null,
         mileage: u.mileage || null, photos,
+        engine: u.engine || null, transmission: u.transmission || null,
+        drivetrain: u.drivetrain || null,
+        engine_description: u.engine_description || null,
+        transmission_description: u.transmission_description || null,
         siteTag: u.siteTag || null, subcategory: u.subcategory || null, featured: u.featured || 0, video_url: u.video_url || null,
       };
     });
