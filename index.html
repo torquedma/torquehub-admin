@@ -1469,9 +1469,13 @@ document.querySelector('.sidebar').classList.toggle('open');
 <div class="modal-overlay" id="photo-modal">
   <div class="modal">
     <div class="modal-header">
-      <div>
-        <div class="modal-title" id="modal-title">1999 Chevrolet C6500</div>
-        <div class="modal-sub" id="modal-sub">Stock #FDT070301 · Fat Daddy's Truck Sales</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button id="modal-prev-btn" onclick="navigateListing(-1)" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;color:var(--text2)" title="Previous listing">&#8592;</button>
+        <div>
+          <div class="modal-title" id="modal-title">1999 Chevrolet C6500</div>
+          <div class="modal-sub" id="modal-sub">Stock #FDT070301 · Fat Daddy's Truck Sales</div>
+        </div>
+        <button id="modal-next-btn" onclick="navigateListing(1)" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px;color:var(--text2)" title="Next listing">&#8594;</button>
       </div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
@@ -2372,6 +2376,22 @@ function openPhotoModal(listingKey) {
   renderPhotoGrid();
 
   document.getElementById("photo-modal").classList.add("open");
+  // Update prev/next button states
+  setTimeout(function() {
+    const filtered = INVENTORY.filter(u => {
+      if (u.sold) return false;
+      if (invDealerFilter && u.dealer !== invDealerFilter) return false;
+      if (invCatFilter && invCatFilter !== 'All' && u.category !== invCatFilter) return false;
+      if (invCondFilter && invCondFilter !== 'All' && u.condition !== invCondFilter) return false;
+      if (window._customFilter && !window._customFilter(u)) return false;
+      return true;
+    });
+    const idx = filtered.findIndex(u => getListingKey(u) === listingKey);
+    var prevBtn = document.getElementById("modal-prev-btn");
+    var nextBtn = document.getElementById("modal-next-btn");
+    if (prevBtn) prevBtn.style.opacity = idx <= 0 ? "0.3" : "1";
+    if (nextBtn) nextBtn.style.opacity = idx >= filtered.length - 1 ? "0.3" : "1";
+  }, 50);
   // Push listing URL
   const _stock = u.stock || listingKey;
   history.pushState({ view: 'inventory', listing: _stock }, '', '/listing/' + _stock);
@@ -2671,6 +2691,32 @@ function copyDX(key) {
   }).catch(() => {
     prompt('Copy your DX:', u.description);
   });
+}
+
+function navigateListing(direction) {
+  // Get current filtered inventory list (same as what's shown in the table)
+  const filtered = INVENTORY.filter(u => {
+    if (u.sold) return false;
+    if (invDealerFilter && u.dealer !== invDealerFilter) return false;
+    if (invCatFilter && invCatFilter !== 'All' && u.category !== invCatFilter) return false;
+    if (invCondFilter && invCondFilter !== 'All' && u.condition !== invCondFilter) return false;
+    if (window._customFilter && !window._customFilter(u)) return false;
+    return true;
+  });
+
+  const currentKey = currentListingKey;
+  const currentIdx = filtered.findIndex(u => getListingKey(u) === currentKey);
+  if (currentIdx === -1) return;
+
+  const nextIdx = currentIdx + direction;
+  if (nextIdx < 0 || nextIdx >= filtered.length) return;
+
+  const nextUnit = filtered[nextIdx];
+  openPhotoModal(getListingKey(nextUnit));
+
+  // Update nav button states
+  document.getElementById('modal-prev-btn').style.opacity = nextIdx === 0 ? '0.3' : '1';
+  document.getElementById('modal-next-btn').style.opacity = nextIdx === filtered.length - 1 ? '0.3' : '1';
 }
 
 function closeModal() {
