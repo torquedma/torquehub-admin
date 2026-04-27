@@ -1563,9 +1563,9 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
             <label class="edit-label" style="margin:0">Description</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="dx-btn primary" onclick="generateTorqueHubDX()">&#9889; Torque Hub DX</button>
-              <button class="dx-btn" id="dx-lock-btn" onclick="lockManualDX()">&#128274; Lock DX</button>
-              <button class="dx-btn" onclick="useFeedDX()">&#8617; Feed DX</button>
+              <button class="dx-btn" onclick="useFeedDX()" style="background:#f8fafc;color:#374151;border:1px solid #d1d5db">&#8617; Restore Feed</button>
+              <button class="dx-btn" onclick="improveDX()" style="background:#334155;color:#fff;border:1px solid #334155">&#9889; Improve DX</button>
+              <button class="dx-btn" id="dx-lock-btn" onclick="lockManualDX()" style="background:#111827;color:#fff;border:1px solid #111827">&#128274; Lock DX</button>
             </div>
           </div>
           <div id="dx-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:3px 8px;border-radius:4px;margin-bottom:4px">&#128274; Manual DX Locked</div>
@@ -2405,6 +2405,40 @@ function formatPriceInput(el) {
 }
 function unformatPriceInput(el) { el.value = el.value.replace(/[^0-9.]/g, ''); }
 
+function improveDX() {
+  var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
+  if (!u) return;
+  var field = document.getElementById('edit-description');
+  var base = (field && field.value.trim()) || u.raw_description || u.description || '';
+  if (base && base.length > 20) {
+    var cleaned = base.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim();
+    if (field) field.value = cleaned;
+    if (!u.raw_description) u.raw_description = u.description;
+    u.description = cleaned;
+  } else {
+    var dealer = DEALERS.find(function(d){ return d.name === u.dealer; }) || {};
+    var title = [u.year, u.make, u.model, u.subcategory || u.category].filter(Boolean).join(' ');
+    var lines = [title, '', 'Key Specs:'];
+    if (u.engine) lines.push('Engine: ' + u.engine);
+    if (u.transmission) lines.push('Transmission: ' + u.transmission);
+    if (u.drivetrain) lines.push('Drivetrain: ' + u.drivetrain);
+    if (u.mileage) lines.push('Mileage: ' + u.mileage);
+    if (u.fuel) lines.push('Fuel: ' + u.fuel);
+    if (u.stock) lines.push('Stock #: ' + u.stock);
+    lines.push('', u.price ? 'Price: ' + u.price : 'Call for Price');
+    if (dealer.name) lines.push('Location: ' + dealer.name);
+    if (dealer.phone) lines.push('Call: ' + dealer.phone);
+    var dx = lines.join('\n');
+    if (field) field.value = dx;
+    if (!u.raw_description) u.raw_description = u.description;
+    u.description = dx;
+  }
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f1923;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999';
+  t.textContent = 'Description updated. Review before saving.';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 3000);
+}
 function generateTorqueHubDX() {
   var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
   if (!u) return;
