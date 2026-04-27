@@ -2385,14 +2385,7 @@ function openPhotoModal(listingKey) {
   document.getElementById("photo-modal").classList.add("open");
   // Update prev/next button states
   setTimeout(function() {
-    const filtered = INVENTORY.filter(u => {
-      if (u.sold) return false;
-      if (invDealerFilter && u.dealer !== invDealerFilter) return false;
-      if (invCatFilter && invCatFilter !== 'All' && u.category !== invCatFilter) return false;
-      if (invCondFilter && invCondFilter !== 'All' && u.condition !== invCondFilter) return false;
-      if (window._customFilter && !window._customFilter(u)) return false;
-      return true;
-    });
+    const filtered = getFilteredInventory().filter(u => !u.sold);
     const idx = filtered.findIndex(u => getListingKey(u) === listingKey);
     var prevBtn = document.getElementById("modal-prev-btn");
     var nextBtn = document.getElementById("modal-next-btn");
@@ -2728,29 +2721,18 @@ function copyModalLink(type) {
 }
 
 function navigateListing(direction) {
-  // Get current filtered inventory list (same as what's shown in the table)
-  const filtered = INVENTORY.filter(u => {
-    if (u.sold) return false;
-    if (invDealerFilter && u.dealer !== invDealerFilter) return false;
-    if (invCatFilter && invCatFilter !== 'All' && u.category !== invCatFilter) return false;
-    if (invCondFilter && invCondFilter !== 'All' && u.condition !== invCondFilter) return false;
-    if (window._customFilter && !window._customFilter(u)) return false;
-    return true;
-  });
-
-  const currentKey = currentListingKey;
-  const currentIdx = filtered.findIndex(u => getListingKey(u) === currentKey);
+  // Use same filtered+sorted list as the inventory table
+  const filtered = getFilteredInventory().filter(u => !u.sold);
+  const currentIdx = filtered.findIndex(u => getListingKey(u) === currentListingKey);
   if (currentIdx === -1) return;
 
   const nextIdx = currentIdx + direction;
   if (nextIdx < 0 || nextIdx >= filtered.length) return;
 
-  const nextUnit = filtered[nextIdx];
-  openPhotoModal(getListingKey(nextUnit));
+  openPhotoModal(getListingKey(filtered[nextIdx]));
 
-  // Update nav button states
   document.getElementById('modal-prev-btn').style.opacity = nextIdx === 0 ? '0.3' : '1';
-  document.getElementById('modal-next-btn').style.opacity = nextIdx === filtered.length - 1 ? '0.3' : '1';
+  document.getElementById('modal-next-btn').style.opacity = nextIdx >= filtered.length - 1 ? '0.3' : '1';
 }
 
 function closeModal() {
