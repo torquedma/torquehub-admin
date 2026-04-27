@@ -2361,6 +2361,8 @@ function openPhotoModal(listingKey) {
   document.getElementById("edit-trans-desc").value = u.transmission_description || "";
   document.getElementById("edit-video-url").value = u.video_url || "";
   document.getElementById("edit-vin").value = u.vin || "";
+  var vinNote = document.getElementById("edit-vin-note");
+  if (vinNote) vinNote.textContent = "VIN decoder can fill year, make, model, and fuel when available.";
   document.getElementById("edit-site-tag").value = getListingCat(u);
   document.getElementById("edit-featured").checked = !!u.featured;
   document.getElementById("edit-subcategory").value = u.subcategory || "";
