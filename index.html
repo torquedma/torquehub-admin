@@ -1940,9 +1940,28 @@ window.addEventListener("popstate", function(e) {
 // Read view from URL path on load
 function getViewFromPath() {
   const path = window.location.pathname;
+  if (path.startsWith('/listing/')) return 'inventory';
   const match = path.match(/^\/([a-z]+)/);
   const valid = ['dashboard','inventory','dealers','sold','analytics','leads','contacts','settings'];
   return (match && valid.includes(match[1])) ? match[1] : 'dashboard';
+}
+
+// If URL is /listing/{stock}, open that listing after load
+function openListingFromUrl() {
+  const path = window.location.pathname;
+  const match = path.match(/^\/listing\/(.+)$/);
+  if (!match) return;
+  const stock = decodeURIComponent(match[1]);
+  // Wait for inventory to load then open modal
+  const tryOpen = (attempts) => {
+    const u = INVENTORY.find(u => u.stock === stock || u.stock === 'HGR' + stock);
+    if (u) {
+      openPhotoModal(getListingKey(u));
+    } else if (attempts > 0) {
+      setTimeout(() => tryOpen(attempts - 1), 500);
+    }
+  };
+  setTimeout(() => tryOpen(10), 800);
 }
 
 // ---- DEALER TABLE (dashboard) ----
@@ -2353,6 +2372,9 @@ function openPhotoModal(listingKey) {
   renderPhotoGrid();
 
   document.getElementById("photo-modal").classList.add("open");
+  // Push listing URL
+  const _stock = u.stock || listingKey;
+  history.pushState({ view: 'inventory', listing: _stock }, '', '/listing/' + _stock);
 }
 
 function formatPriceInput(el) {
@@ -2653,6 +2675,10 @@ function copyDX(key) {
 
 function closeModal() {
   document.getElementById("photo-modal").classList.remove("open");
+  // Return to inventory URL
+  if (window.location.pathname.startsWith('/listing/')) {
+    history.pushState({ view: 'inventory' }, '', '/inventory');
+  }
   currentListingKey = null;
   renderInventory(); // refresh photo badges
 }
@@ -4765,6 +4791,7 @@ function init() {
   const initialView = getViewFromPath();
   if (initialView !== "dashboard") {
     showView(initialView, null, true);
+  openListingFromUrl();
   } else {
     // Set initial history state for back button support
     history.replaceState({ view: "dashboard" }, "", "#/dashboard");
