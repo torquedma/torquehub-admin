@@ -69,7 +69,15 @@ function parseXml(xml) {
     items.push({
       stock,
       year: get('year') || null,
-      make: get('manufacturer'),
+      make: (function() {
+        var mfr = get('manufacturer');
+        var mn = get('model_name');
+        if (mfr === 'Wildwood') return 'Forest River';
+        if (mfr && mfr.toLowerCase() === 'other') {
+          return mn.trim().split(/\s+/)[0] || mfr;
+        }
+        return mfr;
+      })(),
       model: (function() {
         var modelName = get('model_name');
         var rawType = get('model_type');
@@ -85,15 +93,15 @@ function parseXml(xml) {
           } else if (sizeMatch[2] && sizeMatch[3]) {
             var w = parseFloat(sizeMatch[2]);
             var l = parseFloat(sizeMatch[3]);
-            if (w <= 15) {
-              // Both feet: 8x20, 8.5x30
-              size = sizeMatch[2] + 'x' + sizeMatch[3];
-            } else if (w <= 53) {
-              // Length(ft) x Width(in): 22x83 → 22'x83"
+            if (l > 20 && w <= 53) {
+              // Length(ft) x Width(in): 8x20 stays 8x20, 14x83 → 14'x83", 22x83 → 22'x83"
               size = sizeMatch[2] + "'x" + sizeMatch[3] + '"';
-            } else {
+            } else if (w > 53) {
               // Width(in) x Length(ft): 101x24 → 101"x24'
               size = sizeMatch[2] + '"x' + sizeMatch[3] + "'";
+            } else {
+              // Both feet: 8x20, 8.5x30, 7x16
+              size = sizeMatch[2] + 'x' + sizeMatch[3];
             }
           } else if (sizeMatch[4]) {
             // Like 16+4
@@ -118,10 +126,16 @@ function parseXml(xml) {
           'dump trailer': 'Dump',
           'utility trailer': 'Utility',
           'vending / concession trailer': 'Vending/Concession',
-          'other trailer': 'Other',
+          'other trailer': null,
           'landscape': 'Landscape',
           'motorcycle trailer': 'Motorcycle'
         };
+        // For "Other Trailer", try to extract meaningful type from model_name
+        if (rawType.toLowerCase() === 'other trailer') {
+          if (/camper|rv|travel/i.test(modelName)) rawType = 'Camper';
+          else if (/aerial|tower|bucket/i.test(modelName)) rawType = 'Aerial';
+          else rawType = '';
+        }
         var type = typeMap[rawType.toLowerCase()] || rawType
           .replace(/\s*\/\s*[Tt]railer\s*$/,'').replace(/\s*[Tt]railer\s*$/,'')
           .replace(/\s*\/\s*/g,'/').trim();
@@ -130,6 +144,16 @@ function parseXml(xml) {
         if (size) parts.push(size);
         if (descs.length) parts.push(descs.join(' '));
         if (type) parts.push(type);
+        // If no size found, try to grab model code (like 16LD, 14LD, T8)
+        if (!size) {
+          var codeMatch = modelName.match(/\b([A-Z]?\d+[A-Z]+\d*|[A-Z]+\d+)\b/);
+          if (codeMatch) parts.unshift(codeMatch[1]);
+        }
+        // If no size found, try to grab model code (like 16LD, 14LD, T8)
+        if (!size) {
+          var codeMatch = modelName.match(/\b([A-Z]?\d+[A-Z]+\d*|[A-Z]+\d+)\b/);
+          if (codeMatch) parts.unshift(codeMatch[1]);
+        }
         return parts.length ? parts.join(' ') : modelName.split(/\s+/).slice(0,3).join(' ');
       })(),
 
