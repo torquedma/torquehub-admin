@@ -1587,6 +1587,7 @@ document.querySelector('.sidebar').classList.toggle('open');
       <div class="photo-import-section">
         <div class="photo-import-row">
           <button class="paste-btn" id="paste-btn" onclick="pastePhotosFromClipboard()" style="flex:1">📋 Paste</button>
+          <button class="paste-btn" id="paste-create-btn" onclick="pasteAndCreateListing()" style="flex:1;background:#334155;color:#fff;border-color:#334155" title="Paste CFS data and create a new listing">📋 Paste & Add</button>
         </div>
         <div class="upload-row">
           <label class="upload-btn-label" for="file-upload-input">
@@ -3588,6 +3589,107 @@ function showBookmarkletHint() {
   const section = document.getElementById('bookmarklet-section');
   if (section) section.style.display = 'block';
   initBookmarklet();
+}
+
+async function pasteAndCreateListing() {
+  const btn = document.getElementById('paste-create-btn');
+  async function doCreate(text) {
+    let parsed;
+    try { parsed = JSON.parse(text); } catch(e) { alert('Could not read clipboard. Copy from CFS Grab first.'); return; }
+    if (!parsed || typeof parsed !== 'object') { alert('No CFS data found in clipboard.'); return; }
+
+    // Pick dealer from add-listing modal if open, otherwise prompt
+    let dealer = '';
+    const dealerEl = document.getElementById('new-dealer');
+    if (dealerEl && dealerEl.value) {
+      dealer = dealerEl.value;
+    } else {
+      const dealerNames = DEALERS.map(d => d.name);
+      dealer = prompt('Which dealer?\n' + dealerNames.map((d,i) => (i+1)+'. '+d).join('\n') + '\n\nType the dealer name exactly:');
+      if (!dealer) return;
+    }
+
+    // Parse year/make/model from title if not in fields
+    let year = parsed.year || '';
+    let make = parsed.make || '';
+    let model = parsed.model || '';
+    if (!year && parsed.title) {
+      const parts = parsed.title.split(/\s+/);
+      if (parts.length >= 3 && parseInt(parts[0]) > 1900) {
+        year = parts[0]; make = parts[1]; model = parts.slice(2).join(' ');
+      }
+    }
+
+    const tempStock = parsed.stock || ('NEW-' + Date.now());
+    const newUnit = {
+      year: year || '',
+      make: make || '',
+      model: model || '',
+      price: parsed.price ? String(parsed.price).replace(/[^0-9.]/g,'') : '',
+      stock: tempStock,
+      days: '0',
+      fuel: parsed.fuel || '',
+      vin: parsed.vin || '',
+      mileage: parsed.mileage || '',
+      engine: parsed.engine || '',
+      transmission: parsed.transmission || '',
+      drivetrain: parsed.drivetrain || '',
+      description: parsed.description || '',
+      condition: parsed.condition || 'Used',
+      category: 'Trucks',
+      subcategory: '',
+      dealer: dealer,
+      sold: false,
+      featured: 0,
+      photos: [],
+      prod_status: '',
+      dx_locked: false,
+      model_locked: false,
+      raw_description: parsed.description || '',
+      _id: null
+    };
+
+    INVENTORY.unshift(newUnit);
+
+    // Save to Supabase
+    const SUPA_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
+    const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
+    fetch(SUPA_URL+'/rest/v1/inventory', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'return=representation'},
+      body:JSON.stringify([{year:newUnit.year,make:newUnit.make,model:newUnit.model,price:newUnit.price,stock:tempStock,days:newUnit.days,condition:newUnit.condition,fuel:newUnit.fuel,mileage:newUnit.mileage,engine:newUnit.engine,transmission:newUnit.transmission,drivetrain:newUnit.drivetrain,vin:newUnit.vin,description:newUnit.description,category:newUnit.category,subcategory:newUnit.subcategory,dealer:dealer,sold:false,featured:0,photos:[]}])
+    }).then(r=>r.json()).then(data=>{
+      if(data&&data[0]&&data[0].id){ newUnit._id=data[0].id; newUnit.id=data[0].id; }
+    }).catch(err=>console.warn('Supabase error:',err));
+
+    // Inject photos if present
+    if (parsed.photos && parsed.photos.length) {
+      const key = tempStock;
+      PHOTO_STORE[key] = parsed.photos.map((url,i) => ({
+        id: Date.now()+i+Math.random(),
+        name: url.split('/').pop(),
+        dataUrl: url,
+        url: url,
+        fromUrl: true,
+        type: 'url'
+      }));
+      newUnit.photos = PHOTO_STORE[key].map(p => ({url:p.dataUrl,name:p.name,fromUrl:true}));
+      savePhotoStore();
+    }
+
+    saveAppSession();
+    refreshAllViews();
+    openPhotoModal(getListingKey(newUnit));
+
+    if(btn){ btn.textContent='✓ Created!'; btn.style.background='#16a34a'; }
+    setTimeout(()=>{ if(btn){ btn.textContent='📋 Paste & Add'; btn.style.background='#334155'; } },3000);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    try { doCreate(await navigator.clipboard.readText()); return; } catch(e) {}
+  }
+  const text = prompt('Press Cmd+V to paste CFS data:');
+  if (text) doCreate(text);
 }
 
 async function pastePhotosFromClipboard() {
