@@ -1597,7 +1597,7 @@ document.querySelector('.sidebar').classList.toggle('open');
           <input class="url-input" id="url-input" type="url" placeholder="Or paste an image URL…">
           <button class="add-btn" onclick="addPhotoByUrl()">Add</button>
         </div>
-        <div id="photo-drop-zone" style="margin-top:10px;border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;color:var(--text3);font-size:13px;cursor:pointer;transition:all 0.15s;background:var(--surface2)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)';this.style.background='#fff7f0'" ondragleave="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'" ondrop="handleDropZone(event)" onclick="document.getElementById('file-upload-input').click()">
+        <div id="photo-drop-zone" style="margin-top:10px;border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;color:var(--text3);font-size:13px;cursor:pointer;transition:all 0.15s;background:var(--surface2)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)';this.style.background='#fff7f0'" ondragleave="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'" ondrop="handleDropZone(event)">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:6px;opacity:0.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
           <div>Drop photos here or click to upload</div>
         </div>
