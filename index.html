@@ -3710,6 +3710,17 @@ async function pasteAndCreateListing() {
     refreshAllViews();
     openPhotoModal(getListingKey(newUnit));
 
+    // Force-fill fields after modal opens (timing fix)
+    setTimeout(function() {
+      if (newUnit.description) { var el = document.getElementById('edit-description'); if(el) el.value = newUnit.description; }
+      if (newUnit.engine) { var el = document.getElementById('edit-engine'); if(el) el.value = newUnit.engine; }
+      if (newUnit.transmission) { var el = document.getElementById('edit-transmission'); if(el) el.value = newUnit.transmission; }
+      if (newUnit.drivetrain) { var el = document.getElementById('edit-drivetrain'); if(el) el.value = newUnit.drivetrain; }
+      if (newUnit.fuel) { var el = document.getElementById('edit-fuel'); if(el) el.value = newUnit.fuel; }
+      if (newUnit.vin) { var el = document.getElementById('edit-vin'); if(el) el.value = newUnit.vin; }
+      if (newUnit.mileage) { var el = document.getElementById('edit-mileage'); if(el) el.value = newUnit.mileage; }
+    }, 200);
+
     if(btn){ btn.textContent='✓ Created!'; btn.style.background='#16a34a'; }
     setTimeout(()=>{ if(btn){ btn.textContent='📋 Paste & Add'; btn.style.background='#334155'; } },3000);
   }
