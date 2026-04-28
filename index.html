@@ -3622,13 +3622,18 @@ async function pastePhotosFromClipboard() {
 
         if (parsed.price) { const n = parseFloat((parsed.price+'').replace(/[^0-9.]/g,'')); if (!isNaN(n)) { u.price = n; const el = document.getElementById('edit-price'); if(el) el.value = n; applied.push('price'); } }
         if (parsed.description) { u.description = cleanDesc(parsed.description); const el = document.getElementById('edit-description'); if(el) el.value = u.description; applied.push('description'); }
-        if (parsed.stock) { u.stock = parsed.stock; applied.push('stock#'); }
+        if (parsed.stock) { u.stock = parsed.stock; const el = document.getElementById('edit-stock'); if(el) el.value = parsed.stock; applied.push('stock#'); }
         if (parsed.color) { u.color = parsed.color; }
-        if (parsed.condition) { u.condition = parsed.condition; }
-        if (parsed.mileage) { u.mileage = parsed.mileage; }
-        if (parsed.year) { u.year = parseInt(parsed.year)||u.year; }
-        if (parsed.make) { u.make = parsed.make; }
-        if (parsed.model) { u.model = parsed.model; }
+        if (parsed.condition) { u.condition = parsed.condition; const el = document.getElementById('edit-condition'); if(el) el.value = parsed.condition; }
+        if (parsed.mileage) { u.mileage = parsed.mileage; const el = document.getElementById('edit-mileage'); if(el) el.value = parsed.mileage; applied.push('mileage'); }
+        if (parsed.year) { u.year = parseInt(parsed.year)||u.year; const el = document.getElementById('edit-year'); if(el) el.value = u.year; applied.push('year'); }
+        if (parsed.make) { u.make = parsed.make; const el = document.getElementById('edit-make'); if(el) el.value = parsed.make; applied.push('make'); }
+        if (parsed.model && !u.model_locked) { u.model = parsed.model; const el = document.getElementById('edit-model'); if(el) el.value = parsed.model; applied.push('model'); }
+        if (parsed.vin) { u.vin = parsed.vin; const el = document.getElementById('edit-vin'); if(el) el.value = parsed.vin; applied.push('VIN'); }
+        if (parsed.engine) { u.engine = parsed.engine; const el = document.getElementById('edit-engine'); if(el) el.value = parsed.engine; applied.push('engine'); }
+        if (parsed.transmission) { u.transmission = parsed.transmission; const el = document.getElementById('edit-transmission'); if(el) el.value = parsed.transmission; applied.push('transmission'); }
+        if (parsed.drivetrain) { u.drivetrain = parsed.drivetrain; const el = document.getElementById('edit-drivetrain'); if(el) el.value = parsed.drivetrain; applied.push('drivetrain'); }
+        if (parsed.fuel) { u.fuel = parsed.fuel; const el = document.getElementById('edit-fuel'); if(el) el.value = parsed.fuel; applied.push('fuel'); }
       }
 
       saveAppSession();
