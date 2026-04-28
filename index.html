@@ -3707,8 +3707,8 @@ async function pasteAndCreateListing() {
     }
 
     saveAppSession();
-    refreshAllViews();
     openPhotoModal(getListingKey(newUnit));
+    setTimeout(function(){ refreshAllViews(); }, 1000);
 
     // Force-fill fields after modal opens (timing fix)
     var _desc = newUnit.description;
