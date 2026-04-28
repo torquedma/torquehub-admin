@@ -3711,15 +3711,33 @@ async function pasteAndCreateListing() {
     openPhotoModal(getListingKey(newUnit));
 
     // Force-fill fields after modal opens (timing fix)
+    var _desc = newUnit.description;
+    var _engine = newUnit.engine;
+    var _trans = newUnit.transmission;
+    var _drive = newUnit.drivetrain;
+    var _fuel = newUnit.fuel;
+    var _vin = newUnit.vin;
+    var _mileage = newUnit.mileage;
     setTimeout(function() {
-      if (newUnit.description) { var el = document.getElementById('edit-description'); if(el) el.value = newUnit.description; }
-      if (newUnit.engine) { var el = document.getElementById('edit-engine'); if(el) el.value = newUnit.engine; }
-      if (newUnit.transmission) { var el = document.getElementById('edit-transmission'); if(el) el.value = newUnit.transmission; }
-      if (newUnit.drivetrain) { var el = document.getElementById('edit-drivetrain'); if(el) el.value = newUnit.drivetrain; }
-      if (newUnit.fuel) { var el = document.getElementById('edit-fuel'); if(el) el.value = newUnit.fuel; }
-      if (newUnit.vin) { var el = document.getElementById('edit-vin'); if(el) el.value = newUnit.vin; }
-      if (newUnit.mileage) { var el = document.getElementById('edit-mileage'); if(el) el.value = newUnit.mileage; }
-    }, 200);
+      // Re-find the unit in INVENTORY and restore fields
+      var u2 = INVENTORY.find(function(x){ return getListingKey(x) === getListingKey(newUnit); });
+      if (u2) {
+        if (_desc) u2.description = _desc;
+        if (_engine) u2.engine = _engine;
+        if (_trans) u2.transmission = _trans;
+        if (_drive) u2.drivetrain = _drive;
+        if (_fuel) u2.fuel = _fuel;
+        if (_vin) u2.vin = _vin;
+        if (_mileage) u2.mileage = _mileage;
+      }
+      if (_desc) { var el = document.getElementById('edit-description'); if(el) el.value = _desc; }
+      if (_engine) { var el = document.getElementById('edit-engine'); if(el) el.value = _engine; }
+      if (_trans) { var el = document.getElementById('edit-transmission'); if(el) el.value = _trans; }
+      if (_drive) { var el = document.getElementById('edit-drivetrain'); if(el) el.value = _drive; }
+      if (_fuel) { var el = document.getElementById('edit-fuel'); if(el) el.value = _fuel; }
+      if (_vin) { var el = document.getElementById('edit-vin'); if(el) el.value = _vin; }
+      if (_mileage) { var el = document.getElementById('edit-mileage'); if(el) el.value = _mileage; }
+    }, 500);
 
     if(btn){ btn.textContent='✓ Created!'; btn.style.background='#16a34a'; }
     setTimeout(()=>{ if(btn){ btn.textContent='📋 Paste & Add'; btn.style.background='#334155'; } },3000);
