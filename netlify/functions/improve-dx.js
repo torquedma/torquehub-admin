@@ -83,7 +83,7 @@ Key Details
 - VIN: ... (if available)
 
 Overview
-[2-3 sentences: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff.]
+[2-3 sentences: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff. Only use the word "fleet" if the raw description explicitly mentions fleet use or fleet maintenance. Do not assume or add it.]
 
 Interested In This Unit?
 Call ${d.name || 'the dealer'}: ${d.phone || ''} | ${d.location || ''}`;
