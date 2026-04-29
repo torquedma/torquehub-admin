@@ -1,9 +1,15 @@
 const https = require('https');
+const { generateDescription } = require('./lib/generate-description');
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
 const DEALER = "HGR's Truck and Trailer";
 const FEED_URL = 'https://www.hgrstrailer.com/unitinventory_univ.xml';
+const DEALER_INFO = {
+  name: "HGR's Truck and Trailer",
+  location: '4519 Marracco Dr, Hope Mills, NC 28348',
+  phone: '910-425-6104'
+};
 
 function fetchUrl(url) {
   return new Promise((resolve, reject) => {
@@ -322,8 +328,20 @@ exports.handler = async (event) => {
       );
     }
 
+    const apiKey = process.env.ANTHROPIC_API_KEY;
     let inserted = 0, updated = 0, errors = 0;
     for (const item of feedItems) {
+      if (apiKey) {
+        try {
+          const desc = await generateDescription(item, DEALER_INFO, apiKey);
+          if (desc) {
+            item.description = desc;
+            item.torque_hub_dx = desc;
+          }
+        } catch (err) {
+          console.error('Description generation failed for', item.stock, ':', err.message);
+        }
+      }
       if (existingStocks.has(item.stock)) {
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', item);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
