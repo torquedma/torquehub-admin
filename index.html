@@ -3832,7 +3832,7 @@ function sendToSam() {
     : 'No photos imported yet — add photos first in Torque Hub';
 
   const price = u.price
-    ? '$' + Number(u.price).toLocaleString()
+    ? '$' + Number(String(u.price).replace(/[^0-9.]/g,'')).toLocaleString()
     : 'Call for Price';
 
   const condition = u.condition || '';
