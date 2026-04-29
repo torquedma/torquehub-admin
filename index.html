@@ -2428,7 +2428,7 @@ function improveDX() {
 
   var dealer = DEALERS.find(function(d){ return d.name === u.dealer; }) || {};
   if (!u.raw_description) u.raw_description = u.description;
-  fetch('https://torquehub.netlify.app/.netlify/functions/improve-dx', {
+  fetch('https://admin-torquehub.netlify.app/.netlify/functions/improve-dx', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ unit: u, dealer: { name: dealer.name, phone: dealer.phone, location: dealer.location } })
