@@ -2515,6 +2515,13 @@ function useFeedDX() {
   if (ind) ind.style.display = 'none';
 }
 
+function setInvFeaturedFilter(el) {
+  invFeaturedOnly = !invFeaturedOnly;
+  el.classList.toggle('active', invFeaturedOnly);
+  renderInventory();
+}
+var invFeaturedOnly = false;
+
 function toggleFeatured(stock, val) {
   const SUPA_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
   const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
@@ -5610,6 +5617,7 @@ function renderSoldView() {
 
   const filtered = sold.filter(u => {
     const matchQ = !q || `${u.year} ${u.make} ${u.model} ${u.stock} ${u.dealer}`.toLowerCase().includes(q);
+    if (invFeaturedOnly && !u.featured) return false;
     const matchD = !dealer || u.dealer === dealer;
     return matchQ && matchD;
   });
