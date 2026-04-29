@@ -47,6 +47,14 @@ function supabaseFetch(path, method, body) {
   });
 }
 
+function normalizeHgrStock(s) {
+  if (!s) return s;
+  const prefixed = s.startsWith('HGR') ? s : 'HGR' + s;
+  return prefixed.length > 3 && prefixed[3] !== '-'
+    ? prefixed.slice(0, 3) + '-' + prefixed.slice(3)
+    : prefixed;
+}
+
 function parseXml(xml) {
   const items = [];
   const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
@@ -64,7 +72,7 @@ function parseXml(xml) {
     };
     const rawStock = get('stocknumber');
     if (!rawStock) continue;
-    const stock = rawStock.startsWith('HGR') ? rawStock : 'HGR' + rawStock;
+    const stock = normalizeHgrStock(rawStock);
     const photos = [];
     const imgMatches = item.matchAll(/<imageurl>([^<]+)<\/imageurl>/g);
     for (const img of imgMatches) photos.push({ url: img[1].trim(), name: img[1].trim().split('/').pop() });
@@ -316,7 +324,7 @@ exports.handler = async (event) => {
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
     const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock', 'GET');
-    const existingStocks = new Set(JSON.parse(existing.body).map(r => r.stock));
+    const existingStocks = new Set(JSON.parse(existing.body).map(r => normalizeHgrStock(r.stock)));
     const feedStocks = new Set(feedItems.map(i => i.stock));
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s));
 
