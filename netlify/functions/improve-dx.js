@@ -1,0 +1,132 @@
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
+
+exports.handler = async function (event) {
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: CORS_HEADERS, body: '' };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Method not allowed' })
+    };
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return {
+      statusCode: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Missing ANTHROPIC_API_KEY' })
+    };
+  }
+
+  let unit, dealer;
+  try {
+    ({ unit, dealer } = JSON.parse(event.body || '{}'));
+  } catch {
+    return {
+      statusCode: 400,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Invalid JSON body' })
+    };
+  }
+
+  if (!unit) {
+    return {
+      statusCode: 400,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Missing unit data' })
+    };
+  }
+
+  const d = dealer || {};
+  const price = unit.price ? '$' + Number(unit.price).toLocaleString() : 'Call for Price';
+
+  const prompt = `You are writing inventory descriptions for Torque Hub, a commercial equipment marketplace.
+
+Rewrite the following raw dealer description into the Torque Hub standard format:
+
+UNIT INFO:
+Year: ${unit.year || 'Unknown'}
+Make: ${unit.make || ''}
+Model: ${unit.model || ''}
+Price: ${price}
+Mileage: ${unit.mileage || ''}
+Engine: ${unit.engine || ''}
+Transmission: ${unit.transmission || ''}
+Drivetrain: ${unit.drivetrain || ''}
+Fuel: ${unit.fuel || ''}
+VIN: ${unit.vin || ''}
+Stock #: ${unit.stock || ''}
+Dealer: ${d.name || ''}
+Location: ${d.location || ''}
+Phone: ${d.phone || ''}
+
+RAW DESCRIPTION:
+${unit.raw_description || unit.description || ''}
+
+OUTPUT FORMAT (use exactly this structure):
+[Year] [Make] [Model] – [Short Buyer Hook]
+
+Key Details
+- [Only include fields that have data]
+- Engine: ...
+- Transmission: ...
+- Mileage: ...
+- Fuel: ...
+- VIN: ... (if available)
+
+Overview
+[2-3 sentences: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff.]
+
+Interested In This Unit?
+Call ${d.name || 'the dealer'}: ${d.phone || ''} | ${d.location || ''}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Anthropic API error:', res.status, errText);
+      return {
+        statusCode: 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Anthropic API error', detail: errText })
+      };
+    }
+
+    const data = await res.json();
+    const description = data.content?.[0]?.text || '';
+
+    return {
+      statusCode: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description })
+    };
+  } catch (err) {
+    console.error('improve-dx error:', err.message);
+    return {
+      statusCode: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: err.message || 'Unknown error' })
+    };
+  }
+};

@@ -2423,53 +2423,11 @@ function improveDX() {
   var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
   if (!u) return;
   var field = document.getElementById('edit-description');
-  var base = (field && field.value.trim()) || u.raw_description || u.description || '';
-  
-  // Show loading state
   var btn = document.querySelector('[onclick="improveDX()"]');
   if (btn) { btn.textContent = '⏳ Improving...'; btn.disabled = true; }
-  
-  var prompt = `You are writing inventory descriptions for Torque Hub, a commercial equipment marketplace.
-
-Rewrite the following raw dealer description into the Torque Hub standard format:
-
-UNIT INFO:
-Year: ${u.year || 'Unknown'}
-Make: ${u.make || ''}
-Model: ${u.model || ''}
-Price: ${u.price ? '$' + Number(u.price).toLocaleString() : 'Call for Price'}
-Mileage: ${u.mileage || ''}
-Engine: ${u.engine || ''}
-Transmission: ${u.transmission || ''}
-Drivetrain: ${u.drivetrain || ''}
-Fuel: ${u.fuel || ''}
-VIN: ${u.vin || ''}
-Stock #: ${u.stock || ''}
-Dealer: Joe's Tractor Sales
-Location: Thomasville, NC
-Phone: 336-850-8271
-
-RAW DESCRIPTION:
-${base}
-
-OUTPUT FORMAT (use exactly this structure):
-[Year] [Make] [Model] – [Short Buyer Hook]
-
-Key Details
-- [Only include fields that have data]
-- Engine: ...
-- Transmission: ...
-- Mileage: ...
-- Fuel: ...
-- VIN: ... (if available)
-
-Overview
-[2-3 sentences: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff.]
-
-Interested In This Unit?
-Call Joe's Tractor Sales: 336-850-8271 | Thomasville, NC`;
 
   var dealer = DEALERS.find(function(d){ return d.name === u.dealer; }) || {};
+  if (!u.raw_description) u.raw_description = u.description;
   fetch('https://torquehub.netlify.app/.netlify/functions/improve-dx', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2477,7 +2435,6 @@ Call Joe's Tractor Sales: 336-850-8271 | Thomasville, NC`;
   }).then(function(r) { return r.json(); }).then(function(data) {
     var text = data.description || '';
     if (text) {
-      if (!u.raw_description) u.raw_description = u.description;
       u.description = text;
       if (field) field.value = text;
       var t = document.createElement('div');
