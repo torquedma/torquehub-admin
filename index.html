@@ -2494,7 +2494,7 @@ Call Joe's Tractor Sales: 336-850-8271 | Thomasville, NC`;
     console.error('improveDX error:', err);
     if (btn) { btn.textContent = '⚡ Improve DX'; btn.disabled = false; }
   });
-
+}
 
 function generateTorqueHubDX() {
   var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
