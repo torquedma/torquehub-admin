@@ -2269,7 +2269,7 @@ function renderInventory() {
     const removeBtn = `<button class="remove-btn" onclick="event.stopPropagation();removeListing('${key.replace(/'/g,"\\'")}')">✕</button>`;
     const priceDisplay = sold
       ? `<span class="price-sold-badge">SOLD</span>${u.keepPublic ? ' <span class="keep-public-badge" title="Visible on dealer site">🌐 Public</span>' : ''}${u.salePrice ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;font-weight:400">$${u.salePrice}${u.saleDate ? ' · ' + u.saleDate : ''}</div>` : ''}`
-      : u.price ? `$${Number(u.price).toLocaleString()}` : "—";
+      : (u.price && !isNaN(parseFloat(String(u.price).replace(/[^0-9.]/g,"")))) ? `$${Number(String(u.price).replace(/[^0-9.]/g,"")).toLocaleString()}` : "—";
     return `<tr${rowClass} onclick="${sold ? '' : `openPhotoModal('${key.replace(/'/g,"\\'")}')` }" style="${sold ? 'cursor:default' : ''}">
       <td style="padding:4px;width:70px"><div style="width:64px;height:48px;border-radius:4px;overflow:hidden;background:#1e1e2e">${thumbUrl ? `<img src="${thumbUrl}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''}</div></td>
       <td>${u.year}</td>
