@@ -2469,16 +2469,13 @@ Overview
 Interested In This Unit?
 Call Joe's Tractor Sales: 336-850-8271 | Thomasville, NC`;
 
-  fetch('https://api.anthropic.com/v1/messages', {
+  var dealer = DEALERS.find(function(d){ return d.name === u.dealer; }) || {};
+  fetch('https://torquehub.netlify.app/.netlify/functions/improve-dx', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    body: JSON.stringify({ unit: u, dealer: { name: dealer.name, phone: dealer.phone, location: dealer.location } })
   }).then(function(r) { return r.json(); }).then(function(data) {
-    var text = (data.content && data.content[0] && data.content[0].text) || '';
+    var text = data.description || '';
     if (text) {
       if (!u.raw_description) u.raw_description = u.description;
       u.description = text;
