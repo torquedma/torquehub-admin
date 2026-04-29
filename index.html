@@ -1540,7 +1540,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field" style="align-items:center;gap:12px">
           <label class="edit-label" style="margin:0">Featured</label>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2)">
-            <input type="checkbox" id="edit-featured" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+            <input type="checkbox" id="edit-featured" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" onchange="const u=INVENTORY.find(x=>getListingKey(x)===currentListingKey);if(u)toggleFeatured(u.stock,this.checked?1:0);">
             Show in homepage carousel
           </label>
         </div>
@@ -2512,6 +2512,28 @@ function useFeedDX() {
   if (btn) { btn.textContent = 'Lock DX'; btn.style.background = ''; btn.style.color = ''; }
   var ind = document.getElementById('dx-lock-indicator');
   if (ind) ind.style.display = 'none';
+}
+
+function toggleFeatured(stock, val) {
+  const SUPA_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
+  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
+  fetch(`${SUPA_URL}/rest/v1/inventory?stock=eq.${encodeURIComponent(stock)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPA_KEY,
+      'Authorization': 'Bearer ' + SUPA_KEY,
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({ featured: val })
+  }).then(r => {
+    if (r.ok) {
+      const u = INVENTORY.find(u => u.stock === stock);
+      if (u) u.featured = val;
+      refreshAllViews();
+      console.log('Featured updated:', stock, val);
+    } else r.text().then(t => console.warn('Featured update failed:', t));
+  });
 }
 
 function saveListingEdits() {
