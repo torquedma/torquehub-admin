@@ -1485,7 +1485,6 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="modal-title" id="modal-title">1999 Chevrolet C6500</div>
           <div class="modal-sub" id="modal-sub">Stock #FDT070301 · Fat Daddy's Truck Sales</div>
         <div id="modal-url-bar" style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-          <button onclick="copyModalLink('admin')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--text2)" title="Copy admin edit URL">🔗 Admin</button>
           <button onclick="copyModalLink('vdp')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--text2)" title="Copy public VDP URL">🌐 VDP</button>
           <button onclick="copyModalLink('finance')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--text2)" title="Copy finance URL">💰 Finance</button>
           <button onclick="copyModalLink('qr')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--text2)" title="Copy QR finance URL">📱 QR</button>
@@ -2791,17 +2790,15 @@ function copyModalLink(type) {
   const dealer = encodeURIComponent(u.dealer || '');
   const price = String(u.price || '').replace(/[^0-9.]/g, '');
   const slug = encodeURIComponent([u.year, u.make, u.model].filter(Boolean).join('-').toLowerCase().replace(/\s+/g,'-'));
-  const admin = 'https://torquehub.netlify.app/listing/' + (u.stock || '');
   const vdp = 'https://hub.torquedma.com/vehicle.html?stock=' + stock + '&dealer=' + dealer;
   const finance = 'https://hub.torquedma.com/finance.html?stock=' + stock + '&unit=' + slug + '&price=' + price + '&src=listing';
   const qr = 'https://hub.torquedma.com/finance.html?stock=' + stock + '&unit=' + slug + '&price=' + price + '&src=qr';
 
   let text = '';
-  if (type === 'admin') text = admin;
-  else if (type === 'vdp') text = vdp;
+  if (type === 'admin' || type === 'vdp') text = vdp;
   else if (type === 'finance') text = finance;
   else if (type === 'qr') text = qr;
-  else text = 'Admin: ' + admin + '\nVDP: ' + vdp + '\nFinance: ' + finance + '\nQR: ' + qr;
+  else text = 'VDP: ' + vdp + '\nFinance: ' + finance + '\nQR: ' + qr;
 
   navigator.clipboard.writeText(text).then(() => {
     const btn = event.target;
