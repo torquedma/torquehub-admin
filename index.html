@@ -2424,7 +2424,78 @@ function improveDX() {
   if (!u) return;
   var field = document.getElementById('edit-description');
   var base = (field && field.value.trim()) || u.raw_description || u.description || '';
-  if (base && base.length > 20) {
+  
+  // Show loading state
+  var btn = document.querySelector('[onclick="improveDX()"]');
+  if (btn) { btn.textContent = '⏳ Improving...'; btn.disabled = true; }
+  
+  var prompt = `You are writing inventory descriptions for Torque Hub, a commercial equipment marketplace.
+
+Rewrite the following raw dealer description into the Torque Hub standard format:
+
+UNIT INFO:
+Year: ${u.year || 'Unknown'}
+Make: ${u.make || ''}
+Model: ${u.model || ''}
+Price: ${u.price ? '$' + Number(u.price).toLocaleString() : 'Call for Price'}
+Mileage: ${u.mileage || ''}
+Engine: ${u.engine || ''}
+Transmission: ${u.transmission || ''}
+Drivetrain: ${u.drivetrain || ''}
+Fuel: ${u.fuel || ''}
+VIN: ${u.vin || ''}
+Stock #: ${u.stock || ''}
+Dealer: Joe's Tractor Sales
+Location: Thomasville, NC
+Phone: 336-850-8271
+
+RAW DESCRIPTION:
+${base}
+
+OUTPUT FORMAT (use exactly this structure):
+[Year] [Make] [Model] – [Short Buyer Hook]
+
+Key Details
+- [Only include fields that have data]
+- Engine: ...
+- Transmission: ...
+- Mileage: ...
+- Fuel: ...
+- VIN: ... (if available)
+
+Overview
+[2-3 sentences: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff.]
+
+Interested In This Unit?
+Call Joe's Tractor Sales: 336-850-8271 | Thomasville, NC`;
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    var text = (data.content && data.content[0] && data.content[0].text) || '';
+    if (text) {
+      if (!u.raw_description) u.raw_description = u.description;
+      u.description = text;
+      if (field) field.value = text;
+      var t = document.createElement('div');
+      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f1923;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999';
+      t.textContent = 'Description updated. Review before saving.';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 3000);
+    }
+    if (btn) { btn.textContent = '⚡ Improve DX'; btn.disabled = false; }
+  }).catch(function(err) {
+    console.error('improveDX error:', err);
+    if (btn) { btn.textContent = '⚡ Improve DX'; btn.disabled = false; }
+  });
+
+  if (false) {
     var cleaned = base.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim();
     if (field) field.value = cleaned;
     if (!u.raw_description) u.raw_description = u.description;
