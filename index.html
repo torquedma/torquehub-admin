@@ -2335,8 +2335,16 @@ function renderQuickLinks() {
 // ===================== PHOTO MODAL =====================
 
 function openPhotoModal(listingKey) {
+  console.log('[openPhotoModal] called with listingKey:', listingKey);
   const u = INVENTORY.find(u => getListingKey(u) === listingKey);
-  if (!u) return;
+  console.log('[openPhotoModal] unit found:', u ? 'YES' : 'NO — returning early');
+  if (!u) {
+    console.log('[openPhotoModal] INVENTORY keys sample:', INVENTORY.slice(0,5).map(x => getListingKey(x)));
+    const byStock = INVENTORY.find(x => x.stock === listingKey);
+    console.log('[openPhotoModal] direct stock match:', byStock ? JSON.stringify({stock:byStock.stock,dealer:byStock.dealer,key:getListingKey(byStock)}) : 'none');
+    return;
+  }
+  console.log('[openPhotoModal] unit data:', JSON.stringify({stock:u.stock,dealer:u.dealer,year:u.year,make:u.make,model:u.model,price:u.price,engine:u.engine,transmission:u.transmission}));
 
   currentListingKey = listingKey;
   if (u) u._originalStock = u.stock;
