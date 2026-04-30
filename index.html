@@ -1444,10 +1444,12 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field"><label class="edit-label">Stock #</label><input class="edit-input" id="new-stock" type="text" placeholder="Stock #"></div>
         <div class="edit-field"><label class="edit-label">Days Listed</label><input class="edit-input" id="new-days" type="text" placeholder="0"></div>
 
-        <div class="edit-field"><label class="edit-label">Miles / Hours</label><input class="edit-input" id="new-mileage" type="text" placeholder="e.g. 85,000 mi or 1,200 hrs"></div>
-        <div class="edit-field"><label class="edit-label">Fuel Type</label><input class="edit-input" id="new-fuel" type="text" placeholder="Diesel, Gas, Propane..."></div>
+        <div class="edit-field"><label class="edit-label">Miles / Hours</label><div style="display:flex;gap:6px"><input class="edit-input" id="new-mileage" type="text" placeholder="e.g. 130,831" oninput="this.value=this.value.replace(/[^0-9]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,',')" style="flex:1"><select class="edit-input" id="new-mileage-unit" style="width:90px"><option value="mi">Miles</option><option value="hrs">Hours</option><option value="other">Other</option></select></div></div>
+        <div class="edit-field"><label class="edit-label">Fuel Type</label><select class="edit-input" id="new-fuel"><option value="Diesel">Diesel</option><option value="Gas">Gas</option><option value="Electric">Electric</option><option value="Propane">Propane</option><option value="Other">Other</option></select></div>
         <div class="edit-field"><label class="edit-label">Engine</label><input class="edit-input" id="new-engine" type="text" placeholder="e.g. 6.7L Cummins Diesel"></div>
-        <div class="edit-field"><label class="edit-label">Transmission</label><input class="edit-input" id="new-transmission" type="text" placeholder="e.g. Allison 2500"></div>
+        <div class="edit-field"><label class="edit-label">Transmission</label><div style="display:flex;gap:6px"><select class="edit-input" id="new-transmission-type" style="width:120px"><option value="">Select…</option><option value="Automatic">Automatic</option><option value="Manual">Manual</option><option value="Other">Other</option></select><input class="edit-input" id="new-transmission" type="text" placeholder="e.g. Allison 2500" style="flex:1"></div></div>
+        <div class="edit-field"><label class="edit-label">Engine Notes</label><input class="edit-input" id="new-engine-desc" type="text" placeholder="Additional engine details…"></div>
+        <div class="edit-field"><label class="edit-label">Transmission Notes</label><input class="edit-input" id="new-trans-desc" type="text" placeholder="Additional transmission details…"></div>
         <div class="edit-field"><label class="edit-label">Drivetrain</label><input class="edit-input" id="new-drivetrain" type="text" placeholder="e.g. 4x4, RWD, 6x4"></div>
         <div class="edit-field full"><label class="edit-label">Video URL</label><input class="edit-input" id="new-video-url" type="url" placeholder="e.g. https://youtube.com/watch?v=…"></div>
         <div class="edit-field full">
@@ -1461,11 +1463,63 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="decode-note" id="new-vin-note">VIN decoder can fill year, make, model, and fuel when available.</div>
         </div>
 
+        <div class="edit-field" style="align-items:center;gap:12px">
+          <label class="edit-label" style="margin:0">Status</label>
+          <div class="status-toggle">
+            <button id="new-status-btn-published" onclick="setNewListingStatus('published')" class="active-pub">Published</button>
+            <button id="new-status-btn-draft" onclick="setNewListingStatus('draft')">Draft</button>
+          </div>
+        </div>
+        <div class="edit-field" style="align-items:center;gap:12px">
+          <label class="edit-label" style="margin:0">Featured</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text2)">
+            <input type="checkbox" id="new-featured" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+            Show in homepage carousel
+          </label>
+        </div>
+        <div class="edit-field full" style="flex-direction:column;align-items:flex-start;gap:6px">
+          <label class="edit-label">Internal Notes</label>
+          <textarea class="edit-input" id="new-notes" rows="2" placeholder="Internal notes (never shown publicly)…" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5;font-style:italic"></textarea>
+        </div>
+        <div class="edit-field" style="align-items:center;gap:12px">
+          <label class="edit-label" style="margin:0">Post-Production</label>
+          <select class="edit-input" id="new-prod-status" style="max-width:220px">
+            <option value="">— Not Set —</option>
+            <option value="needs_graphic">🎨 Needs Graphic</option>
+            <option value="graphic_done">✅ Graphic Done</option>
+            <option value="posted_fb">📘 Posted to FB</option>
+            <option value="posted_ig">📸 Posted to IG</option>
+            <option value="shared_groups">👥 Shared to Groups</option>
+            <option value="sold_archive">🏁 Sold / Archive</option>
+          </select>
+        </div>
         <div class="edit-field full" style="flex-direction:column;align-items:flex-start;gap:6px">
           <label class="edit-label">Description</label>
           <textarea class="edit-input" id="new-description" rows="5" placeholder="Vehicle description…" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5"></textarea>
         </div>
       </div>
+
+      <!-- Photo section -->
+      <div class="photo-section-title">
+        Photos
+        <span class="photo-count-chip" id="new-modal-photo-count">0</span>
+      </div>
+      <div class="photo-import-section">
+        <div class="upload-row">
+          <label class="upload-btn-label" for="new-file-upload-input">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            Upload Files
+          </label>
+          <input type="file" id="new-file-upload-input" accept="image/*" multiple onchange="handleNewListingFileUpload(this)">
+          <input class="url-input" id="new-url-input" type="url" placeholder="Or paste an image URL…">
+          <button class="add-btn" onclick="addNewListingPhotoByUrl()">Add</button>
+        </div>
+        <div style="margin-top:10px;border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;color:var(--text3);font-size:13px;cursor:pointer;transition:all 0.15s;background:var(--surface2)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)';this.style.background='#fff7f0'" ondragleave="this.style.borderColor='var(--border)';this.style.background='var(--surface2)'" ondrop="handleNewListingDropZone(event)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:6px;opacity:0.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <div>Drop photos here or click to upload</div>
+        </div>
+      </div>
+      <div class="photo-grid" id="new-photo-grid"></div>
     </div>
     <div class="modal-footer" style="justify-content:flex-end;gap:10px">
       <button class="modal-cancel" onclick="closeAddListingModal()">Cancel</button>
@@ -4489,17 +4543,38 @@ function refreshAllViews() {
 }
 
 function openAddListingModal() {
-  // Reset all form fields
+  // Reset text/number inputs
   ['new-year','new-make','new-model','new-price','new-stock','new-days','new-vin',
-   'new-fuel','new-mileage','new-engine','new-transmission','new-drivetrain',
-   'new-video-url','new-description','new-subcategory'].forEach(id => {
+   'new-mileage','new-engine','new-transmission','new-drivetrain',
+   'new-video-url','new-description','new-subcategory',
+   'new-engine-desc','new-trans-desc','new-notes'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+
+  // Reset selects
   const siteTag = document.getElementById('new-site-tag');
   if (siteTag) siteTag.value = 'Trucks';
   const cond = document.getElementById('new-condition');
   if (cond) cond.value = 'Used';
+  const mileageUnit = document.getElementById('new-mileage-unit');
+  if (mileageUnit) mileageUnit.value = 'mi';
+  const transType = document.getElementById('new-transmission-type');
+  if (transType) transType.value = '';
+  const fuel = document.getElementById('new-fuel');
+  if (fuel) fuel.value = 'Diesel';
+  const prodStatus = document.getElementById('new-prod-status');
+  if (prodStatus) prodStatus.value = '';
+  const featured = document.getElementById('new-featured');
+  if (featured) featured.checked = false;
+
+  // Reset status toggle
+  newListingStatus = 'published';
+  setNewListingStatus('published');
+
+  // Reset photos
+  NEW_LISTING_PHOTOS = [];
+  renderNewListingPhotoGrid();
 
   // Populate dealer dropdown and pre-select active filter
   const dealerSel = document.getElementById('new-dealer');
@@ -4533,26 +4608,51 @@ function createListing() {
   if (!dealer) { alert('Please choose a dealer.'); return; }
   if (!year || !make || !model) { alert('Please enter at least year, make, and model.'); return; }
 
+  const mileageVal = document.getElementById('new-mileage').value.trim();
+  const mileageUnit = document.getElementById('new-mileage-unit')?.value || 'mi';
+  const transType = document.getElementById('new-transmission-type')?.value || '';
+  const transText = document.getElementById('new-transmission').value.trim();
+  const featuredChecked = document.getElementById('new-featured')?.checked ? 1 : 0;
+  const stagedPhotos = NEW_LISTING_PHOTOS.map(p => ({ url: p.url || p.dataUrl, name: p.name }));
+
   const newUnit = {
-    year,
-    make,
-    model,
-    dealer,
+    year, make, model, dealer,
     condition: document.getElementById('new-condition').value || 'Used',
     price: document.getElementById('new-price').value.trim(),
     stock,
     days: document.getElementById('new-days').value.trim() || '0',
-    fuel: document.getElementById('new-fuel').value.trim(),
+    mileage: mileageVal,
+    mileage_unit: mileageUnit,
+    fuel: document.getElementById('new-fuel').value,
+    engine: document.getElementById('new-engine').value.trim(),
+    engine_desc: document.getElementById('new-engine-desc')?.value.trim() || '',
+    transmission_type: transType,
+    transmission: transText,
+    trans_desc: document.getElementById('new-trans-desc')?.value.trim() || '',
+    drivetrain: document.getElementById('new-drivetrain').value.trim(),
+    video_url: document.getElementById('new-video-url')?.value.trim() || '',
     vin,
     description: document.getElementById('new-description').value.trim(),
     category,
-    subcategory: (document.getElementById("new-subcategory")||{}).value?.trim() || ""
+    subcategory: document.getElementById('new-subcategory')?.value.trim() || '',
+    status: newListingStatus,
+    featured: featuredChecked,
+    notes: document.getElementById('new-notes')?.value.trim() || '',
+    prod_status: document.getElementById('new-prod-status')?.value || '',
+    photos: stagedPhotos,
+    sold: false
   };
 
   INVENTORY.unshift(newUnit);
 
+  const newKey = getListingKey(newUnit);
+  if (NEW_LISTING_PHOTOS.length) {
+    PHOTO_STORE[newKey] = NEW_LISTING_PHOTOS.map(p => ({ ...p }));
+  }
+  NEW_LISTING_PHOTOS = [];
+
   if (stock) LISTING_CAT_OVERRIDES[stock] = category;
-  LISTING_CAT_OVERRIDES[getListingKey(newUnit)] = category;
+  LISTING_CAT_OVERRIDES[newKey] = category;
   saveListingCatOverrides();
   saveAppSession();
 
@@ -4574,14 +4674,26 @@ function createListing() {
       condition: newUnit.condition,
       price: newUnit.price,
       days: newUnit.days,
+      mileage: newUnit.mileage,
+      mileage_unit: newUnit.mileage_unit,
       fuel: newUnit.fuel,
+      engine: newUnit.engine,
+      engine_desc: newUnit.engine_desc,
+      transmission_type: newUnit.transmission_type,
+      transmission: newUnit.transmission,
+      trans_desc: newUnit.trans_desc,
+      drivetrain: newUnit.drivetrain,
+      video_url: newUnit.video_url,
       vin: newUnit.vin,
       description: newUnit.description,
       category: newUnit.category,
       subcategory: newUnit.subcategory,
-      sold: false,
-      featured: 0,
-      photos: []
+      status: newUnit.status,
+      featured: newUnit.featured,
+      notes: newUnit.notes,
+      prod_status: newUnit.prod_status,
+      photos: stagedPhotos,
+      sold: false
     }])
   }).then(r => r.json()).then(data => {
     if (data && data[0] && data[0].id) {
@@ -4592,8 +4704,7 @@ function createListing() {
 
   closeAddListingModal();
   refreshAllViews();
-  openPhotoModal(getListingKey(newUnit));
-  document.getElementById('new-stock').value = '';
+  openPhotoModal(newKey);
 }
 
 async function decodeVinAndFill(vin, map) {
@@ -5592,6 +5703,79 @@ function switchSettingsTab(tab, el) {
 
 // ===================== STATUS TOGGLE =====================
 let currentEditStatus = 'published';
+let newListingStatus = 'published';
+let NEW_LISTING_PHOTOS = [];
+
+function setNewListingStatus(val) {
+  newListingStatus = val;
+  document.getElementById('new-status-btn-published').className = val === 'published' ? 'active-pub' : '';
+  document.getElementById('new-status-btn-draft').className = val === 'draft' ? 'active-draft' : '';
+}
+
+function renderNewListingPhotoGrid() {
+  const grid = document.getElementById('new-photo-grid');
+  const countEl = document.getElementById('new-modal-photo-count');
+  if (!grid) return;
+  if (countEl) countEl.textContent = NEW_LISTING_PHOTOS.length;
+  grid.innerHTML = NEW_LISTING_PHOTOS.map((p, i) => `
+    <div class="photo-card">
+      <img src="${p.url || p.dataUrl}" alt="${p.name}" onerror="this.parentNode.innerHTML='<div class=\\'photo-error\\'>⚠️ Could not load image</div>'" loading="lazy" style="pointer-events:none">
+      <div class="photo-card-footer">
+        <span class="photo-filename" title="${p.name}">${p.name}</span>
+        <div class="photo-actions">
+          <button class="photo-btn del" title="Remove photo" onclick="removeNewListingPhoto(${i})">✕</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function removeNewListingPhoto(i) {
+  NEW_LISTING_PHOTOS.splice(i, 1);
+  renderNewListingPhotoGrid();
+}
+
+async function addNewListingPhotoByUrl() {
+  const input = document.getElementById('new-url-input');
+  const url = (input.value || '').trim();
+  if (!url) return;
+  try { new URL(url); } catch(e) { alert('Please enter a valid URL.'); return; }
+  let name = url.split('/').pop().split('?')[0] || 'image';
+  if (!name.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)/i)) name += '.jpg';
+  input.value = '';
+  NEW_LISTING_PHOTOS.push({ id: Date.now() + Math.random(), name, dataUrl: url, url, type: 'url', fromUrl: true });
+  renderNewListingPhotoGrid();
+}
+
+async function handleNewListingFileUpload(input) {
+  const files = Array.from(input.files).filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  for (const file of files) {
+    const rawDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = () => reject(new Error('Could not read ' + file.name));
+      reader.readAsDataURL(file);
+    });
+    const dataUrl = await compressImage(rawDataUrl);
+    NEW_LISTING_PHOTOS.push({ id: Date.now() + Math.random(), name: file.name, dataUrl, url: dataUrl, type: 'file', fromUrl: false });
+  }
+  input.value = '';
+  renderNewListingPhotoGrid();
+}
+
+function handleNewListingDropZone(event) {
+  event.preventDefault();
+  const files = Array.from(event.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  const dt = new DataTransfer();
+  files.forEach(f => dt.items.add(f));
+  const fakeInput = document.createElement('input');
+  fakeInput.type = 'file'; fakeInput.multiple = true;
+  Object.defineProperty(fakeInput, 'files', { value: dt.files });
+  handleNewListingFileUpload(fakeInput);
+}
+
 function setListingStatus(status) {
   currentEditStatus = status;
   document.getElementById('status-btn-published').className = status === 'published' ? 'active-pub' : '';
