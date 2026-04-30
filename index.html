@@ -2372,7 +2372,8 @@ function openPhotoModal(listingKey) {
   document.getElementById("edit-year").value = u.year || "";
   document.getElementById("edit-make").value = u.make || "";
   document.getElementById("edit-model").value = u.model || "";
-  document.getElementById("edit-price").value = u.price ? "$" + Number(u.price).toLocaleString() : "";
+  const rawPrice = String(u.price || '').replace(/[^0-9.]/g, '');
+  document.getElementById("edit-price").value = rawPrice ? "$" + Number(rawPrice).toLocaleString() : "";
   const stockVal = u.stock || "";
   document.getElementById("edit-stock").value = stockVal.startsWith("NEW-") ? "" : stockVal;
   document.getElementById("edit-days").value = u.days || "";
