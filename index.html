@@ -2354,58 +2354,66 @@ function openPhotoModal(listingKey) {
   document.getElementById("modal-sub").textContent = `${u.featured ? "⭐ Featured · " : ""}Stock #${u.stock || "N/A"} · ${u.dealer}`;
 
   // Populate edit fields
-  document.getElementById("edit-year").value = u.year || "";
-  document.getElementById("edit-make").value = u.make || "";
-  document.getElementById("edit-model").value = u.model || "";
-  const raw = String(u.price || '').replace(/[^0-9.]/g, '');
-  const numericPrice = parseFloat(raw);
-  document.getElementById("edit-price").value = (raw && !isNaN(numericPrice)) ? numericPrice : '';
-  const stockVal = u.stock || "";
-  document.getElementById("edit-stock").value = stockVal.startsWith("NEW-") ? "" : stockVal;
-  document.getElementById("edit-days").value = u.days || "";
-  document.getElementById("edit-condition").value = u.condition || "Used";
-  document.getElementById("edit-fuel").value = u.fuel || "";
-  document.getElementById("edit-mileage").value = u.mileage || "";
-  document.getElementById("edit-engine").value = u.engine || "";
-  const transVal = u.transmission || "";
-  const transTypes = ["Automatic", "Manual", "Other"];
-  const matchedType = transTypes.find(t => transVal.startsWith(t));
-  if (matchedType) {
-    document.getElementById("edit-transmission-type").value = matchedType;
-    document.getElementById("edit-transmission").value = transVal.replace(matchedType + " - ", "").trim();
-  } else {
-    document.getElementById("edit-transmission-type").value = "";
-    document.getElementById("edit-transmission").value = transVal;
+  console.log('[openPhotoModal] about to set edit-year, element exists:', !!document.getElementById("edit-year"));
+  try {
+    document.getElementById("edit-year").value = u.year || "";
+    document.getElementById("edit-make").value = u.make || "";
+    document.getElementById("edit-model").value = u.model || "";
+    const raw = String(u.price || '').replace(/[^0-9.]/g, '');
+    const numericPrice = parseFloat(raw);
+    document.getElementById("edit-price").value = (raw && !isNaN(numericPrice)) ? numericPrice : '';
+    const stockVal = u.stock || "";
+    document.getElementById("edit-stock").value = stockVal.startsWith("NEW-") ? "" : stockVal;
+    document.getElementById("edit-days").value = u.days || "";
+    document.getElementById("edit-condition").value = u.condition || "Used";
+    document.getElementById("edit-fuel").value = u.fuel || "";
+    document.getElementById("edit-mileage").value = u.mileage || "";
+    document.getElementById("edit-engine").value = u.engine || "";
+    const transVal = u.transmission || "";
+    const transTypes = ["Automatic", "Manual", "Other"];
+    const matchedType = transTypes.find(t => transVal.startsWith(t));
+    if (matchedType) {
+      document.getElementById("edit-transmission-type").value = matchedType;
+      document.getElementById("edit-transmission").value = transVal.replace(matchedType + " - ", "").trim();
+    } else {
+      document.getElementById("edit-transmission-type").value = "";
+      document.getElementById("edit-transmission").value = transVal;
+    }
+    document.getElementById("edit-drivetrain").value = u.drivetrain || "";
+    document.getElementById("edit-engine-desc").value = u.engine_description || "";
+    document.getElementById("edit-trans-desc").value = u.transmission_description || "";
+    document.getElementById("edit-video-url").value = u.video_url || "";
+    document.getElementById("edit-vin").value = u.vin || "";
+    var vinNote = document.getElementById("edit-vin-note");
+    if (vinNote) vinNote.textContent = "VIN decoder can fill year, make, model, and fuel when available.";
+    document.getElementById("edit-site-tag").value = getListingCat(u);
+    document.getElementById("edit-featured").checked = !!u.featured;
+    document.getElementById("edit-subcategory").value = u.subcategory || "";
+    document.getElementById("edit-description").value = u.description || "";
+    document.getElementById("edit-notes").value = u.notes || "";
+    document.getElementById("edit-prod-status").value = u.prod_status || "";
+    var mlInd = document.getElementById("model-lock-indicator");
+    var mlBtn = document.getElementById("model-lock-btn");
+    if (mlInd) mlInd.style.display = u.model_locked ? "block" : "none";
+    if (mlBtn) { mlBtn.textContent = u.model_locked ? "Locked" : "Lock Model"; mlBtn.style.background = u.model_locked ? "#d1fae5" : ""; mlBtn.style.color = u.model_locked ? "#065f46" : ""; }
+    var dxInd = document.getElementById("dx-lock-indicator");
+    var dxBtn = document.getElementById("dx-lock-btn");
+    if (dxInd) dxInd.style.display = u.dx_locked ? "block" : "none";
+    if (dxBtn) { dxBtn.textContent = u.dx_locked ? "DX Locked" : "Lock DX"; dxBtn.style.background = u.dx_locked ? "#d1fae5" : ""; dxBtn.style.color = u.dx_locked ? "#065f46" : ""; }
+    setListingStatus(u.status || 'published');
+    document.getElementById("edit-saved-msg").classList.remove("show");
+    console.log('[openPhotoModal] fields after assignment:', { year: document.getElementById("edit-year").value, price: document.getElementById("edit-price").value, make: document.getElementById("edit-make").value, engine: document.getElementById("edit-engine").value });
+  } catch(e) {
+    console.error('[openPhotoModal] ERROR populating fields:', e.message, e.stack);
   }
-  document.getElementById("edit-drivetrain").value = u.drivetrain || "";
-  document.getElementById("edit-engine-desc").value = u.engine_description || "";
-  document.getElementById("edit-trans-desc").value = u.transmission_description || "";
-  document.getElementById("edit-video-url").value = u.video_url || "";
-  document.getElementById("edit-vin").value = u.vin || "";
-  var vinNote = document.getElementById("edit-vin-note");
-  if (vinNote) vinNote.textContent = "VIN decoder can fill year, make, model, and fuel when available.";
-  document.getElementById("edit-site-tag").value = getListingCat(u);
-  document.getElementById("edit-featured").checked = !!u.featured;
-  document.getElementById("edit-subcategory").value = u.subcategory || "";
-  document.getElementById("edit-description").value = u.description || "";
-  document.getElementById("edit-notes").value = u.notes || "";
-  document.getElementById("edit-prod-status").value = u.prod_status || "";
-  var mlInd = document.getElementById("model-lock-indicator");
-  var mlBtn = document.getElementById("model-lock-btn");
-  if (mlInd) mlInd.style.display = u.model_locked ? "block" : "none";
-  if (mlBtn) { mlBtn.textContent = u.model_locked ? "Locked" : "Lock Model"; mlBtn.style.background = u.model_locked ? "#d1fae5" : ""; mlBtn.style.color = u.model_locked ? "#065f46" : ""; }
-  var dxInd = document.getElementById("dx-lock-indicator");
-  var dxBtn = document.getElementById("dx-lock-btn");
-  if (dxInd) dxInd.style.display = u.dx_locked ? "block" : "none";
-  if (dxBtn) { dxBtn.textContent = u.dx_locked ? "DX Locked" : "Lock DX"; dxBtn.style.background = u.dx_locked ? "#d1fae5" : ""; dxBtn.style.color = u.dx_locked ? "#065f46" : ""; }
-  setListingStatus(u.status || 'published');
-  document.getElementById("edit-saved-msg").classList.remove("show");
 
   document.getElementById("url-input").value = "";
   resetProgress();
   renderPhotoGrid();
 
   document.getElementById("photo-modal").classList.add("open");
+  const _modalBody = document.getElementById("photo-modal").querySelector(".modal-body");
+  if (_modalBody) _modalBody.scrollTop = 0;
   // Update prev/next button states
   setTimeout(function() {
     const filtered = getFilteredInventory().filter(u => !u.sold);
