@@ -4606,7 +4606,6 @@ function createListing() {
   const vin = document.getElementById('new-vin').value.trim().toUpperCase();
   const category = normalizeCategoryValue(document.getElementById('new-site-tag').value);
   if (!dealer) { alert('Please choose a dealer.'); return; }
-  if (!year || !make || !model) { alert('Please enter at least year, make, and model.'); return; }
 
   const mileageVal = document.getElementById('new-mileage').value.trim();
   const mileageUnit = document.getElementById('new-mileage-unit')?.value || 'mi';
