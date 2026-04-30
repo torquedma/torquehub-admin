@@ -1820,24 +1820,15 @@ const INVENTORY_SESSION_KEY = 'torquehub_inventory_session_v1';
     }
   } catch(e) { console.warn('Dealer session hydrate failed:', e); }
 
-  try {
-    const savedInventory = JSON.parse(localStorage.getItem(INVENTORY_SESSION_KEY) || 'null');
-    if (Array.isArray(savedInventory) && savedInventory.length) {
-      const savedKeys = new Set(savedInventory.map(u => u.stock || (u.year+'_'+u.make+'_'+u.model+'_'+u.dealer)));
-      INVENTORY.forEach(hd => {
-        const hdKey = hd.stock || (hd.year+'_'+hd.make+'_'+hd.model+'_'+hd.dealer);
-        if (!savedKeys.has(hdKey)) savedInventory.push(hd);
-      });
-      INVENTORY.length = 0;
-      INVENTORY.push(...savedInventory);
-    }
-  } catch(e) { console.warn('Inventory session hydrate failed:', e); }
+  // Inventory is not cached in localStorage — always loaded fresh from Supabase on startup.
+  localStorage.removeItem(INVENTORY_SESSION_KEY);
 })();
 
 function saveAppSession() {
   try {
     localStorage.setItem(DEALERS_SESSION_KEY, JSON.stringify(DEALERS));
-    localStorage.setItem(INVENTORY_SESSION_KEY, JSON.stringify(INVENTORY));
+    // INVENTORY is intentionally not saved to localStorage — it's too large (400+ listings)
+    // and causes QuotaExceededError. Always loaded fresh from Supabase on startup.
   } catch(e) {
     console.warn('App session save failed:', e);
   }
@@ -4666,13 +4657,11 @@ function createListing() {
     price: newUnit.price,
     days: newUnit.days,
     mileage: newUnit.mileage,
-    mileage_unit: newUnit.mileage_unit,
     fuel: newUnit.fuel,
     engine: newUnit.engine,
-    engine_desc: newUnit.engine_desc,
-    transmission_type: newUnit.transmission_type,
+    engine_description: newUnit.engine_desc,
     transmission: newUnit.transmission,
-    trans_desc: newUnit.trans_desc,
+    transmission_description: newUnit.trans_desc,
     drivetrain: newUnit.drivetrain,
     video_url: newUnit.video_url,
     vin: newUnit.vin,
