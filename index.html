@@ -339,7 +339,13 @@
   .photo-btn:hover { background: var(--surface2); }
   .photo-btn.del:hover { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
   .photo-btn.dl:hover { background: #f0fdf4; color: #16a34a; border-color: #86efac; }
+  .photo-btn.zoom:hover { background: #eff6ff; color: #2563eb; border-color: #93c5fd; }
+  .photo-btn.rotate:hover { background: #fefce8; color: #ca8a04; border-color: #fde68a; }
   .photo-error { font-size: 10px; color: #dc2626; padding: 4px 8px; background: #fef2f2; }
+  #photo-lightbox { position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:9999; display:flex; align-items:center; justify-content:center; cursor:zoom-out; }
+  #photo-lightbox img { max-width:92vw; max-height:92vh; object-fit:contain; border-radius:6px; box-shadow:0 25px 60px rgba(0,0,0,0.6); cursor:default; }
+  #photo-lightbox-close { position:absolute; top:14px; right:18px; color:#fff; font-size:26px; line-height:1; cursor:pointer; background:none; border:none; padding:4px 8px; border-radius:6px; opacity:0.8; }
+  #photo-lightbox-close:hover { opacity:1; background:rgba(255,255,255,0.15); }
 
   .empty-photos {
     text-align: center; padding: 32px 20px; color: var(--text3);
@@ -2892,6 +2898,8 @@ function renderPhotoGrid() {
       <div class="photo-card-footer">
         <span class="photo-filename" title="${p.name}">${p.name}</span>
         <div class="photo-actions">
+          <button class="photo-btn zoom" title="Preview photo" onclick="zoomPhoto(${i})"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+          <button class="photo-btn rotate" title="Rotate 90° clockwise" onclick="rotatePhoto(${i})"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
           <button class="photo-btn dl" title="Download this photo" onclick="downloadSinglePhoto(${i})">⬇</button>
           <button class="photo-btn del" title="Remove photo" onclick="removePhoto(${i})">✕</button>
         </div>
@@ -3067,6 +3075,61 @@ function removePhoto(index) {
   PHOTO_STORE[currentListingKey].splice(index, 1);
   savePhotoStore();
   renderPhotoGrid();
+}
+
+// ---- Zoom/preview photo ----
+function zoomPhoto(i) {
+  const photos = PHOTO_STORE[currentListingKey] || [];
+  const p = photos[i];
+  if (!p) return;
+  const src = p.dataUrl || p.url;
+
+  let lb = document.getElementById('photo-lightbox');
+  if (lb) lb.remove();
+
+  lb = document.createElement('div');
+  lb.id = 'photo-lightbox';
+  lb.innerHTML = '<button id="photo-lightbox-close" title="Close">✕</button><img id="photo-lightbox-img" src="">';
+  lb.addEventListener('click', e => { if (e.target === lb) lb.remove(); });
+  lb.querySelector('#photo-lightbox-close').addEventListener('click', () => lb.remove());
+  document.body.appendChild(lb);
+  document.getElementById('photo-lightbox-img').src = src;
+
+  const onKey = e => { if (e.key === 'Escape') { lb.remove(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+}
+
+// ---- Rotate photo 90° clockwise ----
+async function rotatePhoto(i) {
+  const photos = PHOTO_STORE[currentListingKey];
+  if (!photos || !photos[i]) return;
+  const p = photos[i];
+  const src = p.dataUrl || p.url;
+
+  try {
+    const rotated = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.height;
+        canvas.height = img.width;
+        const ctx = canvas.getContext('2d');
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        resolve(canvas.toDataURL('image/jpeg', 0.92));
+      };
+      img.onerror = () => reject(new Error('Could not load image for rotation'));
+      img.src = src;
+    });
+    photos[i] = { ...p, dataUrl: rotated, url: rotated, fromUrl: false, type: 'file' };
+    savePhotoStore();
+    renderPhotoGrid();
+  } catch(e) {
+    console.error('Rotate failed:', e.message);
+    alert('Could not rotate this photo. The image host may not allow cross-origin access.');
+  }
 }
 
 // ---- Download single photo ----
