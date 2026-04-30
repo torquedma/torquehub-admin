@@ -4489,40 +4489,28 @@ function refreshAllViews() {
 }
 
 function openAddListingModal() {
-  const dealer = (invDealerFilter && DEALERS.some(d => d.name === invDealerFilter)) ? invDealerFilter : (DEALERS[0] ? DEALERS[0].name : '');
-  const tempStock = 'NEW-' + Date.now();
-  const newUnit = { year: '', make: '', model: '', dealer, condition: 'Used', price: '', stock: tempStock, days: '0', fuel: '', vin: '', description: '', category: 'Trucks', subcategory: '' };
-  INVENTORY.unshift(newUnit);
-  saveAppSession();
+  // Reset all form fields
+  ['new-year','new-make','new-model','new-price','new-stock','new-days','new-vin',
+   'new-fuel','new-mileage','new-engine','new-transmission','new-drivetrain',
+   'new-video-url','new-description','new-subcategory'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const siteTag = document.getElementById('new-site-tag');
+  if (siteTag) siteTag.value = 'Trucks';
+  const cond = document.getElementById('new-condition');
+  if (cond) cond.value = 'Used';
 
-  // Save to Supabase immediately
-  fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-      'Prefer': 'return=representation'
-    },
-    body: JSON.stringify([{
-      stock: tempStock,
-      dealer: newUnit.dealer,
-      year: '', make: '', model: '',
-      condition: 'Used', price: '',
-      days: '0', fuel: '', vin: '',
-      description: '', category: 'Trucks',
-      subcategory: '', sold: false, featured: 0, photos: []
-    }])
-  }).then(r => r.json()).then(data => {
-    if (data && data[0] && data[0].id) {
-      newUnit._id = data[0].id;
-      console.log('New listing created in Supabase:', tempStock, data[0].id);
-    }
-  }).catch(err => console.warn('Supabase create error:', err.message));
+  // Populate dealer dropdown and pre-select active filter
+  const dealerSel = document.getElementById('new-dealer');
+  if (dealerSel) {
+    dealerSel.innerHTML = DEALERS.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+    const preferred = (invDealerFilter && DEALERS.some(d => d.name === invDealerFilter))
+      ? invDealerFilter : (DEALERS[0] ? DEALERS[0].name : '');
+    if (preferred) dealerSel.value = preferred;
+  }
 
-  refreshAllViews();
-  openPhotoModal(getListingKey(newUnit));
-  document.getElementById('new-stock').value = '';
+  document.getElementById('add-listing-modal').classList.add('open');
 }
 
 function closeAddListingModal() {
@@ -4539,7 +4527,7 @@ function createListing() {
   const year = document.getElementById('new-year').value.trim();
   const make = document.getElementById('new-make').value.trim();
   const model = document.getElementById('new-model').value.trim();
-  const stock = document.getElementById('new-stock').value.trim();
+  const stock = document.getElementById('new-stock').value.trim() || ('NEW-' + Date.now());
   const vin = document.getElementById('new-vin').value.trim().toUpperCase();
   const category = normalizeCategoryValue(document.getElementById('new-site-tag').value);
   if (!dealer) { alert('Please choose a dealer.'); return; }
