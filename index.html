@@ -3196,28 +3196,16 @@ async function downloadAsZip(photos) {
 
   let done = 0;
   const total = photos.length;
+  const pad = String(total).length;
 
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i];
     try {
-      let blob;
-      if (photo.fromUrl) {
-        const resp = await fetch((photo.dataUrl || photo.url));
-        blob = await resp.blob();
-      } else {
-        // Convert base64 dataUrl to blob
-        const res = await fetch((photo.dataUrl || photo.url));
-        blob = await res.blob();
-      }
-      // Ensure unique filenames
-      let fname = photo.name;
-      const existing = Object.keys(zip.files);
-      if (existing.includes(fname)) {
-        const ext = fname.includes(".") ? "." + fname.split(".").pop() : "";
-        const base = fname.includes(".") ? fname.slice(0, fname.lastIndexOf(".")) : fname;
-        fname = `${base}_${i+1}${ext}`;
-      }
-      zip.file(fname, blob);
+      const resp = await fetch(photo.dataUrl || photo.url);
+      const blob = await resp.blob();
+      const ext = (photo.name || '').includes('.') ? '.' + photo.name.split('.').pop().toLowerCase() : '.jpg';
+      const num = String(i + 1).padStart(pad, '0');
+      zip.file(`photo-${num}${ext}`, blob);
     } catch(e) {
       console.warn("Could not fetch photo:", photo.name, e);
     }
@@ -3246,9 +3234,11 @@ async function downloadAsZip(photos) {
 }
 
 function downloadIndividually(photos) {
-  // Fallback: download each file with a small delay
+  const pad = String(photos.length).length;
   photos.forEach((photo, i) => {
-    setTimeout(() => triggerDownload((photo.dataUrl || photo.url), photo.name, photo.fromUrl), i * 400);
+    const ext = (photo.name || '').includes('.') ? '.' + photo.name.split('.').pop().toLowerCase() : '.jpg';
+    const fname = `photo-${String(i + 1).padStart(pad, '0')}${ext}`;
+    setTimeout(() => triggerDownload((photo.dataUrl || photo.url), fname, photo.fromUrl), i * 400);
   });
   resetProgress();
 }
