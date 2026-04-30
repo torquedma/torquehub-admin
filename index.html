@@ -2608,7 +2608,7 @@ function saveListingEdits() {
 
   // Duplicate stock # check
   if (u.stock) {
-    const dupCheck = INVENTORY.find(x => x.stock === u.stock && getListingKey(x) !== currentListingKey);
+    const dupCheck = INVENTORY.find(x => x !== u && x.stock === u.stock);
     if (dupCheck) {
       const proceed = confirm(
         'Warning: Stock # ' + u.stock + ' already exists on another listing:\n' +
