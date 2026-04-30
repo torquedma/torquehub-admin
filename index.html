@@ -4656,6 +4656,37 @@ function createListing() {
   saveAppSession();
 
   // Save new listing to Supabase
+  const supabasePayload = [{
+    stock: newUnit.stock,
+    dealer: newUnit.dealer,
+    year: newUnit.year,
+    make: newUnit.make,
+    model: newUnit.model,
+    condition: newUnit.condition,
+    price: newUnit.price,
+    days: newUnit.days,
+    mileage: newUnit.mileage,
+    mileage_unit: newUnit.mileage_unit,
+    fuel: newUnit.fuel,
+    engine: newUnit.engine,
+    engine_desc: newUnit.engine_desc,
+    transmission_type: newUnit.transmission_type,
+    transmission: newUnit.transmission,
+    trans_desc: newUnit.trans_desc,
+    drivetrain: newUnit.drivetrain,
+    video_url: newUnit.video_url,
+    vin: newUnit.vin,
+    description: newUnit.description,
+    category: newUnit.category,
+    subcategory: newUnit.subcategory,
+    status: newUnit.status,
+    featured: newUnit.featured,
+    notes: newUnit.notes,
+    prod_status: newUnit.prod_status,
+    photos: stagedPhotos,
+    sold: false
+  }];
+  console.log('[createListing] POSTing to Supabase:', JSON.stringify(supabasePayload, null, 2));
   fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory', {
     method: 'POST',
     headers: {
@@ -4664,42 +4695,26 @@ function createListing() {
       'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
       'Prefer': 'return=representation'
     },
-    body: JSON.stringify([{
-      stock: newUnit.stock,
-      dealer: newUnit.dealer,
-      year: newUnit.year,
-      make: newUnit.make,
-      model: newUnit.model,
-      condition: newUnit.condition,
-      price: newUnit.price,
-      days: newUnit.days,
-      mileage: newUnit.mileage,
-      mileage_unit: newUnit.mileage_unit,
-      fuel: newUnit.fuel,
-      engine: newUnit.engine,
-      engine_desc: newUnit.engine_desc,
-      transmission_type: newUnit.transmission_type,
-      transmission: newUnit.transmission,
-      trans_desc: newUnit.trans_desc,
-      drivetrain: newUnit.drivetrain,
-      video_url: newUnit.video_url,
-      vin: newUnit.vin,
-      description: newUnit.description,
-      category: newUnit.category,
-      subcategory: newUnit.subcategory,
-      status: newUnit.status,
-      featured: newUnit.featured,
-      notes: newUnit.notes,
-      prod_status: newUnit.prod_status,
-      photos: stagedPhotos,
-      sold: false
-    }])
-  }).then(r => r.json()).then(data => {
+    body: JSON.stringify(supabasePayload)
+  }).then(async r => {
+    const text = await r.text();
+    console.log('[createListing] Supabase response status:', r.status, r.statusText);
+    console.log('[createListing] Supabase response body:', text);
+    if (!r.ok) {
+      console.error('[createListing] Save failed:', r.status, text);
+      alert(`Failed to save listing to Supabase (${r.status}): ${text.slice(0, 200)}`);
+      return;
+    }
+    let data;
+    try { data = JSON.parse(text); } catch(e) { data = null; }
     if (data && data[0] && data[0].id) {
       newUnit._id = data[0].id;
-      console.log('New listing saved to Supabase:', newUnit.stock, data[0].id);
+      console.log('[createListing] Saved OK — stock:', newUnit.stock, 'id:', data[0].id);
     }
-  }).catch(err => console.warn('Supabase save error:', err.message));
+  }).catch(err => {
+    console.error('[createListing] Network error:', err.message);
+    alert('Network error saving listing: ' + err.message);
+  });
 
   closeAddListingModal();
   refreshAllViews();
