@@ -339,17 +339,18 @@ exports.handler = async (event) => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     let inserted = 0, updated = 0, errors = 0;
     for (const item of feedItems) {
-      if (apiKey) {
-        try {
-          const desc = await generateDescription(item, DEALER_INFO, apiKey);
-          if (desc) {
-            item.description = desc;
-            item.torque_hub_dx = desc;
-          }
-        } catch (err) {
-          console.error('Description generation failed for', item.stock, ':', err.message);
-        }
-      }
+      // Description generation skipped — too slow for 60s scheduled timeout (140 items × ~1s/call)
+      // if (apiKey) {
+      //   try {
+      //     const desc = await generateDescription(item, DEALER_INFO, apiKey);
+      //     if (desc) {
+      //       item.description = desc;
+      //       item.torque_hub_dx = desc;
+      //     }
+      //   } catch (err) {
+      //     console.error('Description generation failed for', item.stock, ':', err.message);
+      //   }
+      // }
       if (existingStocks.has(item.stock)) {
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', item);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
