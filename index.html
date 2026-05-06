@@ -1810,6 +1810,15 @@ let INVENTORY = [];
 
 const CAT_ICONS = { Trucks: "🚚", Construction: "🏗️", Farm: "🌾", Trailers: "🚛" };
 const DEALER_CAT_MAP = {};
+const DEALER_CONTACT = {
+  'Davenport Inc.':                 { name: 'Davenport Motors',                phone: '252-809-2172' },
+  "Fat Daddy's Truck Sales":        { name: "Fat Daddy's Truck Sales",         phone: '919-759-5434' },
+  'Auto Connection 210 LLC':        { name: 'Auto Connection 210 LLC',         phone: '910-490-2596' },
+  "HGR's Truck and Trailer":        { name: "HGR's Truck and Trailer",         phone: '910-661-0868' },
+  'Wilson Trailer Sales & Service': { name: 'Wilson Trailer Sales & Service',  phone: '252-429-8805' },
+  'Dick Smith Equipment':           { name: 'Dick Smith Equipment',            phone: '919-734-1191' },
+  'Suttontown Repair Service':      { name: 'Suttontown Repair Service',       phone: '910-530-1732' },
+};
 const DEALERS_SESSION_KEY = 'torquehub_dealers_session_v1';
 const INVENTORY_SESSION_KEY = 'torquehub_inventory_session_v1';
 
@@ -4927,15 +4936,6 @@ function autoFormatDXText(text, u) {
   lines.push('');
   lines.push(`Price: ${price ? (String(price).startsWith('$') ? price : '$' + price.replace(/[^\d,.-]/g,'')) : 'Call for Price'}`);
   lines.push('');
-  // Use correct dealer contact info
-  const DEALER_CONTACT = {
-    'Davenport Inc.':             { name: 'Davenport Motors', phone: '252-809-2172' },
-    "Fat Daddy's Truck Sales":    { name: "Fat Daddy's Truck Sales", phone: '919-759-5434' },
-    'Auto Connection 210 LLC':    { name: 'Auto Connection 210 LLC', phone: '910-490-2596' },
-    "HGR's Truck and Trailer":    { name: "HGR's Truck and Trailer", phone: '910-425-6104' },
-    'Wilson Trailer Sales & Service': { name: 'Wilson Trailer Sales & Service', phone: '' },
-    'Dick Smith Equipment':       { name: 'Dick Smith Equipment', phone: '919-734-1191' },
-  };
   const dc = DEALER_CONTACT[u && u.dealer] || { name: u && u.dealer || 'the dealership', phone: '' };
   lines.push(`Contact ${dc.name} Today:`);
   if (dc.phone) lines.push(`Call ${dc.phone} for more details or to schedule a viewing.`);
@@ -4967,6 +4967,9 @@ function generateCurrentBullets() {
   const el = document.getElementById('edit-description');
   if (!el) return;
   const title = parseTitleParts(u);
+  const dc = DEALER_CONTACT[u.dealer] || { name: u.dealer || 'the dealership', phone: '' };
+  const contactBlock = [`Contact ${dc.name} Today:`];
+  if (dc.phone) contactBlock.push(`Call ${dc.phone} for more details or to schedule a viewing.`);
   const lines = [
     title,
     '',
@@ -4979,8 +4982,7 @@ function generateCurrentBullets() {
     '',
     `Price: ${u.price || 'Call for Price'}`,
     '',
-    'Contact Davenport Motors Today:',
-    'Call 252-809-2172 for more details or to schedule a viewing.'
+    ...contactBlock
   ];
   el.value = lines.join('\n');
   u.description = el.value;
@@ -5010,21 +5012,26 @@ function generatePackageText(u, channel) {
   const dealer = u.dealer || '';
   const template = dealerTemplateName(dealer);
   const specs = [hp, fuel, stock ? `Stock # ${stock}` : ''].filter(Boolean).join(' • ');
+  const dc = DEALER_CONTACT[dealer] || { name: dealer || 'the dealership', phone: '' };
 
   if (channel === 'VN') {
-    return `${title}\n\nKey Features:\n• ${buildAutoBullets(u).join('\n• ')}\n\nPrice: ${price}\n\nContact ${dealer || 'Dealer'} Today:\nCall 252-809-2172 for more details or to schedule a viewing.`;
+    const contactLine = dc.phone ? `\nCall ${dc.phone} for more details or to schedule a viewing.` : '';
+    return `${title}\n\nKey Features:\n• ${buildAutoBullets(u).join('\n• ')}\n\nPrice: ${price}\n\nContact ${dc.name} Today:${contactLine}`;
   }
   if (channel === 'FBBP') {
-    return `📍 ${dealer}\n📞 Call 252-809-2172\n\n🚛 ${title}\n💰 ${price}\n\n🔑 Key Features:\n• ${buildAutoBullets(u).join('\n• ')}\n\n📣 ${template} listing ready to post.`;
+    const phoneLine = dc.phone ? `\n📞 Call ${dc.phone}` : '';
+    return `📍 ${dc.name}${phoneLine}\n\n🚛 ${title}\n💰 ${price}\n\n🔑 Key Features:\n• ${buildAutoBullets(u).join('\n• ')}\n\n📣 ${template} listing ready to post.`;
   }
   if (channel === 'Marketplace') {
-    return `${title}\n\n${specs}\n${price}\nCall 252-809-2172`;
+    const phoneLine = dc.phone ? `\nCall ${dc.phone}` : '';
+    return `${title}\n\n${specs}\n${price}${phoneLine}`;
   }
   if (channel === 'Groups') {
-    return `${title}\n${price}\n📞 252-809-2172`;
+    const phoneLine = dc.phone ? `\n📞 ${dc.phone}` : '';
+    return `${title}\n${price}${phoneLine}`;
   }
   if (channel === 'Reels') {
-    return `${title}\n${specs}\n${price} • ${dealer}\n#MachineryPete #TractorHouse #Fastline`;
+    return `${title}\n${specs}\n${price} • ${dc.name}\n#MachineryPete #TractorHouse #Fastline`;
   }
   return `${title}\n${price}`;
 }
@@ -5035,7 +5042,7 @@ function generateFullPackageForCurrent() {
 
   const el = document.getElementById('edit-description');
   const sourceText = el && String(el.value || '').trim() ? el.value : (u.description || '');
-  const vnText = smartFormatDX(sourceText);
+  const vnText = smartFormatDX(sourceText, u);
 
   if (el) el.value = vnText;
   u.description = vnText;
@@ -5050,7 +5057,7 @@ function generateFullPackageForCurrent() {
 }
 
 
-function smartFormatDX(input) {
+function smartFormatDX(input, u) {
   if (!input) return '';
 
   let text = String(input).replace(/\r/g, '').trim();
@@ -5058,9 +5065,7 @@ function smartFormatDX(input) {
   text = text
     .replace(/\s*Key Features:\s*/i, '\n\nKey Features:\n')
     .replace(/\s*Additional Features:\s*/i, '\n\nAdditional Features:\n')
-    .replace(/\s*Price:\s*/i, '\n\nPrice: ')
-    .replace(/\s*Contact Davenport Motors Today:\s*/i, '\n\nContact Davenport Motors Today:\n')
-    .replace(/\s*Contact .*? Today:\s*/i, '\n\nContact Davenport Motors Today:\n');
+    .replace(/\s*Price:\s*/i, '\n\nPrice: ');
 
   text = text.replace(/•\s*/g, '\n• ');
   text = text.replace(/\n{3,}/g, '\n\n').trim();
@@ -5104,21 +5109,20 @@ function smartFormatDX(input) {
   }
 
   if (!title) {
-    const u = getCurrentListing();
     title = u ? parseTitleParts(u) : 'Inventory Unit';
   }
 
   if (!key.length) {
-    const u = getCurrentListing();
     if (u) key = buildAutoBullets(u).map(b => `• ${cleanBullet(b)}`);
   }
 
   const normalizedKey = key.map(line => line.startsWith('•') ? line : `• ${cleanBullet(line)}`);
   const normalizedAdditional = additional.map(line => line.startsWith('•') ? line : `• ${cleanBullet(line)}`);
   const priceLine = price ? `Price: ${price}` : 'Price: Call for Price';
+  const dc = DEALER_CONTACT[u && u.dealer] || { name: (u && u.dealer) || 'the dealership', phone: '' };
   const contactLines = contact.length
     ? contact
-    : ['Call 252-809-2172 for more details or to schedule a viewing.'];
+    : dc.phone ? [`Call ${dc.phone} for more details or to schedule a viewing.`] : [];
 
   return [
     title,
@@ -5131,7 +5135,7 @@ function smartFormatDX(input) {
     '',
     priceLine,
     '',
-    'Contact Davenport Motors Today:',
+    `Contact ${dc.name} Today:`,
     ...contactLines
   ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
