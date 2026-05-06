@@ -1876,6 +1876,8 @@ function getListingCat(u) {
 // Photo storage: persisted to localStorage automatically
 const PHOTO_STORE_KEY = 'torquehub_photos_v1';
 const PHOTO_STORE = {};
+const PHOTO_LOADED = {};
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
 // Clear any stale photo cache from localStorage (photos now live in Supabase only)
 try { localStorage.removeItem('torquehub_photos_v1'); } catch(e) {}
 
@@ -2428,6 +2430,56 @@ function openPhotoModal(listingKey) {
   resetProgress();
   renderPhotoGrid();
 
+  if (!PHOTO_LOADED[listingKey]) {
+    (async function() {
+      if (!u.id) {
+        PHOTO_STORE[listingKey] = PHOTO_STORE[listingKey] || [];
+        PHOTO_LOADED[listingKey] = true;
+        return;
+      }
+      try {
+        const r = await fetch(
+          `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=photos&id=eq.${u.id}`,
+          { headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+          }}
+        );
+        if (!r.ok) {
+          const _pmsg = document.getElementById('edit-saved-msg');
+          if (_pmsg) {
+            _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
+            _pmsg.classList.add('show');
+            setTimeout(() => _pmsg.classList.remove('show'), 5000);
+          }
+          return;
+        }
+        const rows = await r.json();
+        const raw = rows?.[0]?.photos || [];
+        PHOTO_STORE[listingKey] = raw.map((p, i) => {
+          const photoUrl = p.url || p.dataUrl || '';
+          return {
+            id: Date.now() + i,
+            name: p.name || photoUrl.split('/').pop(),
+            url: photoUrl,
+            dataUrl: photoUrl,
+            type: 'url', fromUrl: true, storage: 'supabase'
+          };
+        });
+        PHOTO_LOADED[listingKey] = true;
+        if (currentListingKey === listingKey) renderPhotoGrid();
+      } catch(e) {
+        console.warn('Photo lazy-fetch failed for', listingKey, ':', e);
+        const _pmsg = document.getElementById('edit-saved-msg');
+        if (_pmsg) {
+          _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
+          _pmsg.classList.add('show');
+          setTimeout(() => _pmsg.classList.remove('show'), 5000);
+        }
+      }
+    })();
+  }
+
   document.getElementById("photo-modal").classList.add("open");
   // Update prev/next button states
   setTimeout(function() {
@@ -2680,14 +2732,14 @@ function saveListingEdits() {
     }).catch(err => console.warn('Supabase save error:', err.message));
 
   // Save photos to Supabase
-  if (u.stock) {
+  if (u.stock && PHOTO_LOADED[getListingKey(u)]) {
     const photos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
     fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u.stock}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
         'Prefer': 'return=minimal'
       },
       body: JSON.stringify({ photos })
@@ -2695,6 +2747,8 @@ function saveListingEdits() {
       if (!r.ok) r.text().then(t => console.warn('Supabase photo save failed:', t));
       else console.log('Photos saved to Supabase:', photos.length, 'photos for', u.stock);
     }).catch(err => console.warn('Supabase photo save error:', err.message));
+  } else if (u.stock) {
+    console.log('Photo save skipped — photos not loaded for', u.stock);
   }
   }
 
@@ -5581,7 +5635,6 @@ async function syncDavenportFromBackend() {
 
 async function loadApp() {
   const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
   const headers = {
     'apikey': SUPABASE_ANON_KEY,
     'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
@@ -5606,7 +5659,7 @@ async function loadApp() {
     let from = 0;
     while (true) {
       const iRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/inventory?select=*&order=dealer,stock&offset=${from}&limit=1000`,
+        `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,color,prod_status,dx_locked,model_locked,raw_description,description_source&order=dealer,stock&offset=${from}&limit=1000`,
         { headers }
       );
       if (!iRes.ok) break;
@@ -5638,7 +5691,7 @@ async function loadApp() {
       sold_date: item.sold_date,
       sold_type: item.sold_type,
       public_sold: item.public_sold,
-      photos: item.photos || [],
+
       engine: item.engine || '',
       transmission: item.transmission || '',
       drivetrain: item.drivetrain || '',
@@ -5657,21 +5710,6 @@ async function loadApp() {
       _id: item.id
     }));
 
-    // Rebuild PHOTO_STORE
-    INVENTORY.forEach(item => {
-      const key = item.stock;
-      if (item.photos && item.photos.length > 0) {
-        PHOTO_STORE[key] = item.photos.map((p, i) => ({
-          id: Date.now() + i,
-          name: p.name || p.url.split('/').pop(),
-          url: p.url,
-          dataUrl: p.url,
-          type: 'url',
-          fromUrl: true,
-          storage: 'supabase'
-        }));
-      }
-    });
 
     console.log(`Loaded ${INVENTORY.length} listings and ${DEALERS.length} dealers from Supabase`);
   } catch (err) {
