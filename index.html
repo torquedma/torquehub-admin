@@ -5390,16 +5390,33 @@ function updatePublishLabel() {
   }
 }
 
-function buildDealerPayload(dealerKey) {
+async function buildDealerPayload(dealerKey) {
+  // Per-dealer photos fetch — keeps payload bounded vs adding photos to master INVENTORY SELECT
+  const photosByStock = {};
+  try {
+    const res = await fetch(
+      `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=stock,photos&dealer=eq.${encodeURIComponent(dealerKey)}`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (res.ok) {
+      const rows = await res.json();
+      rows.forEach(r => { if (r.stock) photosByStock[r.stock] = r.photos || []; });
+    } else {
+      console.warn(`[buildDealerPayload] photos fetch failed for ${dealerKey}: HTTP ${res.status}`);
+    }
+  } catch (err) {
+    console.warn(`[buildDealerPayload] photos fetch error for ${dealerKey}:`, err.message);
+  }
+
   return INVENTORY
     .filter(u => u.dealer === dealerKey && !u.sold)
     .map(u => {
       const key = getListingKey(u);
       const stored = PHOTO_STORE[key] || [];
-      // Prefer manually uploaded photos; fall back to feed photos from u.photos
+      const feedPhotos = photosByStock[u.stock] || [];
       const photos = stored.length
         ? stored.map(p => ({ url: p.dataUrl, name: p.name, fromUrl: p.fromUrl || false }))
-        : (Array.isArray(u.photos) ? u.photos : []).map(p => ({
+        : (Array.isArray(feedPhotos) ? feedPhotos : []).map(p => ({
             url: p.url || p.dataUrl || null,
             name: p.name || null,
             fromUrl: true,
@@ -5489,7 +5506,7 @@ async function publishDealerSites() {
 
   for (const dealer of dealersToPublish) {
     try {
-      const payload = JSON.stringify(buildDealerPayload(dealer.dealerKey));
+      const payload = JSON.stringify(await buildDealerPayload(dealer.dealerKey));
 
       // Diagnostic counts — verify photos source distribution per publish
       const _payloadParsed = JSON.parse(payload);
@@ -5568,7 +5585,7 @@ async function pushDealerInventoryToBackend(dealerKey, options = {}) {
   const token = (document.getElementById('publish-token')||{}).value?.trim() || cfg.token;
   if (!token) return { ok:false, reason:'Missing publish token' };
 
-  const payload = JSON.stringify(buildDealerPayload(dealerKey));
+  const payload = JSON.stringify(await buildDealerPayload(dealerKey));
   const res = await fetch(dealer.functionUrl, {
     method: 'POST',
     headers: {
