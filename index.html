@@ -5395,9 +5395,15 @@ function buildDealerPayload(dealerKey) {
     .filter(u => u.dealer === dealerKey && !u.sold)
     .map(u => {
       const key = getListingKey(u);
-      const photos = (PHOTO_STORE[key] || []).map(p => ({
-        url: p.dataUrl, name: p.name, fromUrl: p.fromUrl || false,
-      }));
+      const stored = PHOTO_STORE[key] || [];
+      // Prefer manually uploaded photos; fall back to feed photos from u.photos
+      const photos = stored.length
+        ? stored.map(p => ({ url: p.dataUrl, name: p.name, fromUrl: p.fromUrl || false }))
+        : (Array.isArray(u.photos) ? u.photos : []).map(p => ({
+            url: p.url || p.dataUrl || null,
+            name: p.name || null,
+            fromUrl: true,
+          })).filter(p => p.url);
       return {
         year: u.year, make: u.make, model: u.model,
         condition: u.condition, price: u.price, stock: u.stock,
@@ -5424,8 +5430,9 @@ function runPublishChecklist(dealerKey) {
     if (!u.dealer || u.dealer.trim() === '') missing.push('dealer');
     if (!u.category || u.category.trim() === '') missing.push('category');
     const key = getListingKey(u);
-    const photos = (PHOTO_STORE[key] || []);
-    if (photos.length === 0) missing.push('photo');
+    const stored = PHOTO_STORE[key] || [];
+    const feedPhotos = Array.isArray(u.photos) ? u.photos : [];
+    if (stored.length === 0 && feedPhotos.length === 0) missing.push('photo');
     if (missing.length > 0) {
       issues.push('* ' + [u.year,u.make,u.model].filter(Boolean).join(' ') + ' (' + (u.stock||'no stock') + ') missing: ' + missing.join(', '));
     }
@@ -5483,6 +5490,24 @@ async function publishDealerSites() {
   for (const dealer of dealersToPublish) {
     try {
       const payload = JSON.stringify(buildDealerPayload(dealer.dealerKey));
+
+      // Diagnostic counts — verify photos source distribution per publish
+      const _payloadParsed = JSON.parse(payload);
+      const _counts = {
+        dealer: dealer.name,
+        units: _payloadParsed.length,
+        fromPhotoStore: 0,
+        fromFeedFallback: 0,
+        zeroPhotos: 0,
+      };
+      _payloadParsed.forEach(unit => {
+        const key = getListingKey({ dealer: dealer.dealerKey, stock: unit.stock });
+        const stored = PHOTO_STORE[key] || [];
+        if (stored.length > 0) _counts.fromPhotoStore++;
+        else if (unit.photos && unit.photos.length > 0) _counts.fromFeedFallback++;
+        else _counts.zeroPhotos++;
+      });
+      console.log('[publish counts]', _counts);
 
       const res = await fetch(dealer.functionUrl, {
         method: 'POST',
