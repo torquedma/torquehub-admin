@@ -2848,7 +2848,7 @@ function copyLinks(key) {
     [u.year, u.make, u.model].filter(Boolean).join('-').toLowerCase().replace(/\s+/g, '-')
   );
 
-  const vdp = `https://hub.torquedma.com/vehicle.html?stock=${stock}&dealer=${dealer}`;
+  const vdp = `https://hub.torquedma.com/vehicle.html?stock=${stock}&src=fbbp_comment`;
   const finance = `https://hub.torquedma.com/finance.html?stock=${stock}&unit=${unitSlug}&price=${rawPrice}&src=listing`;
   const qr = `https://hub.torquedma.com/finance.html?stock=${stock}&unit=${unitSlug}&price=${rawPrice}&src=qr`;
 
@@ -2880,7 +2880,7 @@ function copyModalLink(type) {
   const dealer = encodeURIComponent(u.dealer || '');
   const price = String(u.price || '').replace(/[^0-9.]/g, '');
   const slug = encodeURIComponent([u.year, u.make, u.model].filter(Boolean).join('-').toLowerCase().replace(/\s+/g,'-'));
-  const vdp = 'https://hub.torquedma.com/vehicle.html?stock=' + stock + '&dealer=' + dealer;
+  const vdp = 'https://hub.torquedma.com/vehicle.html?stock=' + stock + '&src=fbbp_comment';
   const finance = 'https://hub.torquedma.com/finance.html?stock=' + stock + '&unit=' + slug + '&price=' + price + '&src=listing';
   const qr = 'https://hub.torquedma.com/finance.html?stock=' + stock + '&unit=' + slug + '&price=' + price + '&src=qr';
 
