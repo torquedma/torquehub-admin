@@ -1445,6 +1445,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field"><label class="edit-label">Year</label><input class="edit-input" id="new-year" type="text" placeholder="Year"></div>
         <div class="edit-field"><label class="edit-label">Make</label><input class="edit-input" id="new-make" type="text" placeholder="Make"></div>
         <div class="edit-field"><label class="edit-label">Model</label><input class="edit-input" id="new-model" type="text" placeholder="Model"></div>
+        <div class="edit-field"><label class="edit-label">Trim</label><input class="edit-input" id="new-trim" type="text" placeholder="e.g. XLT, Laramie, Limited"></div>
 
         <div class="edit-field"><label class="edit-label">Price</label><input class="edit-input" id="new-price" type="text" placeholder="e.g. $12,500"></div>
         <div class="edit-field"><label class="edit-label">Stock #</label><input class="edit-input" id="new-stock" type="text" placeholder="Stock #"></div>
@@ -4625,7 +4626,7 @@ function refreshAllViews() {
 
 function openAddListingModal() {
   // Reset text/number inputs
-  ['new-year','new-make','new-model','new-price','new-stock','new-days','new-vin',
+  ['new-year','new-make','new-model','new-trim','new-price','new-stock','new-days','new-vin',
    'new-mileage','new-engine','new-transmission','new-drivetrain',
    'new-video-url','new-description','new-subcategory',
    'new-engine-desc','new-trans-desc','new-notes'].forEach(id => {
@@ -4683,6 +4684,7 @@ function createListing() {
   const year = document.getElementById('new-year').value.trim();
   const make = document.getElementById('new-make').value.trim();
   const model = document.getElementById('new-model').value.trim();
+  const trim = document.getElementById('new-trim').value.trim();
   const stock = document.getElementById('new-stock').value.trim() || ('NEW-' + Date.now());
   const vin = document.getElementById('new-vin').value.trim().toUpperCase();
   const category = normalizeCategoryValue(document.getElementById('new-site-tag').value);
@@ -4696,7 +4698,7 @@ function createListing() {
   const stagedPhotos = NEW_LISTING_PHOTOS.map(p => ({ url: p.url || p.dataUrl, name: p.name }));
 
   const newUnit = {
-    year, make, model, dealer,
+    year, make, model, trim, dealer,
     condition: document.getElementById('new-condition').value || 'Used',
     price: document.getElementById('new-price').value.trim(),
     stock,
