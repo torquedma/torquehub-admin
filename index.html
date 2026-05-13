@@ -1561,6 +1561,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field"><label class="edit-label">Year</label><input class="edit-input" id="edit-year" type="text" placeholder="Year"></div>
         <div class="edit-field"><label class="edit-label">Make</label><input class="edit-input" id="edit-make" type="text" placeholder="Make"></div>
         <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:4px"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><label class="edit-label" style="margin:0">Model</label><button class="dx-btn" id="model-lock-btn" onclick="toggleModelLock()" style="font-size:11px;padding:2px 8px">Lock Model</button></div><div id="model-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px">Model Locked - feed sync will not overwrite</div><input class="edit-input" id="edit-model" type="text" placeholder="Model" style="width:100%"></div>
+        <div class="edit-field"><label class="edit-label">Trim</label><input class="edit-input" id="edit-trim" type="text" placeholder="e.g. XLT, Laramie, Limited"></div>
         <div class="edit-field"><label class="edit-label">Price</label><input class="edit-input" id="edit-price" type="text" placeholder="e.g. $12,500" onblur="formatPriceInput(this)" onfocus="unformatPriceInput(this)"></div>
         <div class="edit-field"><label class="edit-label">Stock #</label><input class="edit-input" id="edit-stock" type="text" placeholder="Stock #"></div>
         <div class="edit-field"><label class="edit-label">Days Listed</label><input class="edit-input" id="edit-days" type="text" placeholder="Days"></div>
@@ -2386,6 +2387,7 @@ function openPhotoModal(listingKey) {
   document.getElementById("edit-year").value = u.year || "";
   document.getElementById("edit-make").value = u.make || "";
   document.getElementById("edit-model").value = u.model || "";
+  document.getElementById("edit-trim").value = u.trim || "";
   const rawPrice = String(u.price || '').replace(/[^0-9.]/g, '');
   document.getElementById("edit-price").value = rawPrice ? "$" + Number(rawPrice).toLocaleString() : "";
   const stockVal = u.stock || "";
@@ -2646,6 +2648,7 @@ function saveListingEdits() {
   u.year      = document.getElementById("edit-year").value.trim();
   u.make      = document.getElementById("edit-make").value.trim();
   u.model     = document.getElementById("edit-model").value.trim();
+  u.trim      = document.getElementById("edit-trim").value.trim();
   u.price     = document.getElementById("edit-price").value.trim();
   u.stock     = document.getElementById("edit-stock").value.trim();
 
