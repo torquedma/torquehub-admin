@@ -5427,7 +5427,7 @@ async function buildDealerPayload(dealerKey) {
             fromUrl: true,
           })).filter(p => p.url);
       return {
-        year: u.year, make: u.make, model: u.model,
+        year: u.year, make: u.make, model: u.model, trim: u.trim || null,
         condition: u.condition, price: u.price, stock: u.stock,
         days: u.days, fuel: u.fuel || null, vin: u.vin || null,
         description: u.description || null, color: u.color || null,
