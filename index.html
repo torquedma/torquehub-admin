@@ -4568,10 +4568,16 @@ function settingsAddDealer() {
 function settingsRemoveDealer(i) {
   const d = DEALERS[i];
   const units = INVENTORY.filter(u => u.dealer === d.name).length;
-  const msg = units > 0
-    ? `Remove "${d.name}"? This will also remove their ${units} listing${units !== 1 ? 's' : ''} from inventory.`
-    : `Remove "${d.name}"?`;
-  if (!confirm(msg)) return;
+  const detail = units > 0
+    ? `This will also remove their ${units} listing${units !== 1 ? 's' : ''} from inventory.`
+    : `No inventory rows are attached to this dealer.`;
+  const input = window.prompt(
+    `DANGER: Remove dealer "${d.name}".\n\n` +
+    `${detail}\n\n` +
+    `This cannot be undone from the admin.\n\n` +
+    `Type "${d.name}" to continue:`
+  );
+  if (input !== d.name) return;
   if (units > 0) {
     // Remove from INVENTORY array in place
     for (let j = INVENTORY.length - 1; j >= 0; j--) {
