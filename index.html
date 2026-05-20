@@ -4431,7 +4431,19 @@ function confirmMarkSold() {
   closeSaleModal();
   saveAppSession();
   if (u.stock) {
-    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+u.stock,{method:'DELETE',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg'}}).then(r=>console.log('Deleted:',u.stock));
+    const parsedSalePrice = parseFloat(String(u.salePrice).replace(/[^0-9.]/g, ''));
+    const salePriceNum = Number.isFinite(parsedSalePrice) ? parsedSalePrice : null;
+    const soldAtIso = u.saleDate ? new Date(u.saleDate + 'T12:00:00Z').toISOString() : new Date().toISOString();
+    const payload = {
+      sold: true,
+      sold_type: u.saleType,
+      sold_price: u.salePrice || null,
+      sale_price: salePriceNum,
+      sold_date: u.saleDate || null,
+      sold_at: soldAtIso,
+      public_sold: !!u.keepPublic
+    };
+    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+encodeURIComponent(u.stock)+'&dealer=eq.'+encodeURIComponent(u.dealer),{method:'PATCH',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(payload)}).then(r=>{if(!r.ok)r.text().then(t=>console.warn('Mark sold failed:',u.stock,r.status,t));else console.log('Marked sold:',u.stock,r.status);}).catch(err=>console.warn('Mark sold error:',u.stock,err.message));
   }
   renderInventory();
   renderCategoryWidget();
@@ -4444,7 +4456,16 @@ function unmarkSold(key) {
   u.keepPublic = false;
   saveAppSession();
   if (u.stock) {
-    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+u.stock,{method:'DELETE',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg'}}).then(r=>console.log('Deleted:',u.stock));
+    const payload = {
+      sold: false,
+      sold_type: null,
+      sold_price: null,
+      sale_price: null,
+      sold_date: null,
+      sold_at: null,
+      public_sold: false
+    };
+    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+encodeURIComponent(u.stock)+'&dealer=eq.'+encodeURIComponent(u.dealer),{method:'PATCH',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(payload)}).then(r=>{if(!r.ok)r.text().then(t=>console.warn('Unmark sold failed:',u.stock,r.status,t));else console.log('Unmarked sold:',u.stock,r.status);}).catch(err=>console.warn('Unmark sold error:',u.stock,err.message));
   }
   renderInventory();
   renderCategoryWidget();
