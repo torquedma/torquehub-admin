@@ -4597,7 +4597,14 @@ function settingsClearPhotos() {
 }
 
 function settingsResetInventory() {
-  if (!confirm(`Remove all ${INVENTORY.length} listings from inventory? This cannot be undone. Photos will not be affected.`)) return;
+  const expected = 'RESET INVENTORY';
+  const input = window.prompt(
+    `DANGER: This will remove all ${INVENTORY.length} listings from inventory.\n\n` +
+    `This cannot be undone from the admin. Photos will not be affected.\n\n` +
+    `Type "${expected}" to continue:`
+  );
+
+  if (input !== expected) return;
   INVENTORY.length = 0;
   saveAppSession();
   refreshDealerCategoryMap();
