@@ -2623,7 +2623,7 @@ async function saveListingEdits() {
       year:                    document.getElementById('edit-year').value.trim(),
       make:                    document.getElementById('edit-make').value.trim(),
       model:                   document.getElementById('edit-model').value.trim(),
-      trim:                    document.getElementById('edit-trim').value.trim(),
+      trim:                    document.getElementById('edit-trim').value.trim() || document.getElementById('edit-subcategory').value.trim() || '',
       price:                   document.getElementById('edit-price').value.trim(),
       days:                    document.getElementById('edit-days').value.trim() || '0',
       condition:               document.getElementById('edit-condition').value || 'Used',
@@ -2811,7 +2811,7 @@ async function saveListingEdits() {
         'Prefer': 'return=minimal'
       },
       body: JSON.stringify({
-        year: u.year, make: u.make, model: u.model, trim: u.trim, price: u.price,
+        year: u.year, make: u.make, model: u.model, trim: u.trim || u.subcategory || '', price: u.price,
         stock: u.stock, days: u.days, condition: u.condition, fuel: u.fuel,
         mileage: u.mileage, engine: u.engine, transmission: u.transmission,
         drivetrain: u.drivetrain, engine_description: u.engine_description,
