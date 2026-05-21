@@ -5643,7 +5643,7 @@ async function loadApp() {
     let from = 0;
     while (true) {
       const iRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,raw_description,description_source&order=dealer,stock&offset=${from}&limit=1000`,
+        `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,trim,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,raw_description,description_source&order=dealer,stock&offset=${from}&limit=1000`,
         { headers }
       );
       if (!iRes.ok) break;
