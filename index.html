@@ -2006,6 +2006,11 @@ async function pushPhotoToCurrentListing(photo) {
 
 let currentListingKey = null;
 
+// State carried from create-mode pre-menu through to save.
+// Holds dealer (locked in pre-menu, not editable in modal) + tempKey for save-time INSERT.
+// Null in edit mode. Set by openCreateListingModal, cleared by closeModal or after successful create-save.
+let CREATE_MODE_CONTEXT = null;
+
 // ---- NAVIGATION ----
 function showView(viewName, navEl, skipHistory) {
   const validViews = ["dashboard","dealers","inventory","settings","sold","analytics","leads","contacts"];
@@ -2983,6 +2988,7 @@ function closeModal() {
     history.pushState({ view: 'inventory' }, '', '/inventory');
   }
   currentListingKey = null;
+  CREATE_MODE_CONTEXT = null;
   renderInventory(); // refresh photo badges
 }
 
@@ -4841,6 +4847,7 @@ function openCreateListingModal(prefillSource) {
 
   // Establish create-mode state in the existing modal infrastructure
   currentListingKey = tempKey;
+  CREATE_MODE_CONTEXT = { tempKey, dealer: u.dealer, category: u.category };
   PHOTO_STORE[tempKey] = [];
   PHOTO_LOADED[tempKey] = true;
 
