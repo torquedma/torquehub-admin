@@ -1412,6 +1412,44 @@ document.querySelector('.sidebar').classList.toggle('open');
 </div>
 
 
+<!-- ===================== CREATE LISTING PRE-MENU ===================== -->
+<div class="modal-overlay" id="create-listing-pre-menu">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Create New Listing</div>
+        <div class="modal-sub">Choose dealer and category. VIN is optional.</div>
+      </div>
+      <button class="modal-close" onclick="closeCreateListingPreMenu()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="edit-form" style="grid-template-columns: 1fr; gap: 14px">
+        <div class="edit-field">
+          <label class="edit-label">Dealer <span style="color:#dc2626">*</span></label>
+          <select class="edit-input" id="pre-dealer">
+            <option value="">&mdash; Choose dealer &mdash;</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">Category <span style="color:#dc2626">*</span></label>
+          <select class="edit-input" id="pre-category">
+            <option value="">&mdash; Choose category &mdash;</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">VIN <span style="color:#94a3b8;font-weight:400">(optional)</span></label>
+          <input class="edit-input" id="pre-vin" type="text" placeholder="17 characters, decoded if available" maxlength="17" style="text-transform:uppercase">
+          <div class="decode-note" id="pre-vin-note">If provided, VIN will be decoded to pre-fill year, make, model, fuel.</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end;gap:10px">
+      <button class="modal-cancel" onclick="closeCreateListingPreMenu()">Cancel</button>
+      <button class="topbar-btn btn-primary" id="pre-continue-btn" onclick="continueFromPreMenu()" style="padding:8px 20px">Continue &rarr;</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== ADD LISTING MODAL ===================== -->
 <div class="modal-overlay" id="add-listing-modal">
   <div class="modal" style="max-width:820px">
@@ -4665,6 +4703,103 @@ function refreshAllViews() {
   renderDashboardStats();
   if (typeof renderCategoryWidget === 'function') renderCategoryWidget();
   if (typeof renderQuickLinks === 'function') renderQuickLinks();
+}
+
+// ===================== CREATE LISTING PRE-MENU (debt #29 refactor) =====================
+// Canonical category list — must match admin allCats and hub MAIN_CATS.
+// No UI should create a category the rest of the system cannot recognize.
+const LISTING_CATEGORIES = ['Trucks', 'Trailers', 'Construction', 'Farm', 'Landscape', 'Other'];
+
+function openCreateListingPreMenu() {
+  // Populate dealer dropdown from canonical DEALERS array
+  const dealerSel = document.getElementById('pre-dealer');
+  dealerSel.innerHTML = '<option value="">— Choose dealer —</option>' +
+    DEALERS.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+
+  // Populate category dropdown from canonical LISTING_CATEGORIES
+  const catSel = document.getElementById('pre-category');
+  catSel.innerHTML = '<option value="">— Choose category —</option>' +
+    LISTING_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  // Reset VIN field and note
+  document.getElementById('pre-vin').value = '';
+  const noteEl = document.getElementById('pre-vin-note');
+  if (noteEl) noteEl.textContent = 'If provided, VIN will be decoded to pre-fill year, make, model, fuel.';
+
+  // Reset Continue button state
+  const btn = document.getElementById('pre-continue-btn');
+  if (btn) { btn.textContent = 'Continue →'; btn.disabled = false; }
+
+  // Open modal and focus dealer
+  document.getElementById('create-listing-pre-menu').classList.add('open');
+  setTimeout(() => dealerSel.focus(), 50);
+}
+
+function closeCreateListingPreMenu() {
+  document.getElementById('create-listing-pre-menu').classList.remove('open');
+}
+
+async function continueFromPreMenu() {
+  const dealer = document.getElementById('pre-dealer').value;
+  const category = document.getElementById('pre-category').value;
+  const vin = document.getElementById('pre-vin').value.trim().toUpperCase();
+
+  if (!dealer) { alert('Please choose a dealer.'); return; }
+  if (!category) { alert('Please choose a category.'); return; }
+
+  const prefillSource = { dealer, category, vin, decoded: null };
+
+  // Optional VIN decode — advisory only, user can edit anything in next modal
+  if (vin) {
+    const btn = document.getElementById('pre-continue-btn');
+    btn.textContent = 'Decoding VIN…';
+    btn.disabled = true;
+    try {
+      prefillSource.decoded = await decodeVinToObject(vin);
+    } catch (err) {
+      console.warn('Pre-menu VIN decode failed:', err.message);
+      // Continue without decoded data — user can fill manually
+    }
+    btn.textContent = 'Continue →';
+    btn.disabled = false;
+  }
+
+  closeCreateListingPreMenu();
+  openCreateListingModal(prefillSource);
+}
+
+// Read-only / object-returning VIN decoder.
+// Sibling to decodeVinAndFill() which writes to DOM.
+// Returns { year, make, model, fuel, engine, transmission, drivetrain } or null.
+async function decodeVinToObject(vin) {
+  const cleanVin = String(vin || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  if (!cleanVin || cleanVin.length < 11) return null;
+  const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(cleanVin)}?format=json`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const row = (data && data.Results && data.Results[0]) || null;
+    if (!row) return null;
+    return {
+      year: row.ModelYear || '',
+      make: row.Make || '',
+      model: row.Model || '',
+      fuel: row.FuelTypePrimary || '',
+      engine: row.DisplacementL ? (row.DisplacementL + 'L') : '',
+      transmission: row.TransmissionStyle || '',
+      drivetrain: row.DriveType || ''
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// STUB — Step 3 of debt #29 refactor will replace this with the real opener
+// that uses populateEditForm(u) on the photo-modal in create mode.
+function openCreateListingModal(prefillSource) {
+  console.log('[step 1 stub] openCreateListingModal called with prefillSource:', prefillSource);
+  alert('Pre-menu OK. Next step (3) will open the unified listing modal here.\n\n' + JSON.stringify(prefillSource, null, 2));
 }
 
 function openAddListingModal() {
