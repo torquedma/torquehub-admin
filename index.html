@@ -1974,7 +1974,12 @@ async function pushPhotoToCurrentListing(photo) {
   let finalUrl = source;
   let storage = photo.storage;
 
-  if (source && typeof source === 'string' && !isSupabaseStorageUrl(source)) {
+  // CREATE MODE (TMP- key): defer storage upload until save time.
+  // Photos stage as data URLs in PHOTO_STORE[tempKey]. Step 4c in debt #29
+  // refactor uploads them after stock is known and INSERT happens.
+  const isCreateMode = currentListingKey && currentListingKey.startsWith('TMP-');
+
+  if (!isCreateMode && source && typeof source === 'string' && !isSupabaseStorageUrl(source)) {
     try {
       finalUrl = await uploadPhotoViaNetlify(source, dealerSlug, stockNum, PHOTO_STORE[currentListingKey].length);
       storage = 'supabase';
