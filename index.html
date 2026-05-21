@@ -181,6 +181,7 @@
   .cat-tag { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-right: 3px; margin-bottom: 2px; white-space: nowrap; }
   .cat-trucks { background: #dbeafe; color: #1d4ed8; }
   .cat-construction { background: #fef3c7; color: #92400e; }
+  .cat-landscape { background: #ccfbf1; color: #115e59; }
   .cat-farm { background: #dcfce7; color: #166534; }
   .inv-count { font-family: "Barlow Condensed", sans-serif; font-weight: 700; font-size: 18px; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
@@ -597,6 +598,7 @@ document.querySelector('.sidebar').classList.toggle('open');
             <div class="filter-chip active" onclick="filterDealerTable(&#39;All&#39;,this)">All</div>
             <div class="filter-chip" onclick="filterDealerTable(&#39;Trucks&#39;,this)">Trucks</div>
             <div class="filter-chip" onclick="filterDealerTable(&#39;Construction&#39;,this)">Construction</div>
+            <div class="filter-chip" onclick="filterDealerTable(&#39;Landscape&#39;,this)">Landscape</div>
             <div class="filter-chip" onclick="filterDealerTable(&#39;Farm&#39;,this)">Farm</div>
             <div class="filter-chip" onclick="filterDealerTable(&#39;Trailers&#39;,this)">Trailers</div>
           </div>
@@ -670,6 +672,7 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="filter-chip active" onclick="setDealerFilter(&#39;All&#39;,this)">All</div>
           <div class="filter-chip" onclick="setDealerFilter(&#39;Trucks&#39;,this)">Trucks</div>
           <div class="filter-chip" onclick="setDealerFilter(&#39;Construction&#39;,this)">Construction</div>
+          <div class="filter-chip" onclick="setDealerFilter(&#39;Landscape&#39;,this)">Landscape</div>
           <div class="filter-chip" onclick="setDealerFilter(&#39;Farm&#39;,this)">Farm</div>
           <div class="filter-chip" onclick="setDealerFilter(&#39;Trailers&#39;,this)">Trailers</div>
         </div>
@@ -741,6 +744,7 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="filter-chip" onclick="setInvFeaturedFilter(this)" style="border-color:#f59e0b;color:#f59e0b">⭐ Featured</div>
           <div class="filter-chip" onclick="setInvCatFilter(&#39;Trucks&#39;,this)">Trucks</div>
           <div class="filter-chip" onclick="setInvCatFilter(&#39;Construction&#39;,this)">Construction</div>
+          <div class="filter-chip" onclick="setInvCatFilter(&#39;Landscape&#39;,this)">Landscape</div>
           <div class="filter-chip" onclick="setInvCatFilter(&#39;Farm&#39;,this)">Farm</div>
           <div class="filter-chip" onclick="setInvCatFilter(&#39;Trailers&#39;,this)">Trailers</div>
           <div class="filter-chip" onclick="setInvCatFilter(&#39;Other&#39;,this)">Other</div>
@@ -1090,6 +1094,7 @@ document.querySelector('.sidebar').classList.toggle('open');
             <select class="search-input" id="settings-new-dealer-cat" style="flex:0;width:auto;padding:7px 10px">
               <option value="Trucks">Trucks</option>
               <option value="Construction">Construction</option>
+              <option value="Landscape">Landscape</option>
               <option value="Farm">Farm</option>
               <option value="Trailers">Trailers</option>
             </select>
@@ -1428,6 +1433,7 @@ document.querySelector('.sidebar').classList.toggle('open');
           <select class="edit-input" id="new-site-tag">
             <option value="Trucks">Trucks</option>
             <option value="Construction">Construction</option>
+            <option value="Landscape">Landscape</option>
             <option value="Farm">Farm</option>
             <option value="Trailers">Trailers</option>
             <option value="Other">Other</option>
@@ -1594,6 +1600,7 @@ document.querySelector('.sidebar').classList.toggle('open');
           <select class="edit-input" id="edit-site-tag">
             <option value="Trucks">Trucks</option>
             <option value="Construction">Construction</option>
+            <option value="Landscape">Landscape</option>
             <option value="Farm">Farm</option>
             <option value="Trailers">Trailers</option>
             <option value="Other">Other</option>
@@ -1811,7 +1818,7 @@ document.querySelector('.sidebar').classList.toggle('open');
 let DEALERS = [];
 let INVENTORY = [];
 
-const CAT_ICONS = { Trucks: "🚚", Construction: "🏗️", Farm: "🌾", Trailers: "🚛" };
+const CAT_ICONS = { Trucks: "🚚", Construction: "🏗️", Farm: "🌾", Trailers: "🚛", Landscape: "🌳" };
 const DEALER_CAT_MAP = {};
 const DEALER_CONTACT = {
   'Davenport Inc.':                 { name: 'Davenport Motors',                phone: '252-809-2172' },
@@ -2070,6 +2077,7 @@ function getFilteredDealers() {
 const CAT_DISPLAY = {
   "Trucks": "Trucks",
   "Construction": "Construction",
+  "Landscape": "Landscape",
   "Farm": "Farm",
   "Trailers": "Trailers",
   "Other": "Other",
@@ -2077,6 +2085,7 @@ const CAT_DISPLAY = {
 const CAT_COLORS = {
   "Trucks": "#2563eb",
   "Construction": "#f59e0b",
+  "Landscape": "#14b8a6",
   "Farm": "#16a34a",
   "Trailers": "#7c3aed",
 };
@@ -2100,7 +2109,7 @@ function renderCategoryWidget() {
   });
 
   // Always show these categories in this order
-  const allCats = ['Trucks', 'Construction', 'Farm', 'Trailers'];
+  const allCats = ['Trucks', 'Construction', 'Farm', 'Trailers', 'Landscape'];
 
   const maxCount = Math.max(...allCats.map(c => catCounts[c] || 0), 1);
 
