@@ -4909,51 +4909,6 @@ function openCreateListingModal(prefillSource) {
   }, 50);
 }
 
-function openAddListingModal() {
-  // Reset text/number inputs
-  ['new-year','new-make','new-model','new-trim','new-price','new-stock','new-days','new-vin',
-   'new-mileage','new-engine','new-transmission','new-drivetrain',
-   'new-video-url','new-description','new-subcategory',
-   'new-engine-desc','new-trans-desc','new-notes'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-
-  // Reset selects
-  const siteTag = document.getElementById('new-site-tag');
-  if (siteTag) siteTag.value = 'Trucks';
-  const cond = document.getElementById('new-condition');
-  if (cond) cond.value = 'Used';
-  const mileageUnit = document.getElementById('new-mileage-unit');
-  if (mileageUnit) mileageUnit.value = 'mi';
-  const transType = document.getElementById('new-transmission-type');
-  if (transType) transType.value = '';
-  const fuel = document.getElementById('new-fuel');
-  if (fuel) fuel.value = 'Diesel';
-  const prodStatus = document.getElementById('new-prod-status');
-  if (prodStatus) prodStatus.value = '';
-  const featured = document.getElementById('new-featured');
-  if (featured) featured.checked = false;
-
-  // Reset status toggle
-  newListingStatus = 'published';
-  setNewListingStatus('published');
-
-  // Reset photos
-  NEW_LISTING_PHOTOS = [];
-  renderNewListingPhotoGrid();
-
-  // Populate dealer dropdown and pre-select active filter
-  const dealerSel = document.getElementById('new-dealer');
-  if (dealerSel) {
-    dealerSel.innerHTML = DEALERS.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
-    const preferred = (invDealerFilter && DEALERS.some(d => d.name === invDealerFilter))
-      ? invDealerFilter : (DEALERS[0] ? DEALERS[0].name : '');
-    if (preferred) dealerSel.value = preferred;
-  }
-
-  document.getElementById('add-listing-modal').classList.add('open');
-}
 
 function closeAddListingModal() {
   document.getElementById('add-listing-modal').classList.remove('open');
