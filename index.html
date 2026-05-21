@@ -4802,11 +4802,66 @@ async function decodeVinToObject(vin) {
   }
 }
 
-// STUB — Step 3 of debt #29 refactor will replace this with the real opener
-// that uses populateEditForm(u) on the photo-modal in create mode.
+// Opens the unified listing modal (photo-modal) in CREATE mode.
+// Uses populateEditForm(u) with an empty/prefilled unit object so create and
+// edit share the exact same form code path. Save behavior branches in
+// saveListingEdits — step 4 of debt #29 refactor adds the INSERT branch.
 function openCreateListingModal(prefillSource) {
-  console.log('[step 1 stub] openCreateListingModal called with prefillSource:', prefillSource);
-  alert('Pre-menu OK. Next step (3) will open the unified listing modal here.\n\n' + JSON.stringify(prefillSource, null, 2));
+  const ps = prefillSource || {};
+  const decoded = ps.decoded || {};
+
+  // Generate a temp listing key that won't collide with real keys.
+  // Real keys look like stock numbers (or fallback "NEW-..." from old flow).
+  // Temp keys start with "TMP-" so save logic can detect create mode unambiguously.
+  const tempKey = 'TMP-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+  // Build an empty unit, then layer pre-menu context + optional VIN decode onto it.
+  const u = {
+    dealer:        ps.dealer || '',
+    category:      ps.category || 'Trucks',
+    vin:           ps.vin || '',
+    year:          decoded.year || '',
+    make:          decoded.make || '',
+    model:         decoded.model || '',
+    fuel:          decoded.fuel || '',
+    engine:        decoded.engine || '',
+    transmission:  decoded.transmission || '',
+    drivetrain:    decoded.drivetrain || '',
+    stock:         '',
+    status:        'published',
+    sold:          false,
+    featured:      0,
+    photos:        []
+  };
+
+  // Establish create-mode state in the existing modal infrastructure
+  currentListingKey = tempKey;
+  PHOTO_STORE[tempKey] = [];
+  PHOTO_LOADED[tempKey] = true;
+
+  // Modal header — title reflects decoded values if present, else generic
+  const headerYMM = [u.year, u.make, u.model].filter(Boolean).join(' ').trim();
+  document.getElementById("modal-title").textContent = headerYMM || 'New Listing';
+  document.getElementById("modal-sub").textContent = `Stock # — · ${u.dealer}`;
+
+  // Populate the form with the constructed unit
+  populateEditForm(u);
+
+  // Reset photo widget state for a fresh listing
+  document.getElementById("url-input").value = "";
+  if (typeof resetProgress === 'function') resetProgress();
+  if (typeof renderPhotoGrid === 'function') renderPhotoGrid();
+
+  // Open the modal
+  document.getElementById("photo-modal").classList.add("open");
+
+  // Disable prev/next nav in create mode — there is no neighboring listing
+  setTimeout(function() {
+    const prevBtn = document.getElementById("modal-prev-btn");
+    const nextBtn = document.getElementById("modal-next-btn");
+    if (prevBtn) prevBtn.disabled = true;
+    if (nextBtn) nextBtn.disabled = true;
+  }, 50);
 }
 
 function openAddListingModal() {
