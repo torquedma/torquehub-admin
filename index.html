@@ -2704,7 +2704,168 @@ function toggleFeatured(stock, val) {
   });
 }
 
-function saveListingEdits() {
+async function saveListingEdits() {
+  // ---- INSERT branch: first save in create mode ----
+  if (CREATE_MODE_CONTEXT) {
+    const stock = document.getElementById('edit-stock').value.trim();
+    if (!stock) { alert('Stock # is required to create a listing.'); return; }
+
+    const { tempKey, dealer } = CREATE_MODE_CONTEXT;
+    const dealerSlug = String(dealer).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const stockNum   = String(stock).replace(/[^a-z0-9-]/gi, '-');
+
+    // Upload any staged data-URL photos; drop failures gracefully
+    const staged = PHOTO_STORE[tempKey] || [];
+    const uploadedPhotos = [];
+    const uploadFailures = [];
+    for (let i = 0; i < staged.length; i++) {
+      const p = staged[i];
+      const source = p.url || p.dataUrl;
+      if (typeof source === 'string' && source.startsWith('data:')) {
+        try {
+          const storageUrl = await uploadPhotoViaNetlify(source, dealerSlug, stockNum, uploadedPhotos.length);
+          uploadedPhotos.push({ ...p, url: storageUrl, dataUrl: storageUrl, type: 'url', fromUrl: false, storage: 'supabase' });
+        } catch (err) {
+          console.warn('saveListingEdits INSERT photo upload failed:', p.name, err.message);
+          uploadFailures.push(p.name || ('photo ' + (i + 1)));
+        }
+      } else if (typeof source === 'string' && source.includes('.supabase.co/storage/')) {
+        uploadedPhotos.push({ ...p });
+      } else {
+        uploadFailures.push(p.name || ('photo ' + (i + 1)));
+      }
+    }
+    if (staged.length > 0 && uploadedPhotos.length === 0) {
+      alert('All ' + staged.length + ' photo uploads failed. Listing not created. Check your connection and try again.');
+      return;
+    }
+    if (uploadFailures.length) {
+      alert(uploadFailures.length + ' photo upload' + (uploadFailures.length === 1 ? '' : 's') + ' failed. The listing will be created with the successfully uploaded photos only.');
+    }
+
+    const transType = document.getElementById('edit-transmission-type')?.value || '';
+    const transText = document.getElementById('edit-transmission').value.trim();
+    const category  = normalizeCategoryValue(document.getElementById('edit-site-tag').value);
+
+    const newUnit = {
+      dealer,
+      stock,
+      year:                    document.getElementById('edit-year').value.trim(),
+      make:                    document.getElementById('edit-make').value.trim(),
+      model:                   document.getElementById('edit-model').value.trim(),
+      trim:                    document.getElementById('edit-trim').value.trim(),
+      price:                   document.getElementById('edit-price').value.trim(),
+      days:                    document.getElementById('edit-days').value.trim() || '0',
+      condition:               document.getElementById('edit-condition').value || 'Used',
+      fuel:                    document.getElementById('edit-fuel').value.trim(),
+      mileage:                 document.getElementById('edit-mileage').value.trim(),
+      engine:                  document.getElementById('edit-engine').value.trim(),
+      transmission:            transType && transType !== 'Other' ? (transText ? transType + ' - ' + transText : transType) : transText,
+      drivetrain:              document.getElementById('edit-drivetrain').value.trim(),
+      engine_description:      document.getElementById('edit-engine-desc').value.trim(),
+      transmission_description:document.getElementById('edit-trans-desc').value.trim(),
+      video_url:               document.getElementById('edit-video-url').value.trim(),
+      vin:                     document.getElementById('edit-vin').value.trim(),
+      category,
+      featured:                document.getElementById('edit-featured').checked ? 1 : 0,
+      subcategory:             document.getElementById('edit-subcategory').value.trim(),
+      description:             document.getElementById('edit-description').value.trim(),
+      notes:                   document.getElementById('edit-notes').value.trim(),
+      prod_status:             document.getElementById('edit-prod-status').value || '',
+      status:                  currentEditStatus,
+      photos:                  uploadedPhotos.map(p => ({ url: p.url || p.dataUrl, name: p.name })),
+      sold:                    false
+    };
+
+    INVENTORY.unshift(newUnit);
+
+    const realKey = getListingKey(newUnit);
+    PHOTO_STORE[realKey] = uploadedPhotos;
+    delete PHOTO_STORE[tempKey];
+
+    if (stock) LISTING_CAT_OVERRIDES[stock] = category;
+    LISTING_CAT_OVERRIDES[realKey] = category;
+    saveListingCatOverrides();
+    saveAppSession();
+
+    CREATE_MODE_CONTEXT = null;
+    currentListingKey   = realKey;
+
+    // Transition modal to edit mode
+    document.getElementById('modal-title').textContent = [newUnit.year, newUnit.make, newUnit.model].filter(Boolean).join(' ') || 'New Listing';
+    document.getElementById('modal-sub').textContent   = `Stock #${stock} · ${dealer}`;
+    const prevBtn = document.getElementById('modal-prev-btn');
+    const nextBtn = document.getElementById('modal-next-btn');
+    if (prevBtn) prevBtn.disabled = false;
+    if (nextBtn) nextBtn.disabled = false;
+
+    // POST to Supabase
+    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':        SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Prefer':        'return=representation'
+      },
+      body: JSON.stringify([{
+        stock:                    newUnit.stock,
+        dealer:                   newUnit.dealer,
+        year:                     newUnit.year,
+        make:                     newUnit.make,
+        model:                    newUnit.model,
+        trim:                     newUnit.trim,
+        price:                    newUnit.price,
+        days:                     newUnit.days,
+        condition:                newUnit.condition,
+        fuel:                     newUnit.fuel,
+        mileage:                  newUnit.mileage,
+        engine:                   newUnit.engine,
+        engine_description:       newUnit.engine_description,
+        transmission:             newUnit.transmission,
+        transmission_description: newUnit.transmission_description,
+        drivetrain:               newUnit.drivetrain,
+        video_url:                newUnit.video_url,
+        vin:                      newUnit.vin,
+        category:                 newUnit.category,
+        subcategory:              newUnit.subcategory,
+        featured:                 newUnit.featured,
+        description:              newUnit.description,
+        notes:                    newUnit.notes,
+        prod_status:              newUnit.prod_status,
+        status:                   newUnit.status,
+        photos:                   newUnit.photos,
+        sold:                     false
+      }])
+    }).then(async r => {
+      const text = await r.text();
+      if (!r.ok) {
+        console.error('[saveListingEdits INSERT] Supabase error:', r.status, text);
+        alert('Listing created locally but Supabase save failed (' + r.status + '): ' + text.slice(0, 200));
+        return;
+      }
+      try {
+        const data = JSON.parse(text);
+        if (data && data[0] && data[0].id) newUnit.id = data[0].id;
+      } catch (e) { /* non-JSON body, ignore */ }
+      console.log('[saveListingEdits INSERT] Saved to Supabase — stock:', stock);
+    }).catch(err => {
+      console.error('[saveListingEdits INSERT] Network error:', err.message);
+      alert('Network error saving listing: ' + err.message);
+    });
+
+    renderInventory();
+    renderDealerTable();
+    renderDashboardStats();
+    const msg = document.getElementById('edit-saved-msg');
+    msg.classList.add('show');
+    setTimeout(() => msg.classList.remove('show'), 2500);
+    const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === dealer);
+    if (dealerPub) pushDealerInventoryToBackend(dealer).catch(err => console.warn('Auto-publish failed:', err.message));
+    return;
+  }
+  // ---- end INSERT branch ----
+
   const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
   if (!u) return;
 
