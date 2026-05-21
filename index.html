@@ -2418,20 +2418,11 @@ function renderQuickLinks() {
   </div>`;
 }
 
-// ===================== PHOTO MODAL =====================
-
-function openPhotoModal(listingKey) {
-  const u = INVENTORY.find(u => getListingKey(u) === listingKey);
-  if (!u) return;
-
-  currentListingKey = listingKey;
-  if (u) u._originalStock = u.stock;
-  if (!PHOTO_STORE[listingKey]) PHOTO_STORE[listingKey] = [];
-
-  document.getElementById("modal-title").textContent = `${u.year} ${u.make} ${u.model}`;
-  document.getElementById("modal-sub").textContent = `${u.featured ? "⭐ Featured · " : ""}Stock #${u.stock || "N/A"} · ${u.dealer}`;
-
-  // Populate edit fields
+// Populates all edit-form fields from a unit object.
+// Extracted from openPhotoModal during debt #29 refactor so create-mode
+// can populate the same form with an empty/prefilled unit.
+// Zero behavior change for edit mode — code is byte-identical, just relocated.
+function populateEditForm(u) {
   document.getElementById("edit-year").value = u.year || "";
   document.getElementById("edit-make").value = u.make || "";
   document.getElementById("edit-model").value = u.model || "";
@@ -2478,6 +2469,22 @@ function openPhotoModal(listingKey) {
   if (dxBtn) { dxBtn.textContent = u.dx_locked ? "DX Locked" : "Lock DX"; dxBtn.style.background = u.dx_locked ? "#d1fae5" : ""; dxBtn.style.color = u.dx_locked ? "#065f46" : ""; }
   setListingStatus(u.status || 'published');
   document.getElementById("edit-saved-msg").classList.remove("show");
+}
+
+// ===================== PHOTO MODAL =====================
+
+function openPhotoModal(listingKey) {
+  const u = INVENTORY.find(u => getListingKey(u) === listingKey);
+  if (!u) return;
+
+  currentListingKey = listingKey;
+  if (u) u._originalStock = u.stock;
+  if (!PHOTO_STORE[listingKey]) PHOTO_STORE[listingKey] = [];
+
+  document.getElementById("modal-title").textContent = `${u.year} ${u.make} ${u.model}`;
+  document.getElementById("modal-sub").textContent = `${u.featured ? "⭐ Featured · " : ""}Stock #${u.stock || "N/A"} · ${u.dealer}`;
+
+  populateEditForm(u);
 
   document.getElementById("url-input").value = "";
   resetProgress();
