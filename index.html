@@ -543,7 +543,6 @@ document.querySelector('.sidebar').classList.toggle('open');
     </div>
     <div class="topbar-right">
       <button class="topbar-btn btn-primary" onclick="openCreateListingPreMenu()">+ Add Listing</button>
-      <button class="topbar-btn" onclick="pasteAndCreateListing()" style="background:#334155;color:#fff;border:none" title="Paste CFS data and create new listing">📋 Paste &amp; Add</button>
       <button class="topbar-btn btn-ghost" onclick="invDealerFilter=&#39;&#39;;showView(&#39;inventory&#39;, document.querySelectorAll(&#39;.nav-item&#39;)[2])">All Inventory</button>
       <button class="topbar-btn btn-primary" id="publish-btn" onclick="publishDealerSites()" title="Push live inventory to dealer websites"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg> Publish Inventory</button>
     </div>
@@ -1576,7 +1575,6 @@ document.querySelector('.sidebar').classList.toggle('open');
       <div class="photo-import-section">
         <div class="photo-import-row">
           <button class="paste-btn" id="paste-btn" onclick="pastePhotosFromClipboard()" style="flex:1">📋 Paste</button>
-          <button class="paste-btn" id="paste-create-btn" onclick="pasteAndCreateListing()" style="flex:1;background:#334155;color:#fff;border-color:#334155" title="Paste CFS data and create a new listing">📋 Paste & Add</button>
         </div>
         <div class="upload-row">
           <label class="upload-btn-label" for="file-upload-input">
@@ -3864,163 +3862,6 @@ function showBookmarkletHint() {
   initBookmarklet();
 }
 
-async function pasteAndCreateListing() {
-  const btn = document.getElementById('paste-create-btn');
-  async function doCreate(text) {
-    let parsed;
-    try { parsed = JSON.parse(text); } catch(e) { alert('Could not read clipboard. Copy from CFS Grab first.'); return; }
-    if (!parsed || typeof parsed !== 'object') { alert('No CFS data found in clipboard.'); return; }
-
-    // Pick dealer from add-listing modal if open, otherwise show dropdown modal
-    let dealer = '';
-    const dealerEl = document.getElementById('new-dealer');
-    if (dealerEl && dealerEl.value) {
-      dealer = dealerEl.value;
-    } else {
-      dealer = await new Promise((resolve) => {
-        const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center';
-        const box = document.createElement('div');
-        box.style.cssText = 'background:#fff;border-radius:16px;padding:28px 24px;min-width:320px;box-shadow:0 20px 50px rgba(0,0,0,0.3)';
-        const label = document.createElement('p');
-        label.style.cssText = 'font-weight:700;font-size:15px;margin-bottom:14px;color:#111827';
-        label.textContent = 'Select dealer for this listing:';
-        const select = document.createElement('select');
-        select.style.cssText = 'width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:16px;font-family:inherit';
-        select.innerHTML = '<option value="">— Choose dealer —</option>' + DEALERS.map(d => '<option value="'+d.name+'">'+d.name+'</option>').join('');
-        const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;gap:10px;justify-content:flex-end';
-        const cancelBtn = document.createElement('button');
-        cancelBtn.textContent = 'Cancel';
-        cancelBtn.style.cssText = 'padding:9px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;cursor:pointer;font-size:14px';
-        const confirmBtn = document.createElement('button');
-        confirmBtn.textContent = 'Create Listing';
-        confirmBtn.style.cssText = 'padding:9px 18px;border-radius:8px;border:none;background:#334155;color:#fff;cursor:pointer;font-size:14px;font-weight:700';
-        cancelBtn.onclick = () => { document.body.removeChild(overlay); resolve(''); };
-        confirmBtn.onclick = () => { document.body.removeChild(overlay); resolve(select.value); };
-        btnRow.appendChild(cancelBtn);
-        btnRow.appendChild(confirmBtn);
-        box.appendChild(label);
-        box.appendChild(select);
-        box.appendChild(btnRow);
-        overlay.appendChild(box);
-        document.body.appendChild(overlay);
-        select.focus();
-      });
-      if (!dealer) return;
-    }
-
-    // Parse year/make/model from title if not in fields
-    let year = parsed.year || '';
-    let make = parsed.make || '';
-    let model = parsed.model || '';
-    if (!year && parsed.title) {
-      const parts = parsed.title.split(/\s+/);
-      if (parts.length >= 3 && parseInt(parts[0]) > 1900) {
-        year = parts[0]; make = parts[1]; model = parts.slice(2).join(' ');
-      }
-    }
-
-    const tempStock = parsed.stock || ('NEW-' + Date.now());
-    const newUnit = {
-      year: year || '',
-      make: make || '',
-      model: model || '',
-      price: parsed.price ? String(parsed.price).replace(/[^0-9.]/g,'') : '',
-      stock: tempStock,
-      days: '0',
-      fuel: parsed.fuel || '',
-      vin: parsed.vin || '',
-      mileage: parsed.mileage || '',
-      engine: parsed.engine || '',
-      transmission: parsed.transmission || '',
-      drivetrain: parsed.drivetrain || '',
-      description: parsed.description || '',
-      condition: parsed.condition || 'Used',
-      category: 'Trucks',
-      subcategory: '',
-      dealer: dealer,
-      sold: false,
-      featured: 0,
-      photos: [],
-      prod_status: '',
-      dx_locked: false,
-      model_locked: false,
-      raw_description: parsed.description || '',
-      _id: null
-    };
-
-    INVENTORY.unshift(newUnit);
-
-    // Save to Supabase
-    const SUPA_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
-    const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
-    fetch(SUPA_URL+'/rest/v1/inventory', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'return=representation'},
-      body:JSON.stringify([{year:newUnit.year,make:newUnit.make,model:newUnit.model,price:newUnit.price,stock:tempStock,days:newUnit.days,condition:newUnit.condition,fuel:newUnit.fuel,mileage:newUnit.mileage,engine:newUnit.engine,transmission:newUnit.transmission,drivetrain:newUnit.drivetrain,vin:newUnit.vin,description:newUnit.description,category:newUnit.category,subcategory:newUnit.subcategory,dealer:dealer,sold:false,featured:0,photos:[]}])
-    }).then(r=>r.json()).then(data=>{
-      if(data&&data[0]&&data[0].id){ newUnit._id=data[0].id; newUnit.id=data[0].id; }
-    }).catch(err=>console.warn('Supabase error:',err));
-
-    // Inject photos if present
-    if (parsed.photos && parsed.photos.length) {
-      const key = tempStock;
-      PHOTO_STORE[key] = parsed.photos.map((url,i) => ({
-        id: Date.now()+i+Math.random(),
-        name: url.split('/').pop(),
-        dataUrl: url,
-        url: url,
-        fromUrl: true,
-        type: 'url'
-      }));
-      newUnit.photos = PHOTO_STORE[key].map(p => ({url:p.dataUrl,name:p.name,fromUrl:true}));
-      savePhotoStore();
-    }
-
-    saveAppSession();
-    openPhotoModal(getListingKey(newUnit));
-    setTimeout(function(){ refreshAllViews(); }, 1000);
-
-    // Force-fill fields after modal opens (timing fix)
-    var _desc = newUnit.description;
-    var _engine = newUnit.engine;
-    var _trans = newUnit.transmission;
-    var _drive = newUnit.drivetrain;
-    var _fuel = newUnit.fuel;
-    var _vin = newUnit.vin;
-    var _mileage = newUnit.mileage;
-    setTimeout(function() {
-      // Re-find the unit in INVENTORY and restore fields
-      var u2 = INVENTORY.find(function(x){ return getListingKey(x) === getListingKey(newUnit); });
-      if (u2) {
-        if (_desc) u2.description = _desc;
-        if (_engine) u2.engine = _engine;
-        if (_trans) u2.transmission = _trans;
-        if (_drive) u2.drivetrain = _drive;
-        if (_fuel) u2.fuel = _fuel;
-        if (_vin) u2.vin = _vin;
-        if (_mileage) u2.mileage = _mileage;
-      }
-      if (_desc) { var el = document.getElementById('edit-description'); if(el) el.value = _desc; }
-      if (_engine) { var el = document.getElementById('edit-engine'); if(el) el.value = _engine; }
-      if (_trans) { var el = document.getElementById('edit-transmission'); if(el) el.value = _trans; }
-      if (_drive) { var el = document.getElementById('edit-drivetrain'); if(el) el.value = _drive; }
-      if (_fuel) { var el = document.getElementById('edit-fuel'); if(el) el.value = _fuel; }
-      if (_vin) { var el = document.getElementById('edit-vin'); if(el) el.value = _vin; }
-      if (_mileage) { var el = document.getElementById('edit-mileage'); if(el) el.value = _mileage; }
-    }, 500);
-
-    if(btn){ btn.textContent='✓ Created!'; btn.style.background='#16a34a'; }
-    setTimeout(()=>{ if(btn){ btn.textContent='📋 Paste & Add'; btn.style.background='#334155'; } },3000);
-  }
-
-  if (navigator.clipboard && navigator.clipboard.readText) {
-    try { doCreate(await navigator.clipboard.readText()); return; } catch(e) {}
-  }
-  const text = prompt('Press Cmd+V to paste CFS data:');
-  if (text) doCreate(text);
-}
 
 async function pastePhotosFromClipboard() {
   const btn = document.getElementById('paste-btn');
@@ -4985,20 +4826,6 @@ async function decodeVinForEdit() {
   }
 }
 
-async function decodeVinForNewListing() {
-  const btn = document.getElementById('decode-new-btn');
-  const vin = document.getElementById('new-vin').value;
-  const note = document.getElementById('new-vin-note');
-  if (btn) { btn.disabled = true; btn.textContent = 'Decoding...'; }
-  if (note) { note.textContent = 'Looking up VIN...'; note.style.color = 'var(--text3)'; }
-  try {
-    await decodeVinAndFill(vin, { year:'new-year', make:'new-make', model:'new-model', fuel:'new-fuel', vin:'new-vin', tag:'new-site-tag', note:'new-vin-note', engine:'new-engine', transmission:'new-transmission', drivetrain:'new-drivetrain' });
-  } catch(e) {
-    if (note) { note.textContent = e.message; note.style.color = '#dc2626'; }
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Decode VIN'; }
-  }
-}
 
 
 
@@ -5934,78 +5761,6 @@ function switchSettingsTab(tab, el) {
 
 // ===================== STATUS TOGGLE =====================
 let currentEditStatus = 'published';
-let newListingStatus = 'published';
-let NEW_LISTING_PHOTOS = [];
-
-function setNewListingStatus(val) {
-  newListingStatus = val;
-  document.getElementById('new-status-btn-published').className = val === 'published' ? 'active-pub' : '';
-  document.getElementById('new-status-btn-draft').className = val === 'draft' ? 'active-draft' : '';
-}
-
-function renderNewListingPhotoGrid() {
-  const grid = document.getElementById('new-photo-grid');
-  const countEl = document.getElementById('new-modal-photo-count');
-  if (!grid) return;
-  if (countEl) countEl.textContent = NEW_LISTING_PHOTOS.length;
-  grid.innerHTML = NEW_LISTING_PHOTOS.map((p, i) => `
-    <div class="photo-card">
-      <img src="${p.url || p.dataUrl}" alt="${p.name}" onerror="this.parentNode.innerHTML='<div class=\\'photo-error\\'>⚠️ Could not load image</div>'" loading="lazy" style="pointer-events:none">
-      <div class="photo-card-footer">
-        <span class="photo-filename" title="${p.name}">${p.name}</span>
-        <div class="photo-actions">
-          <button class="photo-btn del" title="Remove photo" onclick="removeNewListingPhoto(${i})">✕</button>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
-function removeNewListingPhoto(i) {
-  NEW_LISTING_PHOTOS.splice(i, 1);
-  renderNewListingPhotoGrid();
-}
-
-async function addNewListingPhotoByUrl() {
-  const input = document.getElementById('new-url-input');
-  const url = (input.value || '').trim();
-  if (!url) return;
-  try { new URL(url); } catch(e) { alert('Please enter a valid URL.'); return; }
-  let name = url.split('/').pop().split('?')[0] || 'image';
-  if (!name.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)/i)) name += '.jpg';
-  input.value = '';
-  NEW_LISTING_PHOTOS.push({ id: Date.now() + Math.random(), name, dataUrl: url, url, type: 'url', fromUrl: true });
-  renderNewListingPhotoGrid();
-}
-
-async function handleNewListingFileUpload(input) {
-  const files = Array.from(input.files).filter(f => f.type.startsWith('image/'));
-  if (!files.length) return;
-  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-  for (const file of files) {
-    const rawDataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = e => resolve(e.target.result);
-      reader.onerror = () => reject(new Error('Could not read ' + file.name));
-      reader.readAsDataURL(file);
-    });
-    const dataUrl = await compressImage(rawDataUrl);
-    NEW_LISTING_PHOTOS.push({ id: Date.now() + Math.random(), name: file.name, dataUrl, url: dataUrl, type: 'file', fromUrl: false });
-  }
-  input.value = '';
-  renderNewListingPhotoGrid();
-}
-
-function handleNewListingDropZone(event) {
-  event.preventDefault();
-  const files = Array.from(event.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-  if (!files.length) return;
-  const dt = new DataTransfer();
-  files.forEach(f => dt.items.add(f));
-  const fakeInput = document.createElement('input');
-  fakeInput.type = 'file'; fakeInput.multiple = true;
-  Object.defineProperty(fakeInput, 'files', { value: dt.files });
-  handleNewListingFileUpload(fakeInput);
-}
 
 function setListingStatus(status) {
   currentEditStatus = status;
