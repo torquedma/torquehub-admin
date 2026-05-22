@@ -336,8 +336,10 @@ exports.handler = async (event) => {
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
-    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock', 'GET');
-    const existingStocks = new Set(JSON.parse(existing.body).map(r => normalizeHgrStock(r.stock)));
+    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked', 'GET');
+    const existingRows = JSON.parse(existing.body);
+    const existingStocks = new Set(existingRows.map(r => normalizeHgrStock(r.stock)));
+    const lockedStocks = new Set(existingRows.filter(r => r.subcategory_locked).map(r => normalizeHgrStock(r.stock)));
     const feedStocks = new Set(feedItems.map(i => i.stock));
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s));
 
@@ -371,7 +373,13 @@ exports.handler = async (event) => {
       //   }
       // }
       if (existingStocks.has(item.stock)) {
-        const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', item);
+        let patchPayload = item;
+        if (lockedStocks.has(item.stock)) {
+          patchPayload = Object.assign({}, item);
+          delete patchPayload.subcategory;
+          delete patchPayload.trim;
+        }
+        const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', patchPayload);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
       } else {
         const r = await supabaseFetch('/rest/v1/inventory', 'POST', [item]);
