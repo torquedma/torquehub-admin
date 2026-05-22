@@ -350,10 +350,11 @@ exports.handler = async (event) => {
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
-    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked', 'GET');
+    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked', 'GET');
     const existingRows = JSON.parse(existing.body);
     const existingStocks = new Set(existingRows.map(r => normalizeHgrStock(r.stock)));
     const lockedStocks = new Set(existingRows.filter(r => r.subcategory_locked).map(r => normalizeHgrStock(r.stock)));
+    const modelLockedStocks = new Set(existingRows.filter(r => r.model_locked).map(r => normalizeHgrStock(r.stock)));
     const feedStocks = new Set(feedItems.map(i => i.stock));
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s));
 
@@ -388,11 +389,17 @@ exports.handler = async (event) => {
       // }
       if (existingStocks.has(item.stock)) {
         let patchPayload = item;
-        if (lockedStocks.has(item.stock)) {
+        if (lockedStocks.has(item.stock) || modelLockedStocks.has(item.stock)) {
           patchPayload = Object.assign({}, item);
-          delete patchPayload.subcategory;
-          delete patchPayload.trim;
-          delete patchPayload.category;
+          if (lockedStocks.has(item.stock)) {
+            delete patchPayload.subcategory;
+            delete patchPayload.trim;
+            delete patchPayload.category;
+          }
+          if (modelLockedStocks.has(item.stock)) {
+            delete patchPayload.make;
+            delete patchPayload.model;
+          }
         }
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', patchPayload);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
