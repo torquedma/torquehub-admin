@@ -1515,7 +1515,7 @@ document.querySelector('.sidebar').classList.toggle('open');
             <option value="Other">Other</option>
           </select>
         </div>
-        <div class="edit-field"><label class="edit-label">Subcategory</label><input class="edit-input" id="edit-subcategory" type="text" placeholder="e.g. Dump Truck, Box Trailer…"></div>
+        <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:4px"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><label class="edit-label" style="margin:0">Subcategory</label><button class="dx-btn" id="subcategory-lock-btn" onclick="toggleSubcategoryLock()" style="font-size:11px;padding:2px 8px">Lock Subcat</button></div><div id="subcategory-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px">Subcategory Locked - feed sync will not overwrite</div><input class="edit-input" id="edit-subcategory" type="text" placeholder="e.g. Dump Truck, Box Trailer…" style="width:100%"></div>
         <div class="edit-field" style="align-items:center;gap:12px">
           <label class="edit-label" style="margin:0">Status</label>
           <div class="status-toggle">
@@ -2343,6 +2343,10 @@ function populateEditForm(u) {
   var mlBtn = document.getElementById("model-lock-btn");
   if (mlInd) mlInd.style.display = u.model_locked ? "block" : "none";
   if (mlBtn) { mlBtn.textContent = u.model_locked ? "Locked" : "Lock Model"; mlBtn.style.background = u.model_locked ? "#d1fae5" : ""; mlBtn.style.color = u.model_locked ? "#065f46" : ""; }
+  var slInd = document.getElementById("subcategory-lock-indicator");
+  var slBtn = document.getElementById("subcategory-lock-btn");
+  if (slInd) slInd.style.display = u.subcategory_locked ? "block" : "none";
+  if (slBtn) { slBtn.textContent = u.subcategory_locked ? "Locked" : "Lock Subcat"; slBtn.style.background = u.subcategory_locked ? "#d1fae5" : ""; slBtn.style.color = u.subcategory_locked ? "#065f46" : ""; }
   var dxInd = document.getElementById("dx-lock-indicator");
   var dxBtn = document.getElementById("dx-lock-btn");
   if (dxInd) dxInd.style.display = u.dx_locked ? "block" : "none";
@@ -2518,6 +2522,16 @@ function toggleModelLock() {
   var ind = document.getElementById("model-lock-indicator");
   if (btn) { btn.textContent = u.model_locked ? "Locked" : "Lock Model"; btn.style.background = u.model_locked ? "#d1fae5" : ""; btn.style.color = u.model_locked ? "#065f46" : ""; }
   if (ind) ind.style.display = u.model_locked ? "block" : "none";
+}
+
+function toggleSubcategoryLock() {
+  var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
+  if (!u) return;
+  u.subcategory_locked = !u.subcategory_locked;
+  var btn = document.getElementById("subcategory-lock-btn");
+  var ind = document.getElementById("subcategory-lock-indicator");
+  if (btn) { btn.textContent = u.subcategory_locked ? "Locked" : "Lock Subcat"; btn.style.background = u.subcategory_locked ? "#d1fae5" : ""; btn.style.color = u.subcategory_locked ? "#065f46" : ""; }
+  if (ind) ind.style.display = u.subcategory_locked ? "block" : "none";
 }
 
 function lockManualDX() {
@@ -2818,7 +2832,7 @@ async function saveListingEdits() {
         transmission_description: u.transmission_description, video_url: u.video_url,
         vin: u.vin, category: u.category, featured: u.featured,
         subcategory: u.subcategory, description: u.description,
-        notes: u.notes, status: u.status, prod_status: u.prod_status || null, model_locked: u.model_locked || false, dx_locked: u.dx_locked || false, raw_description: u.raw_description || null
+        notes: u.notes, status: u.status, prod_status: u.prod_status || null, model_locked: u.model_locked || false, dx_locked: u.dx_locked || false, subcategory_locked: u.subcategory_locked || false, raw_description: u.raw_description || null
       })
     }).then(r => {
       if (!r.ok) r.text().then(t => console.warn('Supabase save failed:', t));
@@ -5643,7 +5657,7 @@ async function loadApp() {
     let from = 0;
     while (true) {
       const iRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,trim,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,raw_description,description_source&order=dealer,stock&offset=${from}&limit=1000`,
+        `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,trim,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,subcategory_locked,raw_description,description_source&order=dealer,stock&offset=${from}&limit=1000`,
         { headers }
       );
       if (!iRes.ok) break;
@@ -5690,6 +5704,7 @@ async function loadApp() {
       prod_status: item.prod_status || '',
       dx_locked: item.dx_locked || false,
       model_locked: item.model_locked || false,
+      subcategory_locked: item.subcategory_locked || false,
       raw_description: item.raw_description || '',
       description_source: item.description_source || '',
       _id: item.id
