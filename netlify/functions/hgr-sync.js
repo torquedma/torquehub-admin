@@ -113,6 +113,19 @@ function parseXml(xml) {
             .replace(/\s*\/\s*/g, '\\s*/\\s*')
             .replace(/\s+/g, '\\s+');
           modelName = modelName.replace(new RegExp('\\s*' + tailPat + 's?\\s*$', 'i'), '').trim();
+          // Also strip the ABBREVIATED type tail: HGR model_name often carries
+          // a condensed form (e.g. "Car/Racing") while model_type is the full
+          // phrase ("Car / Racing Trailer"), so the full-phrase strip above misses it.
+          var abbrevType = rawType
+            .replace(new RegExp('\\s*/?\\s*[Tt]railer\\s*$'), '')
+            .replace(new RegExp('\\s*/\\s*', 'g'), '/')
+            .trim();
+          if (abbrevType) {
+            var abbrevPat = abbrevType
+              .replace(new RegExp('[.*+?^${}()|[\\]\\\\]', 'g'), '\\$&')
+              .replace(new RegExp('\\s*/\\s*', 'g'), '\\s*/\\s*');
+            modelName = modelName.replace(new RegExp('\\s*' + abbrevPat + 's?\\s*$', 'i'), '').trim();
+          }
         }
 
         // --- SIZE ---
