@@ -1506,7 +1506,7 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="decode-note" id="edit-vin-note">VIN decoder can fill year, make, model, and fuel when available.</div>
         </div>
         <div class="edit-field"><label class="edit-label">Site Tag</label>
-          <select class="edit-input" id="edit-site-tag">
+          <select class="edit-input" id="edit-site-tag" onchange="populateSubcategorySuggestions(this.value)">
             <option value="Trucks">Trucks</option>
             <option value="Construction">Construction</option>
             <option value="Landscape">Landscape</option>
@@ -1515,7 +1515,7 @@ document.querySelector('.sidebar').classList.toggle('open');
             <option value="Other">Other</option>
           </select>
         </div>
-        <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:4px"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><label class="edit-label" style="margin:0">Subcategory</label><button class="dx-btn" id="subcategory-lock-btn" onclick="toggleSubcategoryLock()" style="font-size:11px;padding:2px 8px">Lock Subcat</button></div><div id="subcategory-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px">Subcategory Locked - feed sync will not overwrite</div><input class="edit-input" id="edit-subcategory" type="text" placeholder="e.g. Dump Truck, Box Trailer…" style="width:100%"></div>
+        <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:4px"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><label class="edit-label" style="margin:0">Subcategory</label><button class="dx-btn" id="subcategory-lock-btn" onclick="toggleSubcategoryLock()" style="font-size:11px;padding:2px 8px">Lock Subcat</button></div><div id="subcategory-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px">Subcategory Locked - feed sync will not overwrite</div><input class="edit-input" id="edit-subcategory" type="text" list="subcategory-suggestions" placeholder="e.g. Dump Truck, Box Trailer…" style="width:100%"><datalist id="subcategory-suggestions"></datalist></div>
         <div class="edit-field" style="align-items:center;gap:12px">
           <label class="edit-label" style="margin:0">Status</label>
           <div class="status-toggle">
@@ -2338,6 +2338,7 @@ function populateEditForm(u) {
   document.getElementById("edit-site-tag").value = getListingCat(u);
   document.getElementById("edit-featured").checked = !!u.featured;
   document.getElementById("edit-subcategory").value = u.subcategory || "";
+  populateSubcategorySuggestions(document.getElementById("edit-site-tag").value || u.category || "");
   document.getElementById("edit-description").value = u.description || "";
   document.getElementById("edit-notes").value = u.notes || "";
   document.getElementById("edit-prod-status").value = u.prod_status || "";
@@ -2358,6 +2359,22 @@ function populateEditForm(u) {
 }
 
 // ===================== PHOTO MODAL =====================
+
+const SUBCATEGORY_SUGGESTIONS = {
+  "Trucks": ["Box Truck","Day Cab Tractor","Service Truck","Dump Truck","Rollback Tow Truck","Flatbed Truck","Car Hauler","Cargo Van","Pickup Truck","Crane Truck","Refrigerated Truck","Tanker Truck","Fuel Truck","Step Van","Garbage Truck","Concrete Mixer","Grain Dump Truck","Passenger Van"],
+  "Trailers": ["Enclosed Trailer","Car Hauler Trailer","Utility Trailer","Dump Trailer","Equipment Trailer","Gooseneck Trailer","Concession Trailer","Race Trailer","Deckover Trailer","Tilt Trailer","Dovetail Trailer","Tank Trailer","Dry Van","Motorcycle Trailer","Landscape Trailer","Frameless Dump","Other Trailer"],
+  "Farm": ["Tractor","Lawn Mower","Zero Turn Mower","Hay Rake","Baler","Rotary Cutter","Cultivator","Planter","Combine","Log Splitter","Backhoe","Wagon","Harrow"],
+  "Construction": ["Equipment Trailer","Skid Steer","Compact Track Loader","Loader","Wheel Loader","Boom Lift","Backhoe","Excavator","Crawler Dozer","Forklift","Digger Derrick","Trencher","Winch Truck"],
+  "Landscape": ["Landscape Trailer","Zero Turn Mower","Lawn Mower"],
+  "Other": ["SUV","Motorcycle","Classic Car","Engine"]
+};
+
+function populateSubcategorySuggestions(siteTag) {
+  const dl = document.getElementById("subcategory-suggestions");
+  if (!dl) return;
+  const opts = SUBCATEGORY_SUGGESTIONS[siteTag] || [];
+  dl.innerHTML = opts.map(function(v){ return '<option value="' + v.replace(/"/g,'&quot;') + '">'; }).join("");
+}
 
 async function loadRowThumbs() {
   const imgs = Array.from(document.querySelectorAll('#inv-tbody img.row-thumb'));
