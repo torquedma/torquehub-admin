@@ -2246,7 +2246,7 @@ function renderInventory() {
       ? `<span class="price-sold-badge">SOLD</span>${u.keepPublic ? ' <span class="keep-public-badge" title="Visible on dealer site">🌐 Public</span>' : ''}${u.salePrice ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;font-weight:400">$${u.salePrice}${u.saleDate ? ' · ' + u.saleDate : ''}</div>` : ''}`
       : (u.price && !isNaN(parseFloat(String(u.price).replace(/[^0-9.]/g,"")))) ? `$${Number(String(u.price).replace(/[^0-9.]/g,"")).toLocaleString()}` : "—";
     return `<tr${rowClass} onclick="${sold ? '' : `openPhotoModal('${key.replace(/'/g,"\\'")}')` }" style="${sold ? 'cursor:default' : ''}">
-      <td style="padding:4px;width:70px"><div style="width:64px;height:48px;border-radius:4px;overflow:hidden;background:#1e1e2e">${thumbUrl ? `<img src="${thumbUrl}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">` : ''}</div></td>
+      <td style="padding:4px;width:70px"><div style="width:64px;height:48px;border-radius:4px;overflow:hidden;background:#1e1e2e"><img class="row-thumb" data-rowkey="${getListingKey(u)}" data-rowid="${u.id || ''}" src="${thumbUrl}" style="width:100%;height:100%;object-fit:cover;${thumbUrl ? '' : 'display:none'}" onerror="this.style.display='none'"></div></td>
       <td>${u.year}</td>
       <td style="font-weight:600">${u.featured ? "⭐ " : ""}${u.make}</td>
       <td>${u.model}</td>
@@ -2261,6 +2261,8 @@ function renderInventory() {
 
     </tr>`;
   }).join("");
+
+  loadRowThumbs();
 
   const pg = document.getElementById("inv-pagination");
   const showAllBtn = `<button class="page-btn" style="margin-left:8px" onclick="INV_PAGE_SIZE=INV_PAGE_SIZE===99999?25:99999;invPage=1;renderInventory()">${INV_PAGE_SIZE===99999?'Show Pages':'Show All'}</button>`;
@@ -2356,6 +2358,40 @@ function populateEditForm(u) {
 }
 
 // ===================== PHOTO MODAL =====================
+
+async function loadRowThumbs() {
+  const imgs = Array.from(document.querySelectorAll('#inv-tbody img.row-thumb'));
+  for (const img of imgs) {
+    const key = img.getAttribute('data-rowkey');
+    const id  = img.getAttribute('data-rowid');
+    if (!id) continue;
+    const cached = (PHOTO_STORE[key] || [])[0];
+    if (cached) {
+      const cu = cached.url || cached.dataUrl || '';
+      if (cu) { img.src = cu; img.style.display = ''; }
+      continue;
+    }
+    if (img.getAttribute('src')) continue;
+    try {
+      const r = await fetch(
+        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=photos&id=eq.${id}`,
+        { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
+      );
+      if (!r.ok) continue;
+      const rows = await r.json();
+      const raw = rows?.[0]?.photos || [];
+      if (key) {
+        PHOTO_STORE[key] = raw.map((p, i) => {
+          const pu = p.url || p.dataUrl || '';
+          return { id: Date.now() + i, name: p.name || pu.split('/').pop(), url: pu, dataUrl: pu, type: 'url', fromUrl: true, storage: 'supabase' };
+        });
+      }
+      const first = raw[0];
+      const fu = first ? (first.url || first.dataUrl || '') : '';
+      if (fu) { img.src = fu; img.style.display = ''; }
+    } catch(e) {}
+  }
+}
 
 function openPhotoModal(listingKey) {
   const u = INVENTORY.find(u => getListingKey(u) === listingKey);
