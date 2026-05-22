@@ -83,7 +83,8 @@ function parseXml(xml) {
     const desc = get('description').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
     const modelType = get('model_type').toLowerCase();
     let category = 'Trailers';
-    if (modelType.includes('truck')) category = 'Trucks';
+    if (modelType.includes('trailer')) category = 'Trailers';
+    else if (modelType.includes('truck')) category = 'Trucks';
     else if (modelType.includes('equipment') || modelType.includes('construction')) category = 'Construction';
     else if (modelType.includes('farm') || modelType.includes('agri')) category = 'Farm';
     const rawDesc = get('description').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
