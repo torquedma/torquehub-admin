@@ -177,6 +177,7 @@ function parseXml(xml) {
       torque_hub_dx: null, // set below
       description_source: 'torque_hub_dx',
       category,
+      trim: (get('model_type') || ''),
       subcategory: get('model_type') || null,
       fuel: null,
       dealer: DEALER,
