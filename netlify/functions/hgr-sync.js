@@ -329,12 +329,18 @@ exports.handler = async (event) => {
     const feedStocks = new Set(feedItems.map(i => i.stock));
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s));
 
-    for (const stock of toDelete) {
-      await supabaseFetch(
-        '/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER),
-        'PATCH',
-        { sold: true, sold_date: new Date().toISOString().split('T')[0], sold_type: 'feed_removed' }
-      );
+    const markSoldSafe = !(feedStocks.size < existingStocks.size * 0.5 && existingStocks.size >= 10);
+    if (!markSoldSafe) {
+      console.error('ABORT mark-sold: feed has ' + feedStocks.size + ' stocks vs ' + existingStocks.size + ' existing (<50%, existing>=10). Skipping ' + toDelete.length + ' deletes to protect against partial-scrape failure.');
+    }
+    if (markSoldSafe) {
+      for (const stock of toDelete) {
+        await supabaseFetch(
+          '/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER),
+          'PATCH',
+          { sold: true, sold_date: new Date().toISOString().split('T')[0], sold_type: 'feed_removed' }
+        );
+      }
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
