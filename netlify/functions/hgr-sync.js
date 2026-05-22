@@ -392,6 +392,7 @@ exports.handler = async (event) => {
           patchPayload = Object.assign({}, item);
           delete patchPayload.subcategory;
           delete patchPayload.trim;
+          delete patchPayload.category;
         }
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', patchPayload);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
