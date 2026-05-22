@@ -102,6 +102,13 @@ function parseXml(xml) {
       model: (function() {
         var modelName = get('model_name');
         var rawType = get('model_type');
+        if (rawType) {
+          var tailPat = rawType
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            .replace(/\s*\/\s*/g, '\\s*/\\s*')
+            .replace(/\s+/g, '\\s+');
+          modelName = modelName.replace(new RegExp('\\s*' + tailPat + 's?\\s*$', 'i'), '').trim();
+        }
 
         // --- SIZE ---
         // Try NxM format first (must check before feet-only)
