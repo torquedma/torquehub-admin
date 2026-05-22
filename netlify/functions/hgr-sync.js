@@ -87,6 +87,11 @@ function parseXml(xml) {
     else if (modelType.includes('equipment') || modelType.includes('construction')) category = 'Construction';
     else if (modelType.includes('farm') || modelType.includes('agri')) category = 'Farm';
     const rawDesc = get('description').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+    const rawModelType = get('model_type') || '';
+    const canonicalSubcategoryMap = {
+      'Car / Racing Trailer': 'Car Hauler Trailer'
+    };
+    const canonicalSubcategory = canonicalSubcategoryMap[rawModelType] || rawModelType || null;
     items.push({
       stock,
       year: get('year') || null,
@@ -184,8 +189,8 @@ function parseXml(xml) {
       torque_hub_dx: null, // set below
       description_source: 'torque_hub_dx',
       category,
-      trim: (get('model_type') || ''),
-      subcategory: get('model_type') || null,
+      trim: canonicalSubcategory || '',
+      subcategory: canonicalSubcategory,
       fuel: null,
       dealer: DEALER,
       sold: false,
