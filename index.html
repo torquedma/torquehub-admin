@@ -562,8 +562,8 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="stat-card">
           <div class="stat-icon blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"></path><path d="M16 3H8L6 7h12l-2-4z"></path></svg></div>
           <div class="label">Total Inventory</div>
-          <div class="value">—</div>
-          <div class="sub"></div>
+          <div class="value" id="stat-total-inventory">—</div>
+          <div class="sub" id="stat-inventory-sub"></div>
         </div>
 
         <div class="stat-card">
@@ -5211,11 +5211,7 @@ function renderDashboardStats() {
   const usedCount = active.filter(u => u.condition === 'Used').length;
   const dealerCount = DEALERS.length;
 
-  // Card 3: No Photos + No Description
-  const noPhotos = active.filter(u => !u.photos || u.photos.length === 0).length;
-  const noDesc = active.filter(u => !u.description || u.description.trim() === '').length;
-
-  // Card 4: Added This Month + Sold This Month
+  // Added This Month + Sold This Month
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const addedThisMonth = INVENTORY.filter(u => {
@@ -5227,18 +5223,13 @@ function renderDashboardStats() {
     return new Date(u.sold_at) >= monthStart;
   }).length;
 
-  // Update stat cards
-  const cards = document.querySelectorAll('.stat-card');
-  if (cards[0]) cards[0].querySelector('.value').textContent = dealerCount;
-  if (cards[1]) {
-    cards[1].querySelector('.value').textContent = total;
-    cards[1].querySelector('.sub').textContent = `${newCount} new · ${usedCount} used`;
-  }
-  if (cards[2]) {
-    cards[2].querySelector('.value').textContent = noPhotos;
-    const sub2 = cards[2].querySelector('.sub');
-    if (sub2) sub2.textContent = `${noDesc} missing description`;
-  }
+  // Update stat cards by ID
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('stat-active-dealers', dealerCount);
+  setEl('stat-total-inventory', total);
+  setEl('stat-inventory-sub', `${newCount} new · ${usedCount} used`);
+  setEl('stat-added-month', addedThisMonth);
+  setEl('stat-sold-month-sub', `${soldThisMonth} sold this month`);
 
   // Needs Attention card
   const needsAttention = active.filter(u => {
@@ -5253,11 +5244,6 @@ function renderDashboardStats() {
   if (naEl) naEl.textContent = needsAttention;
   const naSubEl = document.getElementById('stat-needs-attention-sub');
   if (naSubEl) naSubEl.textContent = needsAttention === 1 ? '1 listing needs info' : `${needsAttention} listings need info`;
-  if (cards[3]) {
-    cards[3].querySelector('.value').textContent = addedThisMonth;
-    const sub3 = cards[3].querySelector('.sub');
-    if (sub3) sub3.textContent = `${soldThisMonth} sold this month`;
-  }
 
   // Card 5: Total Leads from Supabase
   fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/leads?select=id', {
