@@ -602,7 +602,7 @@ document.querySelector('.sidebar').classList.toggle('open');
             <div class="filter-chip" onclick="filterDealerTable(&#39;Trailers&#39;,this)">Trailers</div>
           </div>
           <div style="overflow-x:auto"><table id="dealer-table">
-            <thead><tr><th class="sortable" id="dh-name" onclick="sortDealer(&#39;name&#39;)">Dealer</th><th>Category</th><th class="sortable" id="dh-count" onclick="sortDealer(&#39;count&#39;)">Units</th><th class="sortable" id="dh-avg_days" onclick="sortDealer(&#39;avg_days&#39;)">Days Listed</th><th>Status</th><th>Listings</th></tr></thead>
+            <thead><tr><th class="sortable" id="dh-name" onclick="sortDealer(&#39;name&#39;)">Dealer</th><th>Category</th><th class="sortable" id="dh-count" onclick="sortDealer(&#39;count&#39;)">Units</th><th>Status</th><th>Listings</th></tr></thead>
             <tbody id="dealer-tbody"></tbody>
           </table></div>
           <div class="pagination" id="dealer-pagination"><span></span></div>
@@ -1965,7 +1965,7 @@ function filterDealerTable(cat, el) {
 function sortDealer(key) {
   if (dealerSort.key === key) dealerSort.dir *= -1;
   else { dealerSort.key = key; dealerSort.dir = -1; }
-  updateSortHeaders('dh-', ['name','count','avg_days'], key, dealerSort.dir);
+  updateSortHeaders('dh-', ['name','count'], key, dealerSort.dir);
   renderDealerTable();
 }
 
@@ -2063,7 +2063,6 @@ function renderDealerTable() {
       <td><div class="dealer-name">${d.name}</div></td>
       <td>${cats}</td>
       <td><span class="inv-count">${d.count}</span></td>
-      <td style="color:var(--text2)">${d.avg_days}d</td>
       <td><span class="status-dot status-active"></span>Active</td>
       <td><span class="link-btn">View →</span></td>
     </tr>`;
