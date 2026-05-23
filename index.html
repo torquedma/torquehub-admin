@@ -2360,12 +2360,12 @@ function populateEditForm(u) {
 // ===================== PHOTO MODAL =====================
 
 const SUBCATEGORY_SUGGESTIONS = {
-  "Trucks": ["Box Truck","Day Cab Tractor","Service Truck","Dump Truck","Rollback Tow Truck","Flatbed Truck","Car Hauler","Cargo Van","Pickup Truck","Crane Truck","Refrigerated Truck","Tanker Truck","Fuel Truck","Step Van","Garbage Truck","Concrete Mixer","Grain Dump Truck","Passenger Van"],
-  "Trailers": ["Enclosed Trailer","Car Hauler Trailer","Utility Trailer","Dump Trailer","Equipment Trailer","Gooseneck Trailer","Concession Trailer","Race Trailer","Deckover Trailer","Tilt Trailer","Dovetail Trailer","Tank Trailer","Dry Van","Motorcycle Trailer","Landscape Trailer","Frameless Dump","Other Trailer","Reefer Trailer","Pole Trailer","Reel / Cable Trailer"],
-  "Farm": ["Tractor","Lawn Mower","Zero Turn Mower","Hay Rake","Baler","Rotary Cutter","Cultivator","Planter","Combine","Log Splitter","Backhoe","Wagon","Harrow","Utility Vehicle","Box Scraper","Disk"],
-  "Construction": ["Equipment Trailer","Skid Steer","Compact Track Loader","Loader","Wheel Loader","Boom Lift","Backhoe","Excavator","Crawler Dozer","Forklift","Digger Derrick","Trencher","Winch Truck","Scissor Lift","Compactor","Scraper","Air Compressor"],
-  "Landscape": ["Landscape Trailer","Zero Turn Mower","Lawn Mower"],
-  "Other": ["SUV","Motorcycle","Classic Car","Engine","Utility Vehicle","Side by Side"]
+  "Trucks": ["Box Truck","Day Cab Tractor","Sleeper Tractor","Service Truck","Dump Truck","Rollback Tow Truck","Tow Truck","Flatbed Truck","Car Carrier Truck","Cargo Van","Passenger Van","Pickup Truck","Crane Truck","Crane Service Truck","Refrigerated Truck","Tanker Truck","Fuel Truck","Step Van","Garbage Truck","Concrete Mixer","Mixer Truck","Grain Dump Truck","Bucket Truck","Yard Spotter","Cab & Chassis","Fire Truck","Winch Truck","Enclosed Landscape Truck"],
+  "Trailers": ["Enclosed Trailer","Car Hauler Trailer","Utility Trailer","Dump Trailer","Equipment Trailer","Gooseneck Trailer","Concession Trailer","Vending / Concession Trailer","Race Trailer","Deckover Trailer","Tilt Trailer","Dovetail Trailer","Tank Trailer","Tanker Trailer","Dry Van Trailer","Motorcycle Trailer","Landscape Trailer","Frameless Dump","Other Trailer","Reefer Trailer","Pole Trailer","Reel / Cable Trailer","Curtain-Side Trailer","Lowboy Trailer","Flatbed Trailer"],
+  "Farm": ["Tractor","Lawn Tractor","Zero Turn Mower","Walk Behind Mower","Front Mounted Mower","Field Mower","Finish Mower","Rotary Cutter","Turf & Grounds Care","Hay Rake","Baler","Cultivator","Planter","Combine","Log Splitter","Backhoe","Wagon","Harrow","Utility Vehicle","Box Scraper","Disk","Land Leveler","Overseeder","V-Ripper"],
+  "Construction": ["Skid Steer","Crawler Loader","Compact Track Loader","Loader","Wheel Loader","Boom Lift","Backhoe","Backhoe Attachment","Excavator","Crawler Dozer","Forklift","Digger Derrick","Trencher","Scissor Lift","Compactor","Scraper","Air Compressor","Motor Grader","Equipment Trailer"],
+  "Landscape": ["Landscape Trailer","Zero Turn Mower","Walk Behind Mower","Turf & Grounds Care"],
+  "Other": ["SUV","Motorcycle","Classic Car","Engine","Utility Vehicle","Side by Side","Boat","Freezer Box Body","Body"]
 };
 
 function populateSubcategorySuggestions(siteTag) {
