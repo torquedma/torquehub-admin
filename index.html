@@ -5233,12 +5233,11 @@ function renderDashboardStats() {
 
   // Needs Attention card
   const needsAttention = active.filter(u => {
-    const hasPhotos = u.photos && u.photos.length > 0;
     const hasPrice = u.price && parseFloat(String(u.price).replace(/[^0-9.]/g,'')) > 0;
     const hasDesc = u.description && u.description.trim() !== '';
     const hasCat = u.category && u.category.trim() !== '';
     const hasDealer = u.dealer && u.dealer.trim() !== '';
-    return !hasPhotos || !hasPrice || !hasDesc || !hasCat || !hasDealer;
+    return !hasPrice || !hasDesc || !hasCat || !hasDealer;
   }).length;
   const naEl = document.getElementById('stat-needs-attention');
   if (naEl) naEl.textContent = needsAttention;
