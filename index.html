@@ -676,7 +676,7 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="filter-chip" onclick="setDealerFilter(&#39;Trailers&#39;,this)">Trailers</div>
         </div>
         <div style="overflow-x:auto"><table>
-          <thead><tr><th class="sortable" id="dvh-name" onclick="sortDealersView(&#39;name&#39;)">Dealer</th><th>Category</th><th class="sortable sort-desc" id="dvh-count" onclick="sortDealersView(&#39;count&#39;)">Total Units</th><th class="sortable" id="dvh-new" onclick="sortDealersView(&#39;new&#39;)">New</th><th class="sortable" id="dvh-used" onclick="sortDealersView(&#39;used&#39;)">Used</th><th class="sortable" id="dvh-avg_days" onclick="sortDealersView(&#39;avg_days&#39;)">Days Listed</th><th>Status</th><th>Action</th></tr></thead>
+          <thead><tr><th class="sortable" id="dvh-name" onclick="sortDealersView(&#39;name&#39;)">Dealer</th><th>Category</th><th class="sortable sort-desc" id="dvh-count" onclick="sortDealersView(&#39;count&#39;)">Total Units</th><th class="sortable" id="dvh-new" onclick="sortDealersView(&#39;new&#39;)">New</th><th class="sortable" id="dvh-used" onclick="sortDealersView(&#39;used&#39;)">Used</th><th>Status</th><th>Action</th></tr></thead>
           <tbody id="dealers-tbody"><tr onclick="drillDealer(&#39;HGR\&#39;s Truck and Trailer&#39;)">
       <td><div class="dealer-name">HGR's Truck and Trailer</div></td>
       <td><span class="cat-tag cat-trailers">Trailers</span></td>
@@ -2097,7 +2097,7 @@ function setDealerFilter(cat, el) {
 function sortDealersView(key) {
   if (dealersViewSort.key === key) dealersViewSort.dir *= -1;
   else { dealersViewSort.key = key; dealersViewSort.dir = -1; }
-  updateSortHeaders('dvh-', ['name','count','new','used','avg_days'], key, dealersViewSort.dir);
+  updateSortHeaders('dvh-', ['name','count','new','used'], key, dealersViewSort.dir);
   renderDealersView();
 }
 function renderDealersView() {
@@ -2122,12 +2122,11 @@ function renderDealersView() {
       <td>${cats}</td>
       <td><span class="inv-count">${d.count}</span></td>
       <td>${d.new}</td><td>${d.used}</td>
-      <td>${d.avg_days}d</td>
       <td><span class="status-dot status-active"></span>Active</td>
       <td><span class="link-btn">View Listings →</span></td>
     </tr>`;
   }).join("");
-  updateSortHeaders('dvh-', ['name','count','new','used','avg_days'], dealersViewSort.key, dealersViewSort.dir);
+  updateSortHeaders('dvh-', ['name','count','new','used'], dealersViewSort.key, dealersViewSort.dir);
 }
 
 // ---- INVENTORY VIEW ----
