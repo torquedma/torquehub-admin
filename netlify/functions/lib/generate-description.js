@@ -55,7 +55,8 @@ async function generateDescription(unit, dealer, apiKey) {
   if (trimSpec(unit.transmission)) detailLines.push('- Transmission: ' + trimSpec(unit.transmission));
   if (unit.drivetrain)             detailLines.push('- Drivetrain: ' + unit.drivetrain);
   if (unit.fuel)                   detailLines.push('- Fuel: ' + unit.fuel);
-  if (unit.price)                  detailLines.push('- Price: $' + Number(unit.price).toLocaleString());
+  const priceNum = Number(unit.price);
+  if (priceNum > 0)                detailLines.push('- Price: $' + priceNum.toLocaleString());
   if (unit.vin)                    detailLines.push('- VIN: ' + unit.vin);
   if (unit.stock)                  detailLines.push('- Stock #: ' + unit.stock);
   if (detailLines.length === 0 && unit.stock) detailLines.push('- Stock #: ' + unit.stock);
