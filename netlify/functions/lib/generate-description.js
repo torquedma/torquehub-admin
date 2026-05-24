@@ -100,6 +100,8 @@ async function generateDescription(unit, dealer, apiKey) {
     overview = raw.replace(/^Overview\s*/i, '').trim();
   }
   if (!headline) headline = defaultHeadline;
+  headline = headline.replace(/^#+\s*/, '').trim();
+  overview = overview.replace(/^#+\s*/gm, '').trim();
 
   const d = dealer || {};
   let text = headline + '\n\nKey Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
