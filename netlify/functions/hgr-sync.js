@@ -235,7 +235,6 @@ function parseXml(xml) {
         if (size) parts.push(size);
         else if (code) parts.push(code); // only use code if no size
         if (descs.length) parts.push(descs.join(' '));
-        if (type) parts.push(type);
         return parts.length ? parts.join(' ') : modelName.split(/\s+/).slice(0,3).join(' ');
       })(),
 
