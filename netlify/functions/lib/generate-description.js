@@ -37,19 +37,29 @@ Do not infer, guess, decode, assume, or add any engine manufacturer, horsepower,
 If the source does not state it, omit it.
 Accuracy over completeness.
 
-OUTPUT FORMAT (use exactly this structure, and END after the Overview section — do not write a contact or "Interested" section):
+OUTPUT FORMAT — return EXACTLY two parts separated by a line containing only "===":
 [Year] [Make] [Model] – [Short Buyer Hook]
+===
+[2-3 sentence Overview: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff. Only use the word "fleet" if the raw description explicitly mentions it.]
 
-Key Details
-- Use only the fields present in UNIT INFO above.
-- Do not include blank, unknown, or unavailable fields.
-- Do not invent specifications.
-
-Overview
-[2-3 sentences: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff. Only use the word "fleet" if the raw description explicitly mentions fleet use or fleet maintenance. Do not assume or add it.]`;
+Do NOT write a "Key Details" section, bullet list, contact section, prices, or specs lists. ONLY the headline line, then "===", then the Overview prose.`;
 }
 
 async function generateDescription(unit, dealer, apiKey) {
+  const detailLines = [];
+  if (unit.year)                   detailLines.push('- Year: ' + unit.year);
+  if (unit.make)                   detailLines.push('- Make: ' + unit.make);
+  if (unit.model)                  detailLines.push('- Model: ' + unit.model);
+  if (unit.mileage)                detailLines.push('- Mileage: ' + unit.mileage);
+  if (trimSpec(unit.engine))       detailLines.push('- Engine: ' + trimSpec(unit.engine));
+  if (trimSpec(unit.transmission)) detailLines.push('- Transmission: ' + trimSpec(unit.transmission));
+  if (unit.drivetrain)             detailLines.push('- Drivetrain: ' + unit.drivetrain);
+  if (unit.fuel)                   detailLines.push('- Fuel: ' + unit.fuel);
+  if (unit.price)                  detailLines.push('- Price: $' + Number(unit.price).toLocaleString());
+  if (unit.vin)                    detailLines.push('- VIN: ' + unit.vin);
+  if (unit.stock)                  detailLines.push('- Stock #: ' + unit.stock);
+  if (detailLines.length === 0 && unit.stock) detailLines.push('- Stock #: ' + unit.stock);
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -70,9 +80,22 @@ async function generateDescription(unit, dealer, apiKey) {
   }
 
   const data = await res.json();
+  const raw = (data.content?.[0]?.text || '').trim();
+  const parts = raw.split(/\n?===\n?/);
+  const defaultHeadline = [unit.year, unit.make, unit.model].filter(Boolean).join(' ') || 'Unit Available';
+  let headline = '';
+  let overview = '';
+  if (parts.length >= 2) {
+    headline = (parts[0] || '').trim();
+    overview = (parts.slice(1).join('\n').trim() || '').replace(/^Overview\s*/i, '').trim();
+  } else {
+    headline = defaultHeadline;
+    overview = raw.replace(/^Overview\s*/i, '').trim();
+  }
+  if (!headline) headline = defaultHeadline;
+
   const d = dealer || {};
-  let text = (data.content?.[0]?.text || '').trim();
-  text = text.replace(/\n*\s*Interested In This Unit\?[\s\S]*$/i, '').trim();
+  let text = headline + '\n\nKey Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
   if (d.name || d.phone || d.location) {
     const contactBits = [d.phone, d.location].filter(Boolean).join(' | ');
     text += '\n\nInterested In This Unit?\nCall ' + (d.name || 'the dealer') + (contactBits ? ': ' + contactBits : '');
