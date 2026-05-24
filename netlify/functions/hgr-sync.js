@@ -20,7 +20,7 @@ const CANONICAL_SUBCATEGORIES = new Set([
   'Compactor','Scraper','Air Compressor','Motor Grader','Backhoe Attachment','Crawler Loader',
   'Tractor','Lawn Tractor','Zero Turn Mower','Walk Behind Mower','Front Mounted Mower',
   'Field Mower','Finish Mower','Rotary Cutter','Hay Rake','Baler','Cultivator','Planter',
-  'Combine','Log Splitter','Wagon','Harrow','Box Scraper','Utility Vehicle','Land Leveler',
+  'Combine','Log Splitter','Wagon','Harrow','Disk','Box Scraper','Utility Vehicle','Land Leveler',
   'Overseeder','V-Ripper','Turf & Grounds Care',
   'SUV','Motorcycle','Classic Car','Engine','Side by Side','Boat','Freezer Box Body','Body',
 ]);
@@ -31,6 +31,7 @@ const SUBCATEGORY_ALIASES = {
   'Refrigerated Trailer': 'Reefer Trailer',
   'Equipment Trailers': 'Equipment Trailer',
   'Harrows': 'Harrow',
+  'Disks': 'Disk',
   'Curtain-Side': 'Curtain-Side Trailer',
   'Dry Van': 'Dry Van Trailer',
   'Track Loader': 'Crawler Loader',
