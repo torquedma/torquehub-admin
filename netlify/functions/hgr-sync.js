@@ -245,7 +245,7 @@ function parseXml(xml) {
       raw_description: rawDesc,
       description: null, // set below
       torque_hub_dx: null, // set below
-      description_source: 'torque_hub_dx',
+      description_source: 'raw_description',
       category,
       trim: canonicalSubcategory || '',
       subcategory: canonicalSubcategory,
