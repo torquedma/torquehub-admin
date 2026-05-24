@@ -31,6 +31,12 @@ ${lines.join('\n')}
 RAW DESCRIPTION:
 ${unit.raw_description || unit.description || ''}
 
+CRITICAL ACCURACY RULE:
+Use ONLY information explicitly present in UNIT INFO or RAW DESCRIPTION above.
+Do not infer, guess, decode, assume, or add any engine manufacturer, horsepower, torque, body style, drivetrain, mileage, condition, or specification that is not explicitly stated in the source.
+If the source does not state it, omit it.
+Accuracy over completeness.
+
 OUTPUT FORMAT (use exactly this structure, and END after the Overview section — do not write a contact or "Interested" section):
 [Year] [Make] [Model] – [Short Buyer Hook]
 
