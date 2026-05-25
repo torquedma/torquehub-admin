@@ -2144,6 +2144,7 @@ function sortInv(key) {
 }
 
 function setInvCatFilter(cat, el) {
+  window._customFilter = null;
   invCatFilter = cat; invPage = 1;
   document.querySelectorAll("#view-inventory .filter-chip:not([onclick*=Cond])").forEach(c => c.classList.remove("active"));
   if (el) el.classList.add("active");
@@ -2977,11 +2978,20 @@ function filterMissingDesc() {
 }
 
 function filterNeedsAttention() {
+  const pill = document.querySelector('.filter-chip[onclick*="filterNeedsAttention"]');
+  if (window._customFilter) {
+    window._customFilter = null;
+    if (pill) pill.classList.remove('active');
+    renderInventory();
+    return;
+  }
   showView('inventory', document.querySelector('.nav-item[onclick*=inventory]'));
   invDealerFilter = '';
   invCatFilter = 'All';
   invCondFilter = 'All';
   invPage = 1;
+  document.querySelectorAll("#view-inventory .filter-chip").forEach(c => c.classList.remove("active"));
+  if (pill) pill.classList.add('active');
   window._customFilter = u => {
     if (u.sold) return false;
     const hasPrice = u.price && parseFloat(String(u.price).replace(/[^0-9.]/g,'')) > 0;
