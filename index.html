@@ -2168,7 +2168,7 @@ function getFilteredInventory() {
     const sold = u.sold === true;
     const matchesDealer = !dlr || u.dealer === dlr;
     const matchesCat = invCatFilter === "All" || cat === invCatFilter;
-    const matchesQ = !q || `${u.year} ${u.make} ${u.model} ${u.stock} ${u.dealer}`.toLowerCase().includes(q);
+    const matchesQ = !q || `${u.year} ${u.make} ${u.model} ${u.stock} ${u.dealer} ${u.subcategory||''} ${u.trim||''}`.toLowerCase().includes(q);
     if (invCondFilter === "Sold") return sold && matchesDealer && matchesCat && matchesQ;
     if (invFeaturedOnly && !u.featured) return false;
     if (window._customFilter) return window._customFilter(u) && matchesDealer && matchesQ;
