@@ -3428,16 +3428,16 @@ async function downloadAllPhotos() {
   dlBtn.disabled = true;
   dlBtn.innerHTML = "⏳ Preparing...";
 
-  // Try to use JSZip if available, else download individually
-  if (typeof JSZip !== "undefined") {
-    await downloadAsZip(photos);
-  } else {
-    // Load JSZip dynamically
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-    script.onload = () => downloadAsZip(photos);
-    script.onerror = () => downloadIndividually(photos);
-    document.head.appendChild(script);
+  try {
+    // Delegate to downloadListingPhotos, which routes http(s) photos through the
+    // server-side proxy (/.netlify/functions/download-photos) to avoid CORS, handles
+    // data: URLs client-side, and builds one zip with failure reporting.
+    // currentListingKey is always produced by getListingKey() — same convention that
+    // downloadListingPhotos expects (openPhotoModal receives getListingKey(u) and stores
+    // it verbatim as currentListingKey).
+    await downloadListingPhotos(currentListingKey);
+  } finally {
+    resetProgress();
   }
 }
 
