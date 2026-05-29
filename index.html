@@ -4350,7 +4350,55 @@ async function downloadListingPhotos(key) {
   if (!photos.length) { alert('No photos for this listing.'); return; }
   const name = listing ? `${listing.year}-${listing.make}-${listing.model}-${listing.stock}`.replace(/\s+/g,'-').toLowerCase() : key;
 
-  // Load JSZip
+  // Split photos by source:
+  //   data: URLs  — handled entirely client-side (already in memory, no CORS issue)
+  //   http(s) URLs — fetched server-side via proxy (cdn05.carsforsale.com etc. send no
+  //                  Access-Control-Allow-Origin header, so direct client fetch is blocked)
+  const remoteEntries = []; // { originalIndex, url, name? } — sent to proxy in order
+  const slots = photos.map((p, i) => {
+    const url = (p.url || p.dataUrl || '').trim();
+    if (!url) return { type: 'empty' };
+    if (url.startsWith('data:')) return { type: 'data', base64: url.split(',')[1] };
+    const entry = { originalIndex: i, url, name: p.name };
+    remoteEntries.push(entry);
+    return { type: 'remote' };
+  });
+
+  // Proxy fetch for http(s) photos
+  const proxyBase64 = {}; // keyed by original photo index
+  let proxyFailed = 0, proxyFailedUrls = [];
+
+  if (remoteEntries.length > 0) {
+    let proxyResult;
+    try {
+      const resp = await fetch('/.netlify/functions/download-photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photos: remoteEntries.map(e => ({ url: e.url, name: e.name })) }),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Proxy ${resp.status}: ${errText.slice(0, 200)}`);
+      }
+      proxyResult = await resp.json();
+      if (proxyResult.error) throw new Error(proxyResult.error);
+    } catch (e) {
+      console.error('[downloadListingPhotos] proxy error:', e);
+      alert(`Photo proxy error — download cancelled.\n${e.message}`);
+      return;
+    }
+
+    if (proxyResult.warning) console.warn('[downloadListingPhotos]', proxyResult.warning);
+    proxyFailed     = proxyResult.failed    || 0;
+    proxyFailedUrls = proxyResult.failedUrls || [];
+
+    // images[] is indexed same as the remoteEntries we sent; map back to original slot index
+    (proxyResult.images || []).forEach((img, proxyIdx) => {
+      if (img && img.base64) proxyBase64[remoteEntries[proxyIdx].originalIndex] = img.base64;
+    });
+  }
+
+  // Load JSZip if needed
   if (!window.JSZip) {
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
@@ -4360,23 +4408,32 @@ async function downloadListingPhotos(key) {
     });
   }
 
+  // Build one zip preserving original photo order across both data: and http(s) sources
   const zip = new window.JSZip();
   const folder = zip.folder(name);
+  const pad = String(photos.length).length;
+  let added = 0;
 
-  await Promise.all(photos.map(async (p, i) => {
-    const url = p.url || p.dataUrl;
-    if (!url) return;
-    try {
-      if (url.startsWith('data:')) {
-        const base64 = url.split(',')[1];
-        folder.file(`${name}-${i+1}.jpg`, base64, { base64: true });
-      } else {
-        const resp = await fetch(url);
-        const blob = await resp.blob();
-        folder.file(`${name}-${i+1}.jpg`, blob);
-      }
-    } catch(e) { console.warn('Failed to fetch photo', url); }
-  }));
+  slots.forEach((slot, i) => {
+    const filename = `${name}-${String(i + 1).padStart(pad, '0')}.jpg`;
+    if (slot.type === 'data') {
+      folder.file(filename, slot.base64, { base64: true });
+      added++;
+    } else if (slot.type === 'remote') {
+      const b64 = proxyBase64[i];
+      if (b64) { folder.file(filename, b64, { base64: true }); added++; }
+    }
+  });
+
+  if (added === 0) {
+    alert(`None of the ${photos.length} photo${photos.length !== 1 ? 's' : ''} could be downloaded.${proxyFailed > 0 ? ` (${proxyFailed} failed — see console)` : ''}`);
+    return;
+  }
+
+  if (proxyFailed > 0) {
+    console.warn('[downloadListingPhotos] failed URLs:', proxyFailedUrls);
+    alert(`Downloaded ${added} of ${photos.length} photos (${proxyFailed} failed — see console for URLs).`);
+  }
 
   const blob = await zip.generateAsync({ type: 'blob' });
   const a = document.createElement('a');
@@ -4385,6 +4442,7 @@ async function downloadListingPhotos(key) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
 function exportPhotoStore() {
