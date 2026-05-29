@@ -1722,6 +1722,7 @@ document.querySelector('.sidebar').classList.toggle('open');
   </div>
 </div>
 
+<script src="js/taxonomy.browser.js"></script>
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ===================== DATA =====================
 let DEALERS = [];
@@ -2641,6 +2642,14 @@ function toggleFeatured(stock, val) {
   });
 }
 
+function gateSubcategory(typed) {
+  const trimmed = (typed || '').trim();
+  if (!trimmed) return { value: '', proceed: true };
+  const canonical = (window.TAXONOMY && window.TAXONOMY.canonicalize) ? window.TAXONOMY.canonicalize(trimmed) : '';
+  if (canonical) return { value: canonical, proceed: true };
+  return { value: trimmed, proceed: 'warn' };
+}
+
 async function saveListingEdits() {
   // ---- INSERT branch: first save in create mode ----
   if (CREATE_MODE_CONTEXT) {
@@ -2684,6 +2693,12 @@ async function saveListingEdits() {
     const transText = document.getElementById('edit-transmission').value.trim();
     const category  = normalizeCategoryValue(document.getElementById('edit-site-tag').value);
 
+    const _subGateInsert = gateSubcategory(document.getElementById('edit-subcategory').value);
+    if (_subGateInsert.proceed === 'warn') {
+      const go = confirm("This subcategory is not in the canonical taxonomy and may not appear on buyer-facing category pages.\n\nCancel to fix it, or OK to Save Anyway.");
+      if (!go) return;
+    }
+
     const newUnit = {
       dealer,
       stock,
@@ -2705,7 +2720,7 @@ async function saveListingEdits() {
       vin:                     document.getElementById('edit-vin').value.trim(),
       category,
       featured:                document.getElementById('edit-featured').checked ? 1 : 0,
-      subcategory:             document.getElementById('edit-subcategory').value.trim(),
+      subcategory:             _subGateInsert.value,
       description:             document.getElementById('edit-description').value.trim(),
       notes:                   document.getElementById('edit-notes').value.trim(),
       prod_status:             document.getElementById('edit-prod-status').value || '',
@@ -2846,7 +2861,13 @@ async function saveListingEdits() {
   u.vin       = document.getElementById("edit-vin").value.trim();
   u.category  = document.getElementById("edit-site-tag").value;
   u.featured  = document.getElementById("edit-featured").checked ? 1 : 0;
-  u.subcategory = document.getElementById("edit-subcategory").value.trim();
+  const _subGateUpdate = gateSubcategory(document.getElementById("edit-subcategory").value);
+  if (_subGateUpdate.proceed === 'warn') {
+    const go = confirm("This subcategory is not in the canonical taxonomy and may not appear on buyer-facing category pages.\n\nCancel to fix it, or OK to Save Anyway.");
+    if (!go) return;
+    u.subcategory_locked = true;
+  }
+  u.subcategory = _subGateUpdate.value;
   u.description = document.getElementById("edit-description").value.trim();
   u.notes = document.getElementById("edit-notes").value.trim();
   u.prod_status = document.getElementById("edit-prod-status").value;
