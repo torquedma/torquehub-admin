@@ -137,6 +137,7 @@ const SUBCATEGORY_ALIASES = {
   'Ditch Mower': 'Boom Mower',
   'Verge Mower': 'Boom Mower',
   'Boom Flail Mower': 'Boom Mower',
+  'Hay Wagon': 'Wagon',
   'Mower': '',
   'Lawn & Garden': ''
 };
