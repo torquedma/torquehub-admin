@@ -23,6 +23,7 @@
     "Concrete Mixer",
     "Grain Dump Truck",
     "Bucket Truck",
+    "Boom Truck",
     "Mixer Truck",
     "Yard Spotter",
     "Cab & Chassis",
