@@ -17,6 +17,7 @@ const CANONICAL_SUBCATEGORIES = new Set([
   'Crane Truck',
   'Refrigerated Truck',
   'Tanker Truck',
+  'Vacuum Truck',
   'Fuel Truck',
   'Step Van',
   'Garbage Truck',
@@ -121,6 +122,14 @@ const SUBCATEGORY_ALIASES = {
   'Wheel Skid Steer': 'Skid Steer',
   'UTV': 'Utility Vehicle',
   'Car / Racing Trailer': 'Car Hauler Trailer',
+  'Septic Pump': 'Vacuum Truck',
+  'Septic Truck': 'Vacuum Truck',
+  'Vac Truck': 'Vacuum Truck',
+  'Sewer Truck': 'Vacuum Truck',
+  'Sewer Cleaner': 'Vacuum Truck',
+  'Camel Jet': 'Vacuum Truck',
+  'Vactor': 'Vacuum Truck',
+  'Jetter Truck': 'Vacuum Truck',
   'Mower': '',
   'Lawn & Garden': ''
 };
