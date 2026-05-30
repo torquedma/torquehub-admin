@@ -82,6 +82,8 @@
     "Field Mower",
     "Finish Mower",
     "Rotary Cutter",
+    "Boom Mower",
+    "Drum Mower",
     "Hay Rake",
     "Baler",
     "Cultivator",
@@ -129,6 +131,10 @@
     'Camel Jet': 'Vacuum Truck',
     'Vactor': 'Vacuum Truck',
     'Jetter Truck': 'Vacuum Truck',
+    'Flail Mower': 'Boom Mower',
+    'Ditch Mower': 'Boom Mower',
+    'Verge Mower': 'Boom Mower',
+    'Boom Flail Mower': 'Boom Mower',
     'Mower': '',
     'Lawn & Garden': ''
   };
