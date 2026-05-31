@@ -99,6 +99,17 @@ exports.handler = async function (event) {
       console.log("FETCH — contentType:", contentType, "bytes:", bodyBytes.length);
     }
 
+    const MAX_UPLOAD_BYTES = 2 * 1024 * 1024; // 2 MB — compressed uploads (1200px/0.82 JPEG) are well under this
+    if (bodyBytes.length > MAX_UPLOAD_BYTES) {
+      return {
+        statusCode: 413,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          error: `Image too large (${(bodyBytes.length / 1024 / 1024).toFixed(1)} MB). Images must be compressed before upload (max 2 MB).`
+        })
+      };
+    }
+
     const path = `${safeDealer}/${safeStock}/${safeIndex}.${ext}`;
     const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${path}`;
     console.log("UPLOAD — path:", path);
