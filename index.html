@@ -3306,12 +3306,14 @@ async function handleDrop(e) {
   if (!files.length) return;
 
   for (const file of files) {
-    const dataUrl = await new Promise((resolve, reject) => {
+    const rawDataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = ev => resolve(ev.target.result);
       reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
       reader.readAsDataURL(file);
     });
+
+    const dataUrl = await compressImage(rawDataUrl);
 
     await pushPhotoToCurrentListing({
       id: Date.now() + Math.random(),
@@ -3320,7 +3322,7 @@ async function handleDrop(e) {
       url: dataUrl,
       type: "file",
       fromUrl: false,
-      mimeType: file.type
+      mimeType: 'image/jpeg'
     });
   }
 }
