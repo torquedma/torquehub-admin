@@ -2201,7 +2201,11 @@ function getListingKey(u) {
 
 function getPhotoCount(u) {
   const key = getListingKey(u);
-  return (PHOTO_STORE[key] || []).length;
+  // Prefer PHOTO_STORE when populated (lazy-fetched or uploaded this session)
+  const storeCount = (PHOTO_STORE[key] || []).length;
+  if (storeCount > 0) return storeCount;
+  // Fall back to count derived from initial DB fetch
+  return u.photo_count || 0;
 }
 
 function renderInventory() {
@@ -2231,8 +2235,8 @@ function renderInventory() {
   tbody.innerHTML = slice.map((u, i) => {
     const condClass = u.condition === "New" ? "cond-new" : "cond-used";
     const photoCount = getPhotoCount(u);
-    const firstPhoto = (PHOTO_STORE[getListingKey(u)] || [])[0];
-    const thumbUrl = firstPhoto ? (firstPhoto.url || firstPhoto.dataUrl || '') : '';
+    const storeFirst = (PHOTO_STORE[getListingKey(u)] || [])[0];
+    const thumbUrl = storeFirst ? (storeFirst.url || storeFirst.dataUrl || '') : (u.first_photo || '');
     const photoBadge = photoCount > 0
       ? `<span class="photo-badge">📷 ${photoCount}</span>`
       : `<span class="photo-badge none">No photos</span>`;
@@ -5781,7 +5785,7 @@ async function loadApp() {
 
     // Load inventory
     const INV_URL = (off) =>
-      `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,trim,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,subcategory_locked,raw_description,description_source&order=dealer,stock&offset=${off}&limit=1000`;
+      `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,trim,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,subcategory_locked,raw_description,description_source,photos&order=dealer,stock&offset=${off}&limit=1000`;
 
     const fetchPageWithRetry = async (off, attempts = 3) => {
       let lastErr;
@@ -5851,6 +5855,8 @@ async function loadApp() {
       subcategory_locked: item.subcategory_locked || false,
       raw_description: item.raw_description || '',
       description_source: item.description_source || '',
+      photo_count: Array.isArray(item.photos) ? item.photos.length : 0,
+      first_photo: Array.isArray(item.photos) && item.photos[0] ? (item.photos[0].url || item.photos[0].dataUrl || '') : '',
       _id: item.id
     }));
 
