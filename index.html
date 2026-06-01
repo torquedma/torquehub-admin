@@ -4511,33 +4511,53 @@ async function downloadListingPhotos(key) {
   let proxyFailed = 0, proxyFailedUrls = [];
 
   if (remoteEntries.length > 0) {
-    let proxyResult;
-    try {
-      const resp = await fetch('/.netlify/functions/download-photos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photos: remoteEntries.map(e => ({ url: e.url, name: e.name })) }),
-      });
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`Proxy ${resp.status}: ${errText.slice(0, 200)}`);
+    // Send remote URLs in chunks of 3 so each proxy response stays well under the
+    // 4 MB raw budget enforced by download-photos.js. Calls are sequential — each
+    // chunk awaits before the next starts — which also avoids concurrent function invocations.
+    const CHUNK_SIZE  = 3;
+    const totalChunks = Math.ceil(remoteEntries.length / CHUNK_SIZE);
+    const dlBtn       = document.getElementById('dl-all-btn');
+
+    for (let c = 0; c < remoteEntries.length; c += CHUNK_SIZE) {
+      const chunk    = remoteEntries.slice(c, c + CHUNK_SIZE);
+      const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
+
+      // Optional progress on the "Download All Photos" button (absent when called from table row).
+      if (dlBtn) {
+        const fetched = Math.min(c + chunk.length, remoteEntries.length);
+        dlBtn.innerHTML = `⏳ Downloading ${fetched}/${photos.length}…`;
       }
-      proxyResult = await resp.json();
-      if (proxyResult.error) throw new Error(proxyResult.error);
-    } catch (e) {
-      console.error('[downloadListingPhotos] proxy error:', e);
-      alert(`Photo proxy error — download cancelled.\n${e.message}`);
-      return;
+
+      let proxyResult;
+      try {
+        const resp = await fetch('/.netlify/functions/download-photos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photos: chunk.map(e => ({ url: e.url, name: e.name })) }),
+        });
+        if (!resp.ok) {
+          const errText = await resp.text();
+          throw new Error(`Proxy ${resp.status}: ${errText.slice(0, 200)}`);
+        }
+        proxyResult = await resp.json();
+        if (proxyResult.error) throw new Error(proxyResult.error);
+      } catch (e) {
+        // Chunk failed — record all URLs in this chunk as failed and keep going.
+        console.error(`[downloadListingPhotos] proxy error (chunk ${chunkNum}/${totalChunks}):`, e);
+        chunk.forEach(e => proxyFailedUrls.push(e.url));
+        proxyFailed += chunk.length;
+        continue;
+      }
+
+      if (proxyResult.warning) console.warn(`[downloadListingPhotos] chunk ${chunkNum}/${totalChunks}:`, proxyResult.warning);
+      proxyFailed     += proxyResult.failed    || 0;
+      proxyFailedUrls  = proxyFailedUrls.concat(proxyResult.failedUrls || []);
+
+      // images[] indexed same as the chunk we sent; map back to original slot index.
+      (proxyResult.images || []).forEach((img, proxyIdx) => {
+        if (img && img.base64) proxyBase64[chunk[proxyIdx].originalIndex] = img.base64;
+      });
     }
-
-    if (proxyResult.warning) console.warn('[downloadListingPhotos]', proxyResult.warning);
-    proxyFailed     = proxyResult.failed    || 0;
-    proxyFailedUrls = proxyResult.failedUrls || [];
-
-    // images[] is indexed same as the remoteEntries we sent; map back to original slot index
-    (proxyResult.images || []).forEach((img, proxyIdx) => {
-      if (img && img.base64) proxyBase64[remoteEntries[proxyIdx].originalIndex] = img.base64;
-    });
   }
 
   // Load JSZip if needed
