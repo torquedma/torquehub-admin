@@ -4536,52 +4536,49 @@ async function downloadListingPhotos(key) {
   let proxyFailed = 0, proxyFailedUrls = [];
 
   if (remoteEntries.length > 0) {
-    // Send remote URLs in chunks of 3 so each proxy response stays well under the
-    // 4 MB raw budget enforced by download-photos.js. Calls are sequential — each
-    // chunk awaits before the next starts — which also avoids concurrent function invocations.
-    const CHUNK_SIZE  = 1; // 1 photo per proxy call — large images (>1 MB each) can push 3 over the 4 MB budget
-    const totalChunks = Math.ceil(remoteEntries.length / CHUNK_SIZE);
-    const dlBtn       = document.getElementById('dl-all-btn');
+    // One photo per proxy call keeps each response under the 4.4 MB raw budget.
+    // DOWNLOAD_CONCURRENCY calls run in parallel so 12 photos take ~3 round-trips
+    // instead of 12 sequential ones. proxyBase64 is keyed by originalIndex so
+    // parallel completion never scrambles photo order.
+    const DOWNLOAD_CONCURRENCY = 4;
+    const dlBtn = document.getElementById('dl-all-btn');
+    let settled = 0;
 
-    for (let c = 0; c < remoteEntries.length; c += CHUNK_SIZE) {
-      const chunk    = remoteEntries.slice(c, c + CHUNK_SIZE);
-      const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
-
-      // Optional progress on the "Download All Photos" button (absent when called from table row).
-      if (dlBtn) {
-        const fetched = Math.min(c + chunk.length, remoteEntries.length);
-        dlBtn.innerHTML = `⏳ Downloading ${fetched}/${photos.length}…`;
-      }
-
-      let proxyResult;
+    const tasks = remoteEntries.map(entry => async () => {
       try {
         const resp = await fetch('/.netlify/functions/download-photos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photos: chunk.map(e => ({ url: e.url, name: e.name })) }),
+          body: JSON.stringify({ photos: [{ url: entry.url, name: entry.name }] }),
         });
         if (!resp.ok) {
           const errText = await resp.text();
           throw new Error(`Proxy ${resp.status}: ${errText.slice(0, 200)}`);
         }
-        proxyResult = await resp.json();
-        if (proxyResult.error) throw new Error(proxyResult.error);
+        const result = await resp.json();
+        if (result.error) throw new Error(result.error);
+        if (result.warning) console.warn('[downloadListingPhotos]', entry.url, result.warning);
+        // images[0] is the single photo we sent; write by originalIndex so order is preserved.
+        const img = (result.images || [])[0];
+        if (img && img.base64) {
+          proxyBase64[entry.originalIndex] = img.base64;
+        } else {
+          proxyFailed++;
+          proxyFailedUrls.push(...(result.failedUrls || [entry.url]));
+        }
       } catch (e) {
-        // Chunk failed — record all URLs in this chunk as failed and keep going.
-        console.error(`[downloadListingPhotos] proxy error (chunk ${chunkNum}/${totalChunks}):`, e);
-        chunk.forEach(e => proxyFailedUrls.push(e.url));
-        proxyFailed += chunk.length;
-        continue;
+        // Always resolve — one failure must not abort remaining tasks.
+        console.error('[downloadListingPhotos] proxy error:', entry.url, e.message);
+        proxyFailed++;
+        proxyFailedUrls.push(entry.url);
+      } finally {
+        settled++;
+        if (dlBtn) dlBtn.innerHTML = `⏳ Downloading ${settled}/${remoteEntries.length}…`;
       }
+    });
 
-      if (proxyResult.warning) console.warn(`[downloadListingPhotos] chunk ${chunkNum}/${totalChunks}:`, proxyResult.warning);
-      proxyFailed     += proxyResult.failed    || 0;
-      proxyFailedUrls  = proxyFailedUrls.concat(proxyResult.failedUrls || []);
-
-      // images[] indexed same as the chunk we sent; map back to original slot index.
-      (proxyResult.images || []).forEach((img, proxyIdx) => {
-        if (img && img.base64) proxyBase64[chunk[proxyIdx].originalIndex] = img.base64;
-      });
+    for (let b = 0; b < tasks.length; b += DOWNLOAD_CONCURRENCY) {
+      await Promise.all(tasks.slice(b, b + DOWNLOAD_CONCURRENCY).map(fn => fn()));
     }
   }
 
