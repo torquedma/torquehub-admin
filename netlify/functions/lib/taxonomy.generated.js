@@ -41,6 +41,7 @@ const CANONICAL_SUBCATEGORIES = new Set([
   'Conestoga Trailer',
   'Concession Trailer',
   'Race Trailer',
+  'Living Quarters Trailer',
   'Deckover Trailer',
   'Tilt Trailer',
   'Dovetail Trailer',

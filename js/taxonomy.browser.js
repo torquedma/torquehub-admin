@@ -40,6 +40,7 @@
     "Conestoga Trailer",
     "Concession Trailer",
     "Race Trailer",
+    "Living Quarters Trailer",
     "Deckover Trailer",
     "Tilt Trailer",
     "Dovetail Trailer",
