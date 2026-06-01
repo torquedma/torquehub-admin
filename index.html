@@ -1480,7 +1480,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:4px"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><label class="edit-label" style="margin:0">Model</label><button class="dx-btn" id="model-lock-btn" onclick="toggleModelLock()" style="font-size:11px;padding:2px 8px">Lock Model</button></div><div id="model-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px">Model Locked - feed sync will not overwrite</div><input class="edit-input" id="edit-model" type="text" placeholder="Model" style="width:100%"></div>
         <div class="edit-field"><label class="edit-label">Trim</label><input class="edit-input" id="edit-trim" type="text" placeholder="e.g. XLT, Laramie, Limited"></div>
         <div class="edit-field"><label class="edit-label">Price</label><input class="edit-input" id="edit-price" type="text" placeholder="e.g. $12,500" onblur="formatPriceInput(this)" onfocus="unformatPriceInput(this)"></div>
-        <div class="edit-field"><label class="edit-label">Stock #</label><input class="edit-input" id="edit-stock" type="text" placeholder="Stock #"></div>
+        <div class="edit-field"><label class="edit-label">Stock #</label><input class="edit-input" id="edit-stock" type="text" placeholder="Stock #"><div class="decode-note" id="edit-stock-note"></div></div>
         <div class="edit-field"><label class="edit-label">Days Listed</label><input class="edit-input" id="edit-days" type="text" placeholder="Days"></div>
         <div class="edit-field"><label class="edit-label">Condition</label>
           <select class="edit-input" id="edit-condition">
@@ -2349,6 +2349,8 @@ function populateEditForm(u) {
   document.getElementById("edit-vin").value = u.vin || "";
   var vinNote = document.getElementById("edit-vin-note");
   if (vinNote) vinNote.textContent = "VIN decoder can fill year, make, model, and fuel when available.";
+  var sn = document.getElementById('edit-stock-note');
+  if (sn) { sn.textContent = ''; sn.style.color = ''; }
   document.getElementById("edit-site-tag").value = getListingCat(u);
   document.getElementById("edit-featured").checked = !!u.featured;
   document.getElementById("edit-subcategory").value = u.subcategory || "";
@@ -2686,6 +2688,18 @@ async function saveListingEdits() {
     if (!stock) { alert('Stock # is required to create a listing.'); return false; }
 
     const { tempKey, dealer } = CREATE_MODE_CONTEXT;
+
+    const dupe = INVENTORY.find(u => u.stock === stock && u.dealer === dealer);
+    if (dupe) {
+      const sn = document.getElementById('edit-stock-note');
+      if (sn) {
+        sn.textContent = 'Stock ' + stock + ' is already used by a ' +
+          [dupe.year, dupe.make, dupe.model].filter(Boolean).join(' ') +
+          ' at ' + dealer + '. Use a different stock #, or edit that listing instead.';
+        sn.style.color = '#dc2626';
+      }
+      return false;
+    }
     const dealerSlug = String(dealer).toLowerCase().replace(/[^a-z0-9-]/g, '-');
     const stockNum   = String(stock).replace(/[^a-z0-9-]/gi, '-');
 
@@ -2834,7 +2848,14 @@ async function saveListingEdits() {
       const text = await r.text();
       if (!r.ok) {
         console.error('[saveListingEdits INSERT] Supabase error:', r.status, text);
-        alert('Listing created locally but Supabase save failed (' + r.status + '): ' + text.slice(0, 200));
+        let alertMsg;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed.code === '23505' || (parsed.message && parsed.message.includes('inventory_stock_dealer_unique'))) {
+            alertMsg = 'This stock number is already in use for this dealer. The listing was not saved to the database. Please use a different stock #.';
+          }
+        } catch (e) { /* non-JSON body — fall through to raw message */ }
+        alert(alertMsg || 'Listing created locally but Supabase save failed (' + r.status + '): ' + text.slice(0, 200));
         return;
       }
       try {
