@@ -2647,7 +2647,7 @@ function gateSubcategory(typed) {
   if (!trimmed) return { value: '', proceed: true };
   const canonical = (window.TAXONOMY && window.TAXONOMY.canonicalize) ? window.TAXONOMY.canonicalize(trimmed) : '';
   if (canonical) return { value: canonical, proceed: true };
-  return { value: trimmed, proceed: 'warn' };
+  return { value: trimmed, proceed: false };
 }
 
 async function saveListingEdits() {
@@ -2694,9 +2694,9 @@ async function saveListingEdits() {
     const category  = normalizeCategoryValue(document.getElementById('edit-site-tag').value);
 
     const _subGateInsert = gateSubcategory(document.getElementById('edit-subcategory').value);
-    if (_subGateInsert.proceed === 'warn') {
-      const go = confirm("This subcategory is not in the canonical taxonomy and may not appear on buyer-facing category pages.\n\nCancel to fix it, or OK to Save Anyway.");
-      if (!go) return;
+    if (_subGateInsert.proceed === false) {
+      alert("\"" + _subGateInsert.value + "\" is not in the canonical taxonomy.\n\nPick a value from the suggestions, or add it to taxonomy.json first. The listing cannot be saved with an off-taxonomy subcategory.");
+      return;
     }
 
     const newUnit = {
@@ -2862,10 +2862,9 @@ async function saveListingEdits() {
   u.category  = document.getElementById("edit-site-tag").value;
   u.featured  = document.getElementById("edit-featured").checked ? 1 : 0;
   const _subGateUpdate = gateSubcategory(document.getElementById("edit-subcategory").value);
-  if (_subGateUpdate.proceed === 'warn') {
-    const go = confirm("This subcategory is not in the canonical taxonomy and may not appear on buyer-facing category pages.\n\nCancel to fix it, or OK to Save Anyway.");
-    if (!go) return;
-    u.subcategory_locked = true;
+  if (_subGateUpdate.proceed === false) {
+    alert("\"" + _subGateUpdate.value + "\" is not in the canonical taxonomy.\n\nPick a value from the suggestions, or add it to taxonomy.json first. The listing cannot be saved with an off-taxonomy subcategory.");
+    return;
   }
   u.subcategory = _subGateUpdate.value;
   u.description = document.getElementById("edit-description").value.trim();
