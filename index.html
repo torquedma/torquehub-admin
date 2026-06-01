@@ -1727,6 +1727,7 @@ document.querySelector('.sidebar').classList.toggle('open');
 // ===================== DATA =====================
 let DEALERS = [];
 let INVENTORY = [];
+let inventoryLoading = true;
 
 const CAT_ICONS = { Trucks: "🚚", Construction: "🏗️", Farm: "🌾", Trailers: "🚛", Landscape: "🌳" };
 const DEALER_CAT_MAP = {};
@@ -2228,7 +2229,9 @@ function renderInventory() {
   invPage = Math.min(invPage, pages || 1);
   const slice = filtered.slice((invPage-1)*INV_PAGE_SIZE, invPage*INV_PAGE_SIZE);
 
-  document.getElementById("inv-count-label").textContent = `${total.toLocaleString()} listing${total!==1?"s":""}`;
+  document.getElementById("inv-count-label").textContent = inventoryLoading
+    ? "Loading inventory…"
+    : `${total.toLocaleString()} listing${total!==1?"s":""}`;
   updateSortHeaders('ivh-', ['year','make','model','condition','price','dealer','stock','days'], invSort.key, invSort.dir);
 
   const tbody = document.getElementById("inv-tbody");
@@ -2266,6 +2269,12 @@ function renderInventory() {
 
     </tr>`;
   }).join("");
+
+  if (slice.length === 0) {
+    tbody.innerHTML = inventoryLoading
+      ? `<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">Loading inventory…</td></tr>`
+      : `<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">No listings match your filters.</td></tr>`;
+  }
 
   loadRowThumbs();
 
@@ -5866,6 +5875,7 @@ async function loadApp() {
     console.warn('Supabase load failed, using local data:', err.message);
   }
 
+  inventoryLoading = false;
   init();
 }
 
