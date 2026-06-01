@@ -2691,25 +2691,37 @@ async function saveListingEdits() {
 
     // Upload any staged data-URL photos; drop failures gracefully
     const staged = PHOTO_STORE[tempKey] || [];
-    const uploadedPhotos = [];
-    const uploadFailures = [];
-    for (let i = 0; i < staged.length; i++) {
-      const p = staged[i];
+    const UPLOAD_CONCURRENCY = 6;
+
+    // Build one task-function per staged photo. Staged index i is used as the
+    // storage slot (not uploadedPhotos.length) so positions are deterministic
+    // regardless of which parallel upload resolves first.
+    const uploadTasks = staged.map((p, i) => {
       const source = p.url || p.dataUrl;
       if (typeof source === 'string' && source.startsWith('data:')) {
-        try {
-          const storageUrl = await uploadPhotoViaNetlify(source, dealerSlug, stockNum, uploadedPhotos.length);
-          uploadedPhotos.push({ ...p, url: storageUrl, dataUrl: storageUrl, type: 'url', fromUrl: false, storage: 'supabase' });
-        } catch (err) {
-          console.warn('saveListingEdits INSERT photo upload failed:', p.name, err.message);
-          uploadFailures.push(p.name || ('photo ' + (i + 1)));
-        }
+        return () => uploadPhotoViaNetlify(source, dealerSlug, stockNum, i)
+          .then(storageUrl => ({ ok: true, photo: { ...p, url: storageUrl, dataUrl: storageUrl, type: 'url', fromUrl: false, storage: 'supabase' } }))
+          .catch(err => {
+            console.warn('saveListingEdits INSERT photo upload failed:', p.name, err.message);
+            return { ok: false, failName: p.name || ('photo ' + (i + 1)) };
+          });
       } else if (typeof source === 'string' && source.includes('.supabase.co/storage/')) {
-        uploadedPhotos.push({ ...p });
+        return () => Promise.resolve({ ok: true, photo: { ...p } });
       } else {
-        uploadFailures.push(p.name || ('photo ' + (i + 1)));
+        return () => Promise.resolve({ ok: false, failName: p.name || ('photo ' + (i + 1)) });
       }
+    });
+
+    // Fire in batches of UPLOAD_CONCURRENCY. Promise.all preserves per-batch
+    // order, so orderedResults stays in staged order across all batches.
+    const orderedResults = [];
+    for (let b = 0; b < uploadTasks.length; b += UPLOAD_CONCURRENCY) {
+      const batchResults = await Promise.all(uploadTasks.slice(b, b + UPLOAD_CONCURRENCY).map(fn => fn()));
+      orderedResults.push(...batchResults);
     }
+
+    const uploadedPhotos = orderedResults.filter(r => r.ok).map(r => r.photo);
+    const uploadFailures = orderedResults.filter(r => !r.ok).map(r => r.failName);
     if (staged.length > 0 && uploadedPhotos.length === 0) {
       alert('All ' + staged.length + ' photo uploads failed. Listing not created. Check your connection and try again.');
       return false;
