@@ -4808,9 +4808,9 @@ function openCreateListingPreMenu() {
   const noteEl = document.getElementById('pre-vin-note');
   if (noteEl) noteEl.textContent = 'If provided, VIN will be decoded to pre-fill year, make, model, fuel.';
 
-  // Reset Continue button state
+  // Reset Continue button state and any decode-warning flag
   const btn = document.getElementById('pre-continue-btn');
-  if (btn) { btn.textContent = 'Continue →'; btn.disabled = false; }
+  if (btn) { btn.textContent = 'Continue →'; btn.disabled = false; btn.dataset.decodeWarned = ''; }
 
   // Open modal and focus dealer
   document.getElementById('create-listing-pre-menu').classList.add('open');
@@ -4825,25 +4825,52 @@ async function continueFromPreMenu() {
   const dealer = document.getElementById('pre-dealer').value;
   const category = document.getElementById('pre-category').value;
   const vin = document.getElementById('pre-vin').value.trim().toUpperCase();
+  const note = document.getElementById('pre-vin-note');
+  const btn  = document.getElementById('pre-continue-btn');
 
   if (!dealer) { alert('Please choose a dealer.'); return; }
   if (!category) { alert('Please choose a category.'); return; }
 
   const prefillSource = { dealer, category, vin, decoded: null };
 
-  // Optional VIN decode — advisory only, user can edit anything in next modal
   if (vin) {
-    const btn = document.getElementById('pre-continue-btn');
-    btn.textContent = 'Decoding VIN…';
-    btn.disabled = true;
-    try {
-      prefillSource.decoded = await decodeVinToObject(vin);
-    } catch (err) {
-      console.warn('Pre-menu VIN decode failed:', err.message);
-      // Continue without decoded data — user can fill manually
+    // Validate format before touching NHTSA.
+    const validation = _vinValidate(vin);
+    if (!validation.valid) {
+      if (note) { note.textContent = validation.message; note.style.color = '#dc2626'; }
+      return; // block — let the user fix the VIN
     }
-    btn.textContent = 'Continue →';
-    btn.disabled = false;
+
+    // If the user already acknowledged a "couldn't decode" warning for exactly
+    // this VIN (second Continue click), proceed without decoding again.
+    if (btn.dataset.decodeWarned === vin) {
+      btn.dataset.decodeWarned = '';
+      if (note) { note.textContent = ''; note.style.color = ''; }
+      // fall through to openCreateListingModal with decoded: null
+    } else {
+      btn.textContent = 'Decoding VIN…';
+      btn.disabled = true;
+      try {
+        prefillSource.decoded = await decodeVinToObject(vin);
+      } catch (err) {
+        console.warn('Pre-menu VIN decode failed:', err.message);
+      }
+      btn.textContent = 'Continue →';
+      btn.disabled = false;
+
+      if (!prefillSource.decoded) {
+        // Valid format but NHTSA couldn't decode — warn and require a second click.
+        if (note) {
+          note.textContent = 'Could not decode this VIN. Click Continue again to proceed and fill in the details manually.';
+          note.style.color = '#dc2626';
+        }
+        btn.dataset.decodeWarned = vin; // second click will bypass decode
+        return;
+      }
+
+      // Successful decode — clear any previous warning.
+      if (note) { note.textContent = ''; note.style.color = ''; }
+    }
   }
 
   closeCreateListingPreMenu();
@@ -4876,6 +4903,28 @@ function _vinTransmission(row) {
     row.TransmissionStyle  || '',
     row.TransmissionSpeeds ? row.TransmissionSpeeds + '-speed' : ''
   ].filter(Boolean).join(' ');
+}
+// Returns { valid: bool, message: string }. Pass the raw (untrimmed) VIN string.
+// Callers skip this when the field is blank and VIN is optional (create flow).
+function _vinValidate(vin) {
+  const s = String(vin || '').trim().toUpperCase();
+  if (!s) return { valid: false, message: 'Enter a VIN.' };
+  // I, O, Q are excluded from the VIN character set by spec.
+  for (const letter of ['I', 'O', 'Q']) {
+    if (s.includes(letter)) {
+      const hint = letter === 'O' ? "VINs use the number 0, not the letter O."
+                 : letter === 'I' ? "VINs use the number 1, not the letter I."
+                 :                  "Q is excluded from VINs.";
+      return { valid: false, message: `Invalid VIN: contains the letter ‘${letter}’. ${hint} (The letters I, O, and Q are never used in VINs.)` };
+    }
+  }
+  if (/[^A-Z0-9]/.test(s)) {
+    return { valid: false, message: 'Invalid VIN: contains invalid characters. VINs use only letters (except I, O, Q) and numbers.' };
+  }
+  if (s.length !== 17) {
+    return { valid: false, message: `VIN must be 17 characters (you entered ${s.length}).` };
+  }
+  return { valid: true, message: '' };
 }
 
 // Read-only / object-returning VIN decoder.
@@ -4979,10 +5028,9 @@ function normalizeCategoryValue(val) {
 }
 
 async function decodeVinAndFill(vin, map) {
+  const validation = _vinValidate(vin);
+  if (!validation.valid) throw new Error(validation.message);
   const cleanVin = (vin || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  if (cleanVin.length < 10) {
-    throw new Error('Enter at least a partial VIN. 17 digits works best.');
-  }
 
   const modelYear = document.getElementById(map.year)?.value?.trim() || '';
   const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(cleanVin)}?format=json${modelYear ? `&modelyear=${encodeURIComponent(modelYear)}` : ''}`;
