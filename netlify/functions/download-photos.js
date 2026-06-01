@@ -3,14 +3,20 @@
 // Proxy for client-side photo downloads that would otherwise be blocked by CORS.
 // Accepts http(s) URLs only — data: URLs are handled entirely client-side.
 //
-// Response size note: Netlify synchronous functions have a hard 6 MB response limit.
-// This function enforces a 4 MB raw-bytes budget (≈5.3 MB base64) to stay safely under
-// that limit. For listings with many large photos (>20 × 300 KB), some photos may be
-// omitted with a warning; the client reports partial success rather than a silent empty zip.
+// Response size note: Netlify synchronous functions have a hard 6 MB response limit on
+// the *base64-encoded* response body. Base64 inflates raw bytes by ~33% (every 3 raw
+// bytes become 4 base64 chars). Working backwards:
+//   6.0 MB base64 limit ÷ 1.333 = 4.50 MB raw max (no JSON overhead)
+//   subtract ~50 KB for JSON envelope/metadata → 4.45 MB raw safe ceiling
+//   use 4.4 MB raw (4.4 × 1.333 ≈ 5.87 MB base64) — ~130 KB margin under the 6 MB cap
+//
+// With CHUNK_SIZE=1 on the client this budget only needs to fit ONE photo per response.
+// Any single image larger than ~4.4 MB raw will still be skipped — there is no workaround
+// short of a streaming/background-function approach.
 
 const PHOTO_CAP     = 60;
-const SIZE_BUDGET   = 4 * 1024 * 1024; // 4 MB raw → ~5.3 MB base64
-const FETCH_TIMEOUT = 8000;             // ms per image — keeps total within Netlify's 10 s limit
+const SIZE_BUDGET   = Math.floor(4.4 * 1024 * 1024); // 4.4 MB raw ≈ 5.87 MB base64, under Netlify's 6 MB cap
+const FETCH_TIMEOUT = 8000;                            // ms per image — keeps total within Netlify's 10 s limit
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
@@ -85,7 +91,7 @@ exports.handler = async function (event) {
       totalBytes += buf.length;
       if (totalBytes > SIZE_BUDGET) {
         budgetExceeded = true;
-        failedUrls.push(`${p.url} (4 MB response budget exceeded)`);
+        failedUrls.push(`${p.url} (4.4 MB response budget exceeded)`);
         return;
       }
 
@@ -114,7 +120,7 @@ exports.handler = async function (event) {
       failed:     failedUrls.length,
       failedUrls,
       ...(budgetExceeded
-        ? { warning: 'Response size budget (4 MB raw) exceeded — some photos omitted. Consider downloading in smaller batches.' }
+        ? { warning: 'Response size budget (4.4 MB raw) exceeded — some photos omitted. Consider downloading in smaller batches.' }
         : {}),
     }),
   };
