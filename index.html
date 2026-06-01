@@ -1714,7 +1714,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
         <span class="progress-label" id="progress-label">0 / 0</span>
       </div>
-      <button class="edit-save-btn" onclick="saveAndClose()" style="background:var(--accent);color:#fff;border:none;padding:9px 20px;font-size:13px;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save &amp; Close</button>
+      <button id="save-close-btn" class="edit-save-btn" onclick="saveAndClose()" style="background:var(--accent);color:#fff;border:none;padding:9px 20px;font-size:13px;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save &amp; Close</button>
       <button class="modal-cancel" onclick="closeModal()">Close</button>
 
     </div>
@@ -2664,17 +2664,26 @@ function gateSubcategory(typed) {
 }
 
 async function saveAndClose() {
-  try { await saveListingEdits(); closeModal(); } catch(e) { console.warn(e); }
+  const btn = document.getElementById('save-close-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const saved = await saveListingEdits();
+    if (saved) closeModal();
+  } catch(e) {
+    console.warn(e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save & Close'; }
+  }
 }
 
 async function saveListingEdits() {
-  if (savingListing) return;
+  if (savingListing) return false;
   savingListing = true;
   try {
   // ---- INSERT branch: first save in create mode ----
   if (CREATE_MODE_CONTEXT) {
     const stock = document.getElementById('edit-stock').value.trim();
-    if (!stock) { alert('Stock # is required to create a listing.'); return; }
+    if (!stock) { alert('Stock # is required to create a listing.'); return false; }
 
     const { tempKey, dealer } = CREATE_MODE_CONTEXT;
     const dealerSlug = String(dealer).toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -2703,7 +2712,7 @@ async function saveListingEdits() {
     }
     if (staged.length > 0 && uploadedPhotos.length === 0) {
       alert('All ' + staged.length + ' photo uploads failed. Listing not created. Check your connection and try again.');
-      return;
+      return false;
     }
     if (uploadFailures.length) {
       alert(uploadFailures.length + ' photo upload' + (uploadFailures.length === 1 ? '' : 's') + ' failed. The listing will be created with the successfully uploaded photos only.');
@@ -2716,7 +2725,7 @@ async function saveListingEdits() {
     const _subGateInsert = gateSubcategory(document.getElementById('edit-subcategory').value);
     if (_subGateInsert.proceed === false) {
       alert("\"" + _subGateInsert.value + "\" is not in the canonical taxonomy.\n\nPick a value from the suggestions, or add it to taxonomy.json first. The listing cannot be saved with an off-taxonomy subcategory.");
-      return;
+      return false;
     }
 
     const newUnit = {
@@ -2834,12 +2843,12 @@ async function saveListingEdits() {
     setTimeout(() => msg.classList.remove('show'), 2500);
     const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === dealer);
     if (dealerPub) pushDealerInventoryToBackend(dealer).catch(err => console.warn('Auto-publish failed:', err.message));
-    return;
+    return true;
   }
   // ---- end INSERT branch ----
 
   const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
-  if (!u) return;
+  if (!u) return false;
 
   const oldKey = currentListingKey;
 
@@ -2861,7 +2870,7 @@ async function saveListingEdits() {
       );
       if (!proceed) {
         u.stock = document.getElementById("edit-stock").value.trim(); // restore
-        return;
+        return false;
       }
     }
   }
@@ -2884,7 +2893,7 @@ async function saveListingEdits() {
   const _subGateUpdate = gateSubcategory(document.getElementById("edit-subcategory").value);
   if (_subGateUpdate.proceed === false) {
     alert("\"" + _subGateUpdate.value + "\" is not in the canonical taxonomy.\n\nPick a value from the suggestions, or add it to taxonomy.json first. The listing cannot be saved with an off-taxonomy subcategory.");
-    return;
+    return false;
   }
   u.subcategory = _subGateUpdate.value;
   u.description = document.getElementById("edit-description").value.trim();
@@ -2971,6 +2980,7 @@ async function saveListingEdits() {
   const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === u.dealer);
   if (dealerPub) pushDealerInventoryToBackend(u.dealer).then(r=>console.log("Auto-publish result:",JSON.stringify(r))).catch(err => console.warn("Auto-publish failed:", err.message));
   else console.warn("No dealer config found for:", u.dealer);
+  return true;
   } finally { savingListing = false; }
 }
 
