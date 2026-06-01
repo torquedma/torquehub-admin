@@ -4850,9 +4850,39 @@ async function continueFromPreMenu() {
   openCreateListingModal(prefillSource);
 }
 
+// ---------------------------------------------------------------------------
+// Shared NHTSA field helpers — called by both decodeVinToObject and
+// decodeVinAndFill so their output is guaranteed identical.
+// ---------------------------------------------------------------------------
+function _vinTitleCase(str) {
+  return String(str).trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+// Returns title-cased value, or '' if the raw NHTSA value is empty, '0', or 'NULL'.
+function _vinNormalize(raw) {
+  const s = String(raw || '').trim();
+  if (!s || s === '0' || s.toUpperCase() === 'NULL') return '';
+  return _vinTitleCase(s);
+}
+function _vinFuel(row) { return row.FuelTypePrimary || row.FuelTypeSecondary || ''; }
+function _vinEngine(row) {
+  return [
+    row.DisplacementL   ? row.DisplacementL   + 'L'    : '',
+    row.EngineCylinders ? row.EngineCylinders + '-cyl' : '',
+    row.EngineModel     || ''
+  ].filter(Boolean).join(' ');
+}
+function _vinTransmission(row) {
+  return [
+    row.TransmissionStyle  || '',
+    row.TransmissionSpeeds ? row.TransmissionSpeeds + '-speed' : ''
+  ].filter(Boolean).join(' ');
+}
+
 // Read-only / object-returning VIN decoder.
 // Sibling to decodeVinAndFill() which writes to DOM.
 // Returns { year, make, model, fuel, engine, transmission, drivetrain } or null.
+// All values are normalized via shared _vin* helpers — output is identical to
+// what decodeVinAndFill() would write for the same NHTSA response.
 async function decodeVinToObject(vin) {
   const cleanVin = String(vin || '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
   if (!cleanVin || cleanVin.length < 11) return null;
@@ -4864,13 +4894,13 @@ async function decodeVinToObject(vin) {
     const row = (data && data.Results && data.Results[0]) || null;
     if (!row) return null;
     return {
-      year: row.ModelYear || '',
-      make: row.Make || '',
-      model: row.Model || '',
-      fuel: row.FuelTypePrimary || '',
-      engine: row.DisplacementL ? (row.DisplacementL + 'L') : '',
-      transmission: row.TransmissionStyle || '',
-      drivetrain: row.DriveType || ''
+      year:         _vinNormalize(row.ModelYear),
+      make:         _vinNormalize(row.Make),
+      model:        _vinNormalize(row.Model),
+      fuel:         _vinNormalize(_vinFuel(row)),
+      engine:       _vinNormalize(_vinEngine(row)),
+      transmission: _vinNormalize(_vinTransmission(row)),
+      drivetrain:   _vinNormalize(row.DriveType)
     };
   } catch (e) {
     return null;
@@ -4963,22 +4993,20 @@ async function decodeVinAndFill(vin, map) {
   const row = Array.isArray(data.Results) ? data.Results[0] : null;
   if (!row) throw new Error('Decoder returned no results.');
 
-  const toTitleCase = (str) => String(str).trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   const setIf = (id, value) => {
+    const normalized = _vinNormalize(value);
     const el = document.getElementById(id);
-    if (el && value && String(value).trim() && String(value).trim() !== '0' && String(value).trim().toUpperCase() !== 'NULL') {
-      el.value = toTitleCase(value);
-    }
+    if (el && normalized) el.value = normalized;
   };
 
-  setIf(map.year, row.ModelYear);
-  setIf(map.make, row.Make);
-  setIf(map.model, row.Model);
-  setIf(map.fuel, row.FuelTypePrimary || row.FuelTypeSecondary);
-  setIf(map.vin, cleanVin);
-  setIf(map.engine, [row.DisplacementL ? row.DisplacementL + 'L' : '', row.EngineCylinders ? row.EngineCylinders + '-cyl' : '', row.EngineModel || ''].filter(Boolean).join(' '));
-  setIf(map.transmission, [row.TransmissionStyle || '', row.TransmissionSpeeds ? row.TransmissionSpeeds + '-speed' : ''].filter(Boolean).join(' '));
-  setIf(map.drivetrain, row.DriveType || '');
+  setIf(map.year,         row.ModelYear);
+  setIf(map.make,         row.Make);
+  setIf(map.model,        row.Model);
+  setIf(map.fuel,         _vinFuel(row));
+  setIf(map.vin,          cleanVin);
+  setIf(map.engine,       _vinEngine(row));
+  setIf(map.transmission, _vinTransmission(row));
+  setIf(map.drivetrain,   row.DriveType || '');
 
   const bodyText = [row.VehicleType, row.BodyClass].filter(Boolean).join(' ').toLowerCase();
   let suggestedTag = '';
