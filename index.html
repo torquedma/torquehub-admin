@@ -1562,7 +1562,6 @@ document.querySelector('.sidebar').classList.toggle('open');
         </div>
       </div>
       <div class="edit-save-row">
-        <button class="edit-save-btn" onclick="saveListingEdits()">Save Changes</button>
         <span class="edit-saved-msg" id="edit-saved-msg">✓ Saved</span>
       </div>
 
@@ -1715,7 +1714,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
         <span class="progress-label" id="progress-label">0 / 0</span>
       </div>
-      <button class="edit-save-btn" onclick="try{saveListingEdits();}catch(e){console.warn(e);}closeModal();" style="background:var(--accent);color:#fff;border:none;padding:9px 20px;font-size:13px;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save &amp; Close</button>
+      <button class="edit-save-btn" onclick="saveAndClose()" style="background:var(--accent);color:#fff;border:none;padding:9px 20px;font-size:13px;border-radius:8px;cursor:pointer;font-weight:600;">💾 Save &amp; Close</button>
       <button class="modal-cancel" onclick="closeModal()">Close</button>
 
     </div>
@@ -1728,6 +1727,7 @@ document.querySelector('.sidebar').classList.toggle('open');
 let DEALERS = [];
 let INVENTORY = [];
 let inventoryLoading = true;
+let savingListing = false;
 
 const CAT_ICONS = { Trucks: "🚚", Construction: "🏗️", Farm: "🌾", Trailers: "🚛", Landscape: "🌳" };
 const DEALER_CAT_MAP = {};
@@ -2663,7 +2663,14 @@ function gateSubcategory(typed) {
   return { value: trimmed, proceed: false };
 }
 
+async function saveAndClose() {
+  try { await saveListingEdits(); closeModal(); } catch(e) { console.warn(e); }
+}
+
 async function saveListingEdits() {
+  if (savingListing) return;
+  savingListing = true;
+  try {
   // ---- INSERT branch: first save in create mode ----
   if (CREATE_MODE_CONTEXT) {
     const stock = document.getElementById('edit-stock').value.trim();
@@ -2964,6 +2971,7 @@ async function saveListingEdits() {
   const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === u.dealer);
   if (dealerPub) pushDealerInventoryToBackend(u.dealer).then(r=>console.log("Auto-publish result:",JSON.stringify(r))).catch(err => console.warn("Auto-publish failed:", err.message));
   else console.warn("No dealer config found for:", u.dealer);
+  } finally { savingListing = false; }
 }
 
 function generateDX() {
