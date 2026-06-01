@@ -4488,7 +4488,32 @@ function exportInventoryCSV() {
 }
 async function downloadListingPhotos(key) {
   const listing = INVENTORY.find(item => getListingKey(item) === key);
-  const photos = PHOTO_STORE[key] || (listing && listing.photos ? listing.photos.map(p => ({url: p.url})) : []);
+
+  // PHOTO_STORE[key] is only populated after the photo modal has been opened or
+  // loadRowThumbs has run. When called directly from the table-row button neither
+  // may have happened yet, so fetch from Supabase the same way openPhotoModal does.
+  if ((!PHOTO_STORE[key] || !PHOTO_STORE[key].length) && listing && listing.id) {
+    try {
+      const r = await fetch(
+        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=photos&id=eq.${listing.id}`,
+        { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
+      );
+      if (r.ok) {
+        const rows = await r.json();
+        const raw = rows?.[0]?.photos || [];
+        PHOTO_STORE[key] = raw.map((p, i) => {
+          const photoUrl = p.url || p.dataUrl || '';
+          return { id: Date.now() + i, name: p.name || photoUrl.split('/').pop(),
+                   url: photoUrl, dataUrl: photoUrl, type: 'url', fromUrl: true, storage: 'supabase' };
+        });
+        PHOTO_LOADED[key] = true;
+      }
+    } catch(e) {
+      console.warn('[downloadListingPhotos] photo pre-fetch failed:', e);
+    }
+  }
+
+  const photos = PHOTO_STORE[key] || [];
   if (!photos.length) { alert('No photos for this listing.'); return; }
   const name = listing ? `${listing.year}-${listing.make}-${listing.model}-${listing.stock}`.replace(/\s+/g,'-').toLowerCase() : key;
 
@@ -4514,7 +4539,7 @@ async function downloadListingPhotos(key) {
     // Send remote URLs in chunks of 3 so each proxy response stays well under the
     // 4 MB raw budget enforced by download-photos.js. Calls are sequential — each
     // chunk awaits before the next starts — which also avoids concurrent function invocations.
-    const CHUNK_SIZE  = 3;
+    const CHUNK_SIZE  = 1; // 1 photo per proxy call — large images (>1 MB each) can push 3 over the 4 MB budget
     const totalChunks = Math.ceil(remoteEntries.length / CHUNK_SIZE);
     const dlBtn       = document.getElementById('dl-all-btn');
 
