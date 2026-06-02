@@ -232,6 +232,8 @@
   .inv-view-btn { padding: 4px 9px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); font-size: 14px; cursor: pointer; border-radius: 5px; transition: all 0.12s; font-family: "Barlow", sans-serif; line-height: 1; }
   .inv-view-btn:hover:not(.inv-view-btn-active) { background: #e5e7eb; }
   .inv-view-btn-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* LIST-VIEW SORT BAR */
+  #inv-list-sort { display: flex; align-items: center; gap: 8px; padding: 8px 22px; border-bottom: 1px solid var(--border); background: var(--surface); }
   .cond-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
   .cond-new { background: #dcfce7; color: #166534; }
   .cond-used { background: var(--surface2); color: var(--text2); }
@@ -775,6 +777,20 @@ document.querySelector('.sidebar').classList.toggle('open');
             <button id="inv-view-table-btn" class="inv-view-btn inv-view-btn-active" onclick="invViewMode='table';document.getElementById('inv-view-table-btn').classList.add('inv-view-btn-active');document.getElementById('inv-view-list-btn').classList.remove('inv-view-btn-active');renderInventory()" title="Table view">⊞</button>
             <button id="inv-view-list-btn" class="inv-view-btn" onclick="invViewMode='list';document.getElementById('inv-view-list-btn').classList.add('inv-view-btn-active');document.getElementById('inv-view-table-btn').classList.remove('inv-view-btn-active');renderInventory()" title="List view">☰</button>
           </div>
+        </div>
+        <div id="inv-list-sort" style="display:none">
+          <span style="font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap">Sort By:</span>
+          <select id="inv-sort-select" class="search-input" style="flex:0;width:auto;padding:5px 10px;font-size:12px" onchange="invSort.key=this.value;invSort.dir=-1;invPage=1;updateSortHeaders('ivh-',['year','make','model','condition','price','dealer','stock','days'],invSort.key,invSort.dir);renderInventory()">
+            <option value="year">Year</option>
+            <option value="make">Make</option>
+            <option value="model">Model</option>
+            <option value="condition">Condition</option>
+            <option value="price">Price</option>
+            <option value="dealer">Dealer</option>
+            <option value="stock">Stock #</option>
+            <option value="days">Days Listed</option>
+          </select>
+          <button id="inv-sort-dir-btn" class="inv-view-btn" style="font-size:12px;padding:4px 8px" onclick="invSort.dir*=-1;invPage=1;updateSortHeaders('ivh-',['year','make','model','condition','price','dealer','stock','days'],invSort.key,invSort.dir);renderInventory()">▼</button>
         </div>
         <div class="inv-table-wrap"><table>
           <thead><tr>
@@ -2171,6 +2187,13 @@ function sortInv(key) {
   renderInventory();
 }
 
+function syncListSortControls() {
+  const sel = document.getElementById('inv-sort-select');
+  const btn = document.getElementById('inv-sort-dir-btn');
+  if (sel) sel.value = invSort.key;
+  if (btn) btn.textContent = invSort.dir === 1 ? '▲' : '▼';
+}
+
 function setInvCatFilter(cat, el) {
   window._customFilter = null;
   invCatFilter = cat; invPage = 1;
@@ -2262,12 +2285,16 @@ function renderInventory() {
 
   const tableWrap = document.querySelector('.inv-table-wrap');
   const cardsEl = document.getElementById('inv-cards');
+  const listSortEl = document.getElementById('inv-list-sort');
   if (invViewMode === 'list') {
     if (tableWrap) tableWrap.style.display = 'none';
     if (cardsEl) cardsEl.style.display = '';
+    if (listSortEl) listSortEl.style.display = '';
+    syncListSortControls();
   } else {
     if (tableWrap) tableWrap.style.display = '';
     if (cardsEl) cardsEl.style.display = 'none';
+    if (listSortEl) listSortEl.style.display = 'none';
   }
 
   const tbody = document.getElementById("inv-tbody");
