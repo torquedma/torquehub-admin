@@ -2244,7 +2244,8 @@ function renderInventory() {
     const condClass = u.condition === "New" ? "cond-new" : "cond-used";
     const photoCount = getPhotoCount(u);
     const storeFirst = (PHOTO_STORE[getListingKey(u)] || [])[0];
-    const thumbUrl = storeFirst ? (storeFirst.url || storeFirst.dataUrl || '') : (u.first_photo || '');
+    const _rawThumb = storeFirst ? (storeFirst.url || storeFirst.dataUrl || '') : (u.first_photo || '');
+    const thumbUrl = _rawThumb.startsWith('data:') ? _rawThumb : buildAdminThumbUrl(_rawThumb, 128, 96);
     const photoBadge = photoCount > 0
       ? `<span class="photo-badge">📷 ${photoCount}</span>`
       : `<span class="photo-badge none">No photos</span>`;
@@ -2406,7 +2407,7 @@ async function loadRowThumbs() {
     const cached = (PHOTO_STORE[key] || [])[0];
     if (cached) {
       const cu = cached.url || cached.dataUrl || '';
-      if (cu) { img.src = cu; img.style.display = ''; }
+      if (cu) { img.src = cu.startsWith('data:') ? cu : buildAdminThumbUrl(cu, 128, 96); img.style.display = ''; }
       continue;
     }
     if (img.getAttribute('src')) continue;
@@ -2426,7 +2427,7 @@ async function loadRowThumbs() {
       }
       const first = raw[0];
       const fu = first ? (first.url || first.dataUrl || '') : '';
-      if (fu) { img.src = fu; img.style.display = ''; }
+      if (fu) { img.src = fu.startsWith('data:') ? fu : buildAdminThumbUrl(fu, 128, 96); img.style.display = ''; }
     } catch(e) {}
   }
 }
@@ -3256,7 +3257,7 @@ function renderPhotoGrid() {
       ondrop="photoDrop(event,${i})"
       ondragend="photoDragEnd(event)"
       style="cursor:grab">
-      <img src="${p.dataUrl || p.url}" alt="${p.name}" onerror="this.parentNode.innerHTML='<div class=\\'photo-error\\'>⚠️ Could not load image</div>'" loading="lazy" style="pointer-events:none">
+      <img src="${p.dataUrl && p.dataUrl.startsWith('data:') ? p.dataUrl : buildAdminThumbUrl(p.url, 240, 180)}" alt="${p.name}" onerror="this.parentNode.innerHTML='<div class=\\'photo-error\\'>⚠️ Could not load image</div>'" loading="lazy" style="pointer-events:none">
       <div class="photo-card-footer">
         <span class="photo-filename" title="${p.name}">${p.name}</span>
         <div class="photo-actions">
@@ -3351,6 +3352,32 @@ function handleDropZone(event) {
   fakeInput.type = 'file'; fakeInput.multiple = true;
   Object.defineProperty(fakeInput, 'files', { value: dt.files });
   handleFileUpload(fakeInput);
+}
+
+function buildAdminThumbUrl(rawUrl, w, h) {
+  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+  if (rawUrl.startsWith('data:')) return rawUrl;
+  if (rawUrl.includes('/storage/v1/render/image/public/')) return rawUrl;
+  if (rawUrl.includes('/storage/v1/object/public/')) {
+    var sb = rawUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/');
+    sb += (sb.includes('?') ? '&' : '?') + 'width=' + w + '&height=' + h + '&resize=cover&quality=70';
+    return sb;
+  }
+  if (rawUrl.includes('media.sandhills.com')) {
+    var u = rawUrl;
+    u = /[?&]w=\d+/.test(u) ? u.replace(/([?&]w=)\d+/, '$1' + w) : u + (u.includes('?') ? '&' : '?') + 'w=' + w;
+    u = /[?&]h=\d+/.test(u) ? u.replace(/([?&]h=)\d+/, '$1' + h) : u + '&h=' + h;
+    return u;
+  }
+  if (rawUrl.includes('cdn05.carsforsale.com') && /\/\d+x\d+\//.test(rawUrl)) {
+    return rawUrl.replace(/\/\d+x\d+\//, '/' + w + 'x' + h + '/');
+  }
+  if (rawUrl.includes('cdnmedia.endeavorsuite.com')) {
+    return /[?&]width=\d+/i.test(rawUrl)
+      ? rawUrl.replace(/([?&]width=)\d+/i, '$1' + w)
+      : rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'width=' + w;
+  }
+  return rawUrl;
 }
 
 async function compressImage(dataUrl, maxWidth = 1200, quality = 0.82) {
