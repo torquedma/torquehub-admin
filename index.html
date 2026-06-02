@@ -217,6 +217,21 @@
 
   /* INVENTORY VIEW */
   .inv-table-wrap { overflow-x: auto; }
+  /* INVENTORY LIST VIEW */
+  .inv-card { display: flex; align-items: stretch; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface); transition: background 0.12s; }
+  .inv-card:hover { background: var(--surface2); }
+  .inv-card-sold { opacity: 0.55; }
+  .inv-card-img { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .inv-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+  .inv-card-title { font-size: 14px; font-weight: 700; color: var(--text1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inv-card-price { font-size: 15px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .inv-card-meta { font-size: 12px; color: var(--text2); }
+  .inv-card-stats { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+  .inv-card-actions { flex-shrink: 0; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 4px; min-width: 96px; }
+  /* VIEW TOGGLE */
+  .inv-view-btn { padding: 4px 9px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); font-size: 14px; cursor: pointer; border-radius: 5px; transition: all 0.12s; font-family: "Barlow", sans-serif; line-height: 1; }
+  .inv-view-btn:hover:not(.inv-view-btn-active) { background: #e5e7eb; }
+  .inv-view-btn-active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .cond-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
   .cond-new { background: #dcfce7; color: #166534; }
   .cond-used { background: var(--surface2); color: var(--text2); }
@@ -756,6 +771,10 @@ document.querySelector('.sidebar').classList.toggle('open');
           <div class="filter-chip" onclick="setInvCondFilter(&#39;Used&#39;,this)">Used Only</div>
           <div class="filter-chip" onclick="setInvCondFilter(&#39;Sold&#39;,this)" style="margin-left:4px;border-color:#16a34a;color:#16a34a">Sold</div>
           <div class="filter-chip" onclick="filterNeedsAttention()" style="margin-left:4px;border-color:#dc2626;color:#dc2626" title="Show listings missing price, description, category, or dealer">⚠ Needs Attention</div>
+          <div style="margin-left:auto;display:flex;gap:3px;align-items:center;flex-shrink:0">
+            <button id="inv-view-table-btn" class="inv-view-btn inv-view-btn-active" onclick="invViewMode='table';document.getElementById('inv-view-table-btn').classList.add('inv-view-btn-active');document.getElementById('inv-view-list-btn').classList.remove('inv-view-btn-active');renderInventory()" title="Table view">⊞</button>
+            <button id="inv-view-list-btn" class="inv-view-btn" onclick="invViewMode='list';document.getElementById('inv-view-list-btn').classList.add('inv-view-btn-active');document.getElementById('inv-view-table-btn').classList.remove('inv-view-btn-active');renderInventory()" title="List view">☰</button>
+          </div>
         </div>
         <div class="inv-table-wrap"><table>
           <thead><tr>
@@ -1073,6 +1092,7 @@ document.querySelector('.sidebar').classList.toggle('open');
       <td class="action-cell"><button class="sold-btn" onclick="event.stopPropagation();markSold(&#39;WTS1239-12990&#39;)">✓ Sold</button><button class="remove-btn" onclick="event.stopPropagation();removeListing(&#39;WTS1239-12990&#39;)">✕</button></td>
     </tr></tbody>
         </table></div>
+        <div id="inv-cards" style="display:none"></div>
         <div class="pagination" id="inv-pagination"><span style="margin-right:6px">Page 1 of 11 (267 listings)</span><button class="page-btn active" onclick="invPage=1;renderInventory()">1</button><button class="page-btn" onclick="invPage=2;renderInventory()">2</button><button class="page-btn" onclick="invPage=3;renderInventory()">3</button><span style="padding:0 4px;color:var(--text3)">…</span><button class="page-btn" onclick="invPage=11;renderInventory()">11</button><button class="page-btn" style="margin-left:8px" onclick="INV_PAGE_SIZE=INV_PAGE_SIZE===99999?25:99999;invPage=1;renderInventory()">Show All</button></div>
       </div>
     </div>
@@ -2141,6 +2161,7 @@ let invCatFilter = "All", invCondFilter = "All", invDealerFilter = "";
 let invPage = 1;
 let invSort = { key: "days", dir: 1 };
 let INV_PAGE_SIZE = 25;
+var invViewMode = 'table'; // 'table' | 'list'
 
 function sortInv(key) {
   if (invSort.key === key) invSort.dir *= -1;
@@ -2239,7 +2260,18 @@ function renderInventory() {
     : `${total.toLocaleString()} listing${total!==1?"s":""}`;
   updateSortHeaders('ivh-', ['year','make','model','condition','price','dealer','stock','days'], invSort.key, invSort.dir);
 
+  const tableWrap = document.querySelector('.inv-table-wrap');
+  const cardsEl = document.getElementById('inv-cards');
+  if (invViewMode === 'list') {
+    if (tableWrap) tableWrap.style.display = 'none';
+    if (cardsEl) cardsEl.style.display = '';
+  } else {
+    if (tableWrap) tableWrap.style.display = '';
+    if (cardsEl) cardsEl.style.display = 'none';
+  }
+
   const tbody = document.getElementById("inv-tbody");
+  if (invViewMode === 'table') {
   tbody.innerHTML = slice.map((u, i) => {
     const condClass = u.condition === "New" ? "cond-new" : "cond-used";
     const photoCount = getPhotoCount(u);
@@ -2280,6 +2312,51 @@ function renderInventory() {
     tbody.innerHTML = inventoryLoading
       ? `<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">Loading inventory…</td></tr>`
       : `<tr><td colspan="12" style="text-align:center;padding:32px;color:var(--text3)">No listings match your filters.</td></tr>`;
+  }
+  } else {
+    if (cardsEl) {
+      if (slice.length === 0) {
+        cardsEl.innerHTML = inventoryLoading
+          ? `<div style="text-align:center;padding:32px;color:var(--text3)">Loading inventory…</div>`
+          : `<div style="text-align:center;padding:32px;color:var(--text3)">No listings match your filters.</div>`;
+      } else {
+        cardsEl.innerHTML = slice.map(function(u) {
+          const condClass = u.condition === 'New' ? 'cond-new' : 'cond-used';
+          const photoCount = getPhotoCount(u);
+          const storeFirst = (PHOTO_STORE[getListingKey(u)] || [])[0];
+          const _rawThumb = storeFirst ? (storeFirst.url || storeFirst.dataUrl || '') : (u.first_photo || '');
+          const thumbUrl = _rawThumb.startsWith('data:') ? _rawThumb : buildAdminThumbUrl(_rawThumb, 320, 240);
+          const key = getListingKey(u);
+          const sold = u.sold === true;
+          const soldBtn = sold
+            ? `<button class="sold-btn unsold-btn" onclick="event.stopPropagation();unmarkSold('${key.replace(/'/g,"\\'")}')">↩ Unsold</button>`
+            : `<button class="sold-btn" onclick="event.stopPropagation();markSold('${key.replace(/'/g,"\\'")}')">✓ Sold</button>`;
+          const removeBtn = `<button class="remove-btn" onclick="event.stopPropagation();removeListing('${key.replace(/'/g,"\\'")}')">✕</button>`;
+          const priceDisplay = sold
+            ? `<span class="price-sold-badge">SOLD</span>${u.keepPublic ? ' <span class="keep-public-badge" title="Visible on dealer site">🌐 Public</span>' : ''}${u.salePrice ? `<span style="font-size:11px;color:var(--text3);margin-left:6px">$${u.salePrice}${u.saleDate ? ' · ' + u.saleDate : ''}</span>` : ''}`
+            : (u.price && !isNaN(parseFloat(String(u.price).replace(/[^0-9.]/g,'')))) ? `$${Number(String(u.price).replace(/[^0-9.]/g,'')).toLocaleString()}` : '—';
+          return `<div class="inv-card${sold ? ' inv-card-sold' : ''}" onclick="${sold ? '' : `openPhotoModal('${key.replace(/'/g,"\\'")}')` }" style="${sold ? 'cursor:default' : 'cursor:pointer'}">
+            <div class="inv-card-img">
+              <img class="row-thumb" data-rowkey="${key}" data-rowid="${u.id || ''}" src="${thumbUrl}" style="width:160px;height:120px;object-fit:cover;border-radius:6px;${thumbUrl ? 'display:block' : 'display:none'}" onerror="this.style.display='none'">
+              ${photoCount > 0 ? `<span class="photo-badge" style="margin-top:4px">📷 ${photoCount}</span>` : ''}
+            </div>
+            <div class="inv-card-body">
+              <div class="inv-card-title">${u.featured ? '⭐ ' : ''}${u.year} ${u.make} ${u.model}${u.trim ? ' ' + u.trim : ''}</div>
+              <div class="inv-card-price">${priceDisplay}</div>
+              <div class="inv-card-meta">Stock #${u.stock} · ${u.dealer}</div>
+              <div class="inv-card-stats"><span class="cond-badge ${condClass}" style="font-size:10px">${u.condition}</span><span style="color:var(--text3);font-size:12px"> ${u.days}d listed</span>${u.fuel ? ` <span style="color:var(--text3);font-size:12px">· ${u.fuel}</span>` : ''}${u.mileage ? ` <span style="color:var(--text3);font-size:12px">· ${u.mileage}</span>` : ''}</div>
+            </div>
+            <div class="inv-card-actions">
+              ${photoCount > 0 ? `<button class="sold-btn" style="margin-bottom:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}')">⬇ Photos</button>` : ''}
+              ${u.description ? `<button class="sold-btn" style="margin-bottom:4px;background:#6366f1;color:#fff" onclick="event.stopPropagation();copyDX('${key.replace(/'/g,"\\'")}')">📋 DX</button>` : ''}
+              <button class="sold-btn" style="margin-bottom:4px;background:#0ea5e9;color:#fff" onclick="event.stopPropagation();copyLinks('${key.replace(/'/g,"\\'")}')" title="Copy VDP, Finance & QR links">🔗 Links</button>
+              ${soldBtn}
+              ${removeBtn}
+            </div>
+          </div>`;
+        }).join('');
+      }
+    }
   }
 
   loadRowThumbs();
