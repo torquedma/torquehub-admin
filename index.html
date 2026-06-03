@@ -4562,24 +4562,22 @@ async function importCFSInventory(input) {
       input.value = ''; return;
     }
 
-    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
-    const h2 = { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Prefer': 'return=representation' };
-
     for (let i = 0; i < newUnits.length; i += 50) {
       const batch = newUnits.slice(i, i + 50);
-      const res = await fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory', {
-        method: 'POST', headers: h2,
-        body: JSON.stringify(batch.map(u => ({
+      const res = await fetch('/.netlify/functions/admin-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+        body: JSON.stringify({ operation: 'csv_import_inventory', data: { rows: batch.map(u => ({
           stock: u.stock, dealer: u.dealer, year: u.year, make: u.make,
           model: u.model, condition: u.condition, price: u.price,
           days: u.days, vin: u.vin, description: u.description,
           category: u.category, subcategory: u.subcategory,
           fuel: u.fuel, featured: 0, sold: false, photos: []
-        })))
+        })) } })
       });
       if (res.ok) {
-        const data = await res.json();
-        data.forEach((row, idx) => { if (row.id) newUnits[i + idx]._id = row.id; });
+        const result = await res.json();
+        (result.ids || []).forEach((id, idx) => { if (id) newUnits[i + idx]._id = id; });
       }
     }
 
@@ -5003,19 +5001,13 @@ function settingsAddDealer() {
   renderDealerTable();
 
   // Save to Supabase
-  fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/dealers', {
+  fetch('/.netlify/functions/admin-write', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-      'Prefer': 'return=minimal'
-    },
-    body: JSON.stringify([{ name, category: catEl.value, status: 'Active' }])
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    body: JSON.stringify({ operation: 'add_dealer', data: { name: name, category: catEl.value, status: 'Active' } })
   }).then(r => {
-    if (!r.ok) r.text().then(t => console.warn('Supabase dealer save failed:', t));
-    else console.log('Dealer saved to Supabase:', name);
-  }).catch(err => console.warn('Supabase dealer error:', err.message));
+    if (!r.ok) r.text().then(t => { console.warn('Add dealer failed:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
+  }).catch(err => console.warn('Add dealer error:', err.message));
 }
 
 function settingsRemoveDealer(i) {
