@@ -2958,16 +2958,14 @@ async function saveListingEdits() {
     if (prevBtn) prevBtn.disabled = false;
     if (nextBtn) nextBtn.disabled = false;
 
-    // POST to Supabase
-    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory', {
+    // POST to gateway
+    fetch('/.netlify/functions/admin-write', {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
-        'apikey':        SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'Prefer':        'return=representation'
+        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
       },
-      body: JSON.stringify([{
+      body: JSON.stringify({ operation: 'create_inventory', data: {
         stock:                    newUnit.stock,
         dealer:                   newUnit.dealer,
         year:                     newUnit.year,
@@ -2995,26 +2993,22 @@ async function saveListingEdits() {
         status:                   newUnit.status,
         photos:                   newUnit.photos,
         sold:                     false
-      }])
+      }})
     }).then(async r => {
-      const text = await r.text();
+      let result;
+      try { result = await r.json(); } catch(e) { result = {}; }
       if (!r.ok) {
-        console.error('[saveListingEdits INSERT] Supabase error:', r.status, text);
+        console.error('[saveListingEdits INSERT] Gateway error:', r.status, result.error || '');
         let alertMsg;
-        try {
-          const parsed = JSON.parse(text);
-          if (parsed.code === '23505' || (parsed.message && parsed.message.includes('inventory_stock_dealer_unique'))) {
-            alertMsg = 'This stock number is already in use for this dealer. The listing was not saved to the database. Please use a different stock #.';
-          }
-        } catch (e) { /* non-JSON body — fall through to raw message */ }
-        alert(alertMsg || 'Listing created locally but Supabase save failed (' + r.status + '): ' + text.slice(0, 200));
+        const errText = result.error || '';
+        if (errText.includes('23505') || errText.includes('inventory_stock_dealer_unique')) {
+          alertMsg = 'This stock number is already in use for this dealer. The listing was not saved to the database. Please use a different stock #.';
+        }
+        alert(alertMsg || 'Listing created locally but save failed (' + r.status + '): ' + errText.slice(0, 200));
         return;
       }
-      try {
-        const data = JSON.parse(text);
-        if (data && data[0] && data[0].id) newUnit.id = data[0].id;
-      } catch (e) { /* non-JSON body, ignore */ }
-      console.log('[saveListingEdits INSERT] Saved to Supabase — stock:', stock);
+      if (result && result.id) newUnit.id = result.id;
+      console.log('[saveListingEdits INSERT] Saved to gateway — stock:', stock);
     }).catch(err => {
       console.error('[saveListingEdits INSERT] Network error:', err.message);
       alert('Network error saving listing: ' + err.message);
@@ -3103,15 +3097,12 @@ async function saveListingEdits() {
 
   // Save to Supabase
   if (u.stock) {
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u._originalStock || oldKey}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
+    const filterStock = u._originalStock || oldKey;
+    fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      body: JSON.stringify({ operation: 'update_inventory', data: {
+        filterStock: filterStock, dealer: u.dealer,
         year: u.year, make: u.make, model: u.model, trim: u.trim || u.subcategory || '', price: u.price,
         stock: u.stock, days: u.days, condition: u.condition, fuel: u.fuel,
         mileage: u.mileage, engine: u.engine, transmission: u.transmission,
@@ -3119,29 +3110,26 @@ async function saveListingEdits() {
         transmission_description: u.transmission_description, video_url: u.video_url,
         vin: u.vin, category: u.category, featured: u.featured,
         subcategory: u.subcategory, description: u.description,
-        notes: u.notes, status: u.status, prod_status: u.prod_status || null, model_locked: u.model_locked || false, dx_locked: u.dx_locked || false, subcategory_locked: u.subcategory_locked || false, raw_description: u.raw_description || null
-      })
+        notes: u.notes, status: u.status, prod_status: u.prod_status || null,
+        model_locked: u.model_locked || false, dx_locked: u.dx_locked || false,
+        subcategory_locked: u.subcategory_locked || false, raw_description: u.raw_description || null
+      }})
     }).then(r => {
-      if (!r.ok) r.text().then(t => console.warn('Supabase save failed:', t));
-      else console.log('Saved to Supabase:', u.stock);
-    }).catch(err => console.warn('Supabase save error:', err.message));
+      if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits UPDATE] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
+      else console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock);
+    }).catch(err => console.warn('[saveListingEdits UPDATE] Save error:', err.message));
 
   // Save photos to Supabase
   if (u.stock && PHOTO_LOADED[getListingKey(u)]) {
     const photos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
-    fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.${u.stock}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({ photos })
+    fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      body: JSON.stringify({ operation: 'patch_inventory_photos', data: { stock: u.stock, dealer: u.dealer, photos: photos } })
     }).then(r => {
-      if (!r.ok) r.text().then(t => console.warn('Supabase photo save failed:', t));
-      else console.log('Photos saved to Supabase:', photos.length, 'photos for', u.stock);
-    }).catch(err => console.warn('Supabase photo save error:', err.message));
+      if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits PHOTOS] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
+      else console.log('[saveListingEdits PHOTOS] Photos saved to gateway:', photos.length, 'photos for', u.stock);
+    }).catch(err => console.warn('[saveListingEdits PHOTOS] Photo save error:', err.message));
   } else if (u.stock) {
     console.log('Photo save skipped — photos not loaded for', u.stock);
   }
