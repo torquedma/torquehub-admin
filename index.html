@@ -4905,7 +4905,25 @@ function removeListing(key) {
   INVENTORY.splice(idx, 1);
   saveAppSession();
   if (u.stock) {
-    fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?stock=eq.'+u.stock,{method:'DELETE',headers:{'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg'}}).then(r=>console.log('Deleted:',u.stock));
+    fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      },
+      body: JSON.stringify({ operation: 'remove_inventory', data: { stock: u.stock, dealer: u.dealer } })
+    }).then(r => {
+      if (r.ok) {
+        console.log('Deleted:', u.stock);
+      } else {
+        r.text().then(t => {
+          console.warn('Remove listing failed:', u.stock, r.status, t);
+          if (r.status === 401 || r.status === 403) {
+            alert('Your session may have expired. Please log in again.');
+          }
+        });
+      }
+    }).catch(err => console.warn('Remove listing error:', u.stock, err.message));
   }
   renderInventory();
   renderDealerTable();
