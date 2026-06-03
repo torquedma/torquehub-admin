@@ -2785,24 +2785,27 @@ function setInvFeaturedFilter(el) {
 var invFeaturedOnly = false;
 
 function toggleFeatured(stock, val) {
-  const SUPA_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
-  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
-  fetch(`${SUPA_URL}/rest/v1/inventory?stock=eq.${encodeURIComponent(stock)}`, {
-    method: 'PATCH',
+  fetch('/.netlify/functions/admin-write', {
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'apikey': SUPA_KEY,
-      'Authorization': 'Bearer ' + SUPA_KEY,
-      'Prefer': 'return=minimal'
+      'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
     },
-    body: JSON.stringify({ featured: val })
+    body: JSON.stringify({ operation: 'toggle_featured', data: { stock: stock, featured: val } })
   }).then(r => {
     if (r.ok) {
       const u = INVENTORY.find(u => u.stock === stock);
       if (u) u.featured = val;
       refreshAllViews();
       console.log('Featured updated:', stock, val);
-    } else r.text().then(t => console.warn('Featured update failed:', t));
+    } else {
+      r.text().then(t => {
+        console.warn('Featured update failed:', t);
+        if (r.status === 401 || r.status === 403) {
+          alert('Your session may have expired. Please log in again.');
+        }
+      });
+    }
   });
 }
 
