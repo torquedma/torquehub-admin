@@ -3461,9 +3461,10 @@ function buildAdminThumbUrl(rawUrl, w, h) {
   if (rawUrl.startsWith('data:')) return rawUrl;
   if (rawUrl.includes('/storage/v1/render/image/public/')) return rawUrl;
   if (rawUrl.includes('/storage/v1/object/public/')) {
-    var sb = rawUrl.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/');
-    sb += (sb.includes('?') ? '&' : '?') + 'width=' + w + '&height=' + h + '&resize=cover&quality=70';
-    return sb;
+    // Return the original object URL untouched — do NOT use /render/image/ (Supabase
+    // image transformations are quota-limited and were blowing the Pro cap). The browser
+    // scales the full image via the <img> width/height. Egress headroom is ample.
+    return rawUrl;
   }
   if (rawUrl.includes('media.sandhills.com')) {
     var u = rawUrl;
