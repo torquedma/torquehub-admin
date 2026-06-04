@@ -3,7 +3,7 @@ const { generateDescription } = require('./lib/generate-description');
 const { CANONICAL_SUBCATEGORIES, SUBCATEGORY_ALIASES, canonicalize } = require('./lib/taxonomy.generated.js');
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DEALER = "HGR's Truck and Trailer";
 const FEED_URL = 'https://www.hgrstrailer.com/unitinventory_univ.xml';
 const DEALER_INFO = {
@@ -341,6 +341,10 @@ function buildTorqueHubDX(item, rawDesc, attrs) {
 
 exports.handler = async (event) => {
   console.log('HGR sync started');
+  if (!SUPABASE_KEY) {
+    console.error('HGR sync aborted: SUPABASE_SERVICE_ROLE_KEY not set');
+    return { statusCode: 500, body: JSON.stringify({ error: 'Missing SUPABASE_SERVICE_ROLE_KEY' }) };
+  }
   try {
     const xml = await fetchUrl(FEED_URL);
     const feedItems = parseXml(xml);
@@ -359,18 +363,20 @@ exports.handler = async (event) => {
     if (!markSoldSafe) {
       console.error('ABORT mark-sold: feed has ' + feedStocks.size + ' stocks vs ' + existingStocks.size + ' existing (<50%, existing>=10). Skipping ' + toDelete.length + ' deletes to protect against partial-scrape failure.');
     }
+    let markedSoldCount = 0, errors = 0;
     if (markSoldSafe) {
       for (const stock of toDelete) {
-        await supabaseFetch(
+        const r = await supabaseFetch(
           '/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER),
           'PATCH',
           { sold: true, sold_date: new Date().toISOString().split('T')[0], sold_type: 'feed_removed' }
         );
+        if (r.status >= 400) { console.error('mark-sold error', r.status, r.body.slice(0, 200)); errors++; } else markedSoldCount++;
       }
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    let inserted = 0, updated = 0, errors = 0;
+    let inserted = 0, updated = 0;
     for (const item of feedItems) {
       // Description generation skipped — too slow for 60s scheduled timeout (140 items × ~1s/call)
       // if (apiKey) {
@@ -406,7 +412,7 @@ exports.handler = async (event) => {
       }
     }
 
-    const result = { success: true, inserted, updated, deleted: toDelete.length, errors, total: feedItems.length };
+    const result = { success: true, inserted, updated, deleted: markedSoldCount, errors, total: feedItems.length };
     console.log('Done:', result);
     return { statusCode: 200, body: JSON.stringify(result) };
   } catch (err) {
