@@ -6226,7 +6226,7 @@ async function loadApp() {
 
     // Load inventory
     const INV_URL = (off) =>
-      `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,trim,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,subcategory_locked,raw_description,description_source,photos&order=dealer,stock&offset=${off}&limit=1000`;
+      `${SUPABASE_URL}/rest/v1/inventory?select=id,year,make,model,trim,condition,price,dealer,stock,created_at,fuel,description,category,subcategory,vin,featured,sold,sold_price,sold_date,sold_type,public_sold,engine,transmission,drivetrain,engine_description,transmission_description,video_url,mileage,notes,status,prod_status,dx_locked,model_locked,subcategory_locked,raw_description,description_source,photo_count,first_photo&order=dealer,stock&offset=${off}&limit=1000`;
 
     const fetchPageWithRetry = async (off, attempts = 3) => {
       let lastErr;
@@ -6296,8 +6296,8 @@ async function loadApp() {
       subcategory_locked: item.subcategory_locked || false,
       raw_description: item.raw_description || '',
       description_source: item.description_source || '',
-      photo_count: Array.isArray(item.photos) ? item.photos.length : 0,
-      first_photo: Array.isArray(item.photos) && item.photos[0] ? (item.photos[0].url || item.photos[0].dataUrl || '') : '',
+      photo_count: item.photo_count || 0,
+      first_photo: item.first_photo || '',
       _id: item.id
     }));
 
