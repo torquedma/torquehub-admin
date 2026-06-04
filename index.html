@@ -4977,14 +4977,26 @@ function settingsEditDealer(i) {
   el.querySelector('input').focus();
 }
 
-function settingsSaveDealerName(i, input) {
+async function settingsSaveDealerName(i, input) {
   const newName = input.value.trim();
-  if (!newName || newName === DEALERS[i].name) { renderSettings(); return; }
   const old = DEALERS[i].name;
+  if (!newName || newName === old) { renderSettings(); return; }
+  const r = await fetch('/.netlify/functions/admin-write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    body: JSON.stringify({ operation: 'rename_dealer', data: { oldName: old, newName: newName } })
+  }).catch(err => { alert('Network error renaming dealer: ' + err.message); renderSettings(); return null; });
+  if (!r) return;
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.');
+    else { let msg = t; try { msg = JSON.parse(t).error || t; } catch(e) {} alert('Rename failed: ' + msg); }
+    renderSettings();
+    return;
+  }
+  // Gateway confirmed — now update local state
   DEALERS[i].name = newName;
-  // Update all inventory entries
   INVENTORY.forEach(u => { if (u.dealer === old) u.dealer = newName; });
-  // Update photo store keys? Keys use stock#, so no change needed
   saveAppSession();
   refreshDealerCategoryMap();
   renderSettings();
@@ -5017,12 +5029,12 @@ function settingsAddDealer() {
   }).catch(err => console.warn('Add dealer error:', err.message));
 }
 
-function settingsRemoveDealer(i) {
+async function settingsRemoveDealer(i) {
   const d = DEALERS[i];
   const units = INVENTORY.filter(u => u.dealer === d.name).length;
   const detail = units > 0
-    ? `This will also remove their ${units} listing${units !== 1 ? 's' : ''} from inventory.`
-    : `No inventory rows are attached to this dealer.`;
+    ? `This dealer has ${units} listing${units !== 1 ? 's' : ''} in local inventory. The removal will be blocked server-side if any inventory exists in the database.`
+    : `No inventory rows are attached to this dealer locally.`;
   const input = window.prompt(
     `DANGER: Remove dealer "${d.name}".\n\n` +
     `${detail}\n\n` +
@@ -5030,12 +5042,24 @@ function settingsRemoveDealer(i) {
     `Type "${d.name}" to continue:`
   );
   if (input !== d.name) return;
-  if (units > 0) {
-    // Remove from INVENTORY array in place
-    for (let j = INVENTORY.length - 1; j >= 0; j--) {
-      if (INVENTORY[j].dealer === d.name) INVENTORY.splice(j, 1);
-    }
+  const r = await fetch('/.netlify/functions/admin-write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    body: JSON.stringify({ operation: 'remove_dealer', data: { name: d.name } })
+  }).catch(err => { alert('Network error removing dealer: ' + err.message); return null; });
+  if (!r) return;
+  if (r.status === 409) {
+    const t = await r.text().catch(() => '');
+    let msg = t; try { const j = JSON.parse(t); msg = j.error + (j.count != null ? ' (' + j.count + ' listing' + (j.count !== 1 ? 's' : '') + ')' : ''); } catch(e) {}
+    alert(msg); return;
   }
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.');
+    else { let msg = t; try { msg = JSON.parse(t).error || t; } catch(e) {} alert('Remove failed: ' + msg); }
+    return;
+  }
+  // Gateway confirmed count=0 and delete succeeded — update local state
   DEALERS.splice(i, 1);
   saveAppSession();
   refreshDealerCategoryMap();
