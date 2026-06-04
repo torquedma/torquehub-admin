@@ -44,6 +44,8 @@ const OPERATIONS = {
   remove_inventory:       handleRemoveInventory,
   csv_import_inventory:   handleCsvImportInventory,
   add_dealer:             handleAddDealer,
+  rename_dealer:          handleRenameDealer,
+  remove_dealer:          handleRemoveDealer,
 };
 
 // ---------------------------------------------------------------------------
@@ -455,6 +457,109 @@ async function handleAddDealer({ data, svcKey }) {
   if (!res.ok) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
+  }
+  return { status: 200, body: { ok: true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: rename_dealer
+// PATCH /rest/v1/dealers   then   PATCH /rest/v1/inventory (cascade)
+// data: { oldName, newName }
+// Step 1 must succeed before step 2 runs — no cross-table transaction available.
+// ---------------------------------------------------------------------------
+async function handleRenameDealer({ data, svcKey }) {
+  let err;
+  err = requireString(data, 'oldName'); if (err) return { status: 400, body: { error: err } };
+  err = requireString(data, 'newName'); if (err) return { status: 400, body: { error: err } };
+
+  if (data.oldName.trim() === data.newName.trim()) {
+    return { status: 400, body: { error: 'oldName and newName are identical' } };
+  }
+
+  const headers = {
+    'apikey':        svcKey,
+    'Authorization': 'Bearer ' + svcKey,
+    'Content-Type':  'application/json',
+    'Prefer':        'return=minimal',
+  };
+
+  // Step 1: rename the dealers row
+  const r1 = await fetch(
+    `${SUPABASE_URL}/rest/v1/dealers?name=eq.${encodeURIComponent(data.oldName)}`,
+    { method: 'PATCH', headers, body: JSON.stringify({ name: data.newName }) }
+  );
+  if (!r1.ok) {
+    const errText = await r1.text();
+    return { status: r1.status, body: { error: errText } };
+  }
+
+  // Step 2: cascade rename to all inventory rows
+  const r2 = await fetch(
+    `${SUPABASE_URL}/rest/v1/inventory?dealer=eq.${encodeURIComponent(data.oldName)}`,
+    { method: 'PATCH', headers, body: JSON.stringify({ dealer: data.newName }) }
+  );
+  if (!r2.ok) {
+    const errText = await r2.text();
+    return { status: r2.status, body: { error: 'Dealer renamed but inventory cascade failed: ' + errText } };
+  }
+
+  return { status: 200, body: { ok: true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: remove_dealer
+// Hard refuse if any inventory exists for this dealer — no cascade, no exceptions.
+// data: { name }
+// ---------------------------------------------------------------------------
+async function handleRemoveDealer({ data, svcKey }) {
+  const err = requireString(data, 'name');
+  if (err) return { status: 400, body: { error: err } };
+
+  const headers = {
+    'apikey':        svcKey,
+    'Authorization': 'Bearer ' + svcKey,
+  };
+
+  // Step 1: count this dealer's inventory server-side (never trust the client count)
+  const countRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/inventory?dealer=eq.${encodeURIComponent(data.name)}&select=id`,
+    {
+      method: 'GET',
+      headers: { ...headers, 'Prefer': 'count=exact', 'Range': '0-0' },
+    }
+  );
+  if (!countRes.ok) {
+    const errText = await countRes.text();
+    return { status: countRes.status, body: { error: 'Could not verify dealer inventory: ' + errText } };
+  }
+
+  // Parse count from Content-Range header (format: '0-0/N' or '*/N')
+  let count = 0;
+  const contentRange = countRes.headers.get('content-range') || '';
+  const rangeMatch = contentRange.match(/\/(\d+)$/);
+  if (rangeMatch) {
+    count = parseInt(rangeMatch[1], 10);
+  } else {
+    // Fallback: count returned array
+    try { const rows = await countRes.json(); count = Array.isArray(rows) ? rows.length : 0; } catch { count = 0; }
+  }
+
+  // Step 2: refuse if any inventory exists
+  if (count > 0) {
+    return {
+      status: 409,
+      body: { error: "Cannot remove this dealer while inventory exists. Remove or reassign that dealer's listings first.", count },
+    };
+  }
+
+  // Step 3: delete the dealers row (count === 0 confirmed above)
+  const delRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/dealers?name=eq.${encodeURIComponent(data.name)}`,
+    { method: 'DELETE', headers }
+  );
+  if (!delRes.ok) {
+    const errText = await delRes.text();
+    return { status: delRes.status, body: { error: errText } };
   }
   return { status: 200, body: { ok: true } };
 }
