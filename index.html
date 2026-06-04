@@ -554,6 +554,10 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="role">Admin Portal</div>
       </div>
     </div>
+    <button onclick="logout()" style="display:flex;align-items:center;gap:10px;width:100%;margin-top:12px;padding:8px 0;background:none;border:none;color:rgba(255,255,255,0.4);font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:color 0.15s;" onmouseover="this.style.color='rgba(255,255,255,0.85)'" onmouseout="this.style.color='rgba(255,255,255,0.4)'">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Log Out
+    </button>
   </div>
 </aside>
 
@@ -6310,6 +6314,14 @@ async function handleLogin() {
   document.querySelector('.sidebar').style.display = 'flex';
   document.querySelector('.main').style.display = 'flex';
   loadApp();
+}
+function logout() {
+  localStorage.removeItem('torquehub_token');
+  localStorage.removeItem('torquehub_dealers_session_v1');
+  localStorage.removeItem('torquehub_listing_cat_overrides_v1');
+  localStorage.removeItem('torquehub_photos_v1');
+  localStorage.removeItem('torquehub_publish_meta_v1');
+  location.reload();
 }
 // ===================== NAV GROUP TOGGLE =====================
 function toggleNavGroup(id) {
