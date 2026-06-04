@@ -1875,7 +1875,10 @@ function getCurrentListingPhotoContext() {
 async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, index) {
   const resp = await fetch('/.netlify/functions/upload-photo', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+    },
     body: JSON.stringify({ imageUrl, dealerSlug, stockNum, index })
   });
   const data = await resp.json().catch(() => ({}));

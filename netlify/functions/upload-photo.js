@@ -1,10 +1,83 @@
 exports.handler = async function (event) {
   try {
+    // 1. Method gate
     if (event.httpMethod !== "POST") {
       return {
         statusCode: 405,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ error: "Method not allowed" })
+      };
+    }
+
+    // 2. Service-role key early check (needed for token verify below)
+    const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!svcKey) {
+      return {
+        statusCode: 500,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Server misconfiguration" })
+      };
+    }
+
+    // 3. Extract bearer token
+    const authHeader = (event.headers && event.headers["authorization"]) || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) {
+      return {
+        statusCode: 401,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Missing Authorization header" })
+      };
+    }
+
+    // 4. Verify token with Supabase
+    let userEmail;
+    try {
+      const userRes = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
+        headers: {
+          "apikey": svcKey,
+          "Authorization": "Bearer " + token,
+        },
+      });
+      if (!userRes.ok) {
+        return {
+          statusCode: 401,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Invalid or expired session" })
+        };
+      }
+      const userData = await userRes.json();
+      if (!userData || !userData.email) {
+        return {
+          statusCode: 401,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "Invalid or expired session" })
+        };
+      }
+      userEmail = userData.email.toLowerCase().trim();
+    } catch (err) {
+      console.log("[upload-photo] Auth check failed:", err.message);
+      return {
+        statusCode: 401,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Auth check failed" })
+      };
+    }
+
+    // 5. ADMIN_EMAILS allowlist — fail closed
+    const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.toLowerCase().trim()).filter(Boolean);
+    if (adminEmails.length === 0) {
+      return {
+        statusCode: 403,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Forbidden" })
+      };
+    }
+    if (!adminEmails.includes(userEmail)) {
+      return {
+        statusCode: 403,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Forbidden" })
       };
     }
 
