@@ -1368,10 +1368,11 @@ document.querySelector('.sidebar').classList.toggle('open');
         <option value="read">Read</option>
         <option value="closed">Closed</option>
       </select>
+      <select class="search-input" id="leads-lender-filter" style="width:auto" onchange="renderLeadsView()"><option value="">All Lenders</option></select>
     </div>
     <div style="overflow-x:auto">
       <table class="leads-table" id="leads-table">
-        <thead><tr><th>Date</th><th>Customer</th><th>Dealer</th><th>Vehicle</th><th>Source</th><th>Status</th><th>Action</th></tr></thead>
+        <thead><tr><th>Date</th><th>Customer</th><th>Dealer</th><th>Lender</th><th>Vehicle</th><th>Source</th><th>Status</th><th>Action</th></tr></thead>
         <tbody id="leads-tbody"></tbody>
       </table>
     </div>
@@ -6496,6 +6497,7 @@ function renderLeadsView() {
   const dealer = document.getElementById('leads-dealer-filter')?.value||'';
   const source = document.getElementById('leads-source-filter')?.value||'';
   const status = document.getElementById('leads-status-filter')?.value||'';
+  const lender = document.getElementById('leads-lender-filter')?.value||'';
 
   // Populate dealer filter
   const df = document.getElementById('leads-dealer-filter');
@@ -6505,12 +6507,20 @@ function renderLeadsView() {
     });
   }
 
+  const lf = document.getElementById('leads-lender-filter');
+  if (lf && lf.options.length <= 1) {
+    [...new Set(LEADS_DATA.map(l => l.lender).filter(Boolean))].sort().forEach(name => {
+      const o = document.createElement('option'); o.value = name; o.textContent = name; lf.appendChild(o);
+    });
+  }
+
   const filtered = LEADS_DATA.filter(l => {
     const matchQ = !q || `${l.customer_name||''} ${l.customer_email||''} ${l.customer_phone||''} ${l.message||''}`.toLowerCase().includes(q);
     const matchD = !dealer || l.dealer_name === dealer;
     const matchS = !source || l.source === source;
     const matchSt = !status || l.status === status;
-    return matchQ && matchD && matchS && matchSt;
+    const matchL = !lender || l.lender === lender;
+    return matchQ && matchD && matchS && matchSt && matchL;
   });
 
   const tbody = document.getElementById('leads-tbody');
@@ -6526,6 +6536,7 @@ function renderLeadsView() {
       <td style="color:var(--text2);font-size:12px">${l.created_at ? new Date(l.created_at).toLocaleDateString() : '—'}</td>
       <td style="font-weight:500">${l.customer_name||'—'}</td>
       <td style="font-size:12px;color:var(--text2)">${l.dealer_name||'—'}</td>
+      <td style="font-size:12px;color:var(--text)">${l.lender ? `<span style="font-weight:600">${l.lender}</span>` : '—'}</td>
       <td style="font-size:12px;color:var(--text3)">${l.vehicle||'—'}</td>
       <td><span class="lead-source-badge lead-source-${l.source||'manual'}">${{
   homepage:'🏠 Homepage', listing:'📄 Listing', finance:'💰 Finance',
