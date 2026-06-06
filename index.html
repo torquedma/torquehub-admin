@@ -6214,7 +6214,7 @@ async function loadApp() {
 
   try {
     // Load dealers
-    const dRes = await fetch(`${SUPABASE_URL}/rest/v1/dealers?select=*&order=name`, { headers });
+    const dRes = await fetch(`${SUPABASE_URL}/rest/v1/dealers?select=name,category,status&order=name`, { headers });
     if (dRes.ok) {
       const dData = await dRes.json();
       DEALERS = dData.map(d => ({
