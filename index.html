@@ -5782,15 +5782,15 @@ function renderDashboardStats() {
   if (naSubEl) naSubEl.textContent = needsAttention === 1 ? '1 listing needs info' : `${needsAttention} listings need info`;
 
   // Card 5: Total Leads from Supabase
-  fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/leads?select=id', {
+  fetch('/.netlify/functions/admin-read', {
+    method: 'POST',
     headers: {
-      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg',
-      'Prefer': 'count=exact',
-      'Range': '0-0'
-    }
-  }).then(r => {
-    const count = parseInt(r.headers.get('content-range')?.split('/')[1] || '0');
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+    },
+    body: JSON.stringify({ operation: 'get_leads_count' })
+  }).then(r => r.json()).then(j => {
+    const count = (j && typeof j.count === 'number') ? j.count : 0;
     const el = document.getElementById('stat-total-leads');
     if (el) el.textContent = count.toLocaleString();
   }).catch(() => {});
@@ -6484,10 +6484,17 @@ let LEADS_DATA = [];
 
 async function loadLeads() {
   try {
-    const r = await fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/leads?order=created_at.desc&limit=500', {
-      headers: { 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg' }
+    const r = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      },
+      body: JSON.stringify({ operation: 'get_leads' })
     });
-    LEADS_DATA = await r.json();
+    const j = await r.json();
+    const rows = (j && j.leads) ? j.leads : [];
+    LEADS_DATA = rows.map(l => ({ ...l, vehicle: l.unit_title }));
   } catch(e) { LEADS_DATA = []; }
   renderLeadsView();
 }
