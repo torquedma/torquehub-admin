@@ -1386,11 +1386,10 @@ document.querySelector('.sidebar').classList.toggle('open');
     </div>
     <div class="search-row" style="margin-bottom:12px">
       <input class="search-input" type="text" id="contacts-search" placeholder="Search contacts..." oninput="renderContactsView()">
-      <select class="search-input" id="contacts-dealer-filter" style="width:auto" onchange="renderContactsView()"><option value="">All Dealers</option></select>
     </div>
     <div style="overflow-x:auto">
       <table class="leads-table" id="contacts-table">
-        <thead><tr><th>Name</th><th>Dealer</th><th>Phone</th><th>Email</th><th>Notes</th><th>Added</th><th>Action</th></tr></thead>
+        <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Notes</th><th>Added</th><th>Action</th></tr></thead>
         <tbody id="contacts-tbody"></tbody>
       </table>
     </div>
@@ -6602,19 +6601,9 @@ async function loadContacts() {
 
 function renderContactsView() {
   const q = (document.getElementById('contacts-search')?.value||'').toLowerCase();
-  const dealer = document.getElementById('contacts-dealer-filter')?.value||'';
-
-  const df = document.getElementById('contacts-dealer-filter');
-  if (df && df.options.length <= 1) {
-    DEALERS.forEach(d => {
-      const o = document.createElement('option'); o.value = d.name; o.textContent = d.name; df.appendChild(o);
-    });
-  }
 
   const filtered = CONTACTS_DATA.filter(c => {
-    const matchQ = !q || `${c.name||''} ${c.email||''} ${c.phone||''} ${c.notes||''}`.toLowerCase().includes(q);
-    const matchD = !dealer || c.dealer_name === dealer;
-    return matchQ && matchD;
+    return !q || `${c.name||''} ${c.email||''} ${c.phone||''} ${c.notes||''}`.toLowerCase().includes(q);
   });
 
   const tbody = document.getElementById('contacts-tbody');
@@ -6628,7 +6617,6 @@ function renderContactsView() {
   tbody.innerHTML = filtered.map(c => `
     <tr>
       <td style="font-weight:500">${c.name||'—'}</td>
-      <td style="font-size:12px;color:var(--text2)">${c.dealer_name||'—'}</td>
       <td>${c.phone||'—'}</td>
       <td style="color:var(--accent)">${c.email||'—'}</td>
       <td style="font-size:12px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.notes||'—'}</td>
@@ -6641,9 +6629,8 @@ function openAddContactModal() {
   const name = prompt('Contact name:'); if (!name) return;
   const phone = prompt('Phone:') || '';
   const email = prompt('Email:') || '';
-  const dealer_name = prompt('Dealer:') || '';
   const notes = prompt('Notes (optional):') || '';
-  saveContact({ name, phone, email, dealer_name, notes });
+  saveContact({ name, phone, email, notes });
 }
 
 async function saveContact(contact) {
@@ -6651,7 +6638,7 @@ async function saveContact(contact) {
     const res = await fetch('/.netlify/functions/admin-write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
-      body: JSON.stringify({ operation: 'save_contact', data: { name: contact.name, phone: contact.phone, email: contact.email, dealer_name: contact.dealer_name, notes: contact.notes } })
+      body: JSON.stringify({ operation: 'save_contact', data: { name: contact.name, phone: contact.phone, email: contact.email, notes: contact.notes } })
     });
     if (!res.ok) { const j = await res.json(); alert('Error: ' + (j.error || res.status)); return; }
     await loadContacts();

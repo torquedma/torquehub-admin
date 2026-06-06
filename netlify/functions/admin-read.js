@@ -15,7 +15,7 @@ const LEADS_SELECT = [
 ].join(',');
 
 const CONTACTS_SELECT = [
-  'id','created_at','name','phone','email','dealer_name','notes'
+  'id','created_at','name','phone','email','notes'
 ].join(',');
 
 const OPERATIONS = {

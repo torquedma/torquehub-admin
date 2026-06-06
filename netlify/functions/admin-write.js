@@ -31,7 +31,7 @@ const MARK_SOLD_FIELDS = [
 
 const DEALER_FIELDS = ['name', 'category', 'status'];
 
-const CONTACT_FIELDS = ['name', 'phone', 'email', 'dealer_name', 'notes'];
+const CONTACT_FIELDS = ['name', 'phone', 'email', 'notes'];
 
 // ---------------------------------------------------------------------------
 // OPERATIONS ALLOWLIST — add handler here to enable an operation.
