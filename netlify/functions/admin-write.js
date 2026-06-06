@@ -31,6 +31,8 @@ const MARK_SOLD_FIELDS = [
 
 const DEALER_FIELDS = ['name', 'category', 'status'];
 
+const CONTACT_FIELDS = ['name', 'phone', 'email', 'dealer_name', 'notes'];
+
 // ---------------------------------------------------------------------------
 // OPERATIONS ALLOWLIST — add handler here to enable an operation.
 // ---------------------------------------------------------------------------
@@ -46,6 +48,8 @@ const OPERATIONS = {
   add_dealer:             handleAddDealer,
   rename_dealer:          handleRenameDealer,
   remove_dealer:          handleRemoveDealer,
+  save_contact:           handleSaveContact,
+  delete_contact:         handleDeleteContact,
 };
 
 // ---------------------------------------------------------------------------
@@ -560,6 +564,62 @@ async function handleRemoveDealer({ data, svcKey }) {
   if (!delRes.ok) {
     const errText = await delRes.text();
     return { status: delRes.status, body: { error: errText } };
+  }
+  return { status: 200, body: { ok: true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: save_contact
+// POST /rest/v1/contacts  Prefer: return=minimal
+// data: { name, phone, email, dealer_name, notes } — only these fields accepted.
+// ---------------------------------------------------------------------------
+async function handleSaveContact({ data, svcKey }) {
+  const err = requireString(data, 'name');
+  if (err) return { status: 400, body: { error: err } };
+
+  const row = pickFields(data, CONTACT_FIELDS);
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/contacts`, {
+    method: 'POST',
+    headers: {
+      'apikey':        svcKey,
+      'Authorization': 'Bearer ' + svcKey,
+      'Content-Type':  'application/json',
+      'Prefer':        'return=minimal',
+    },
+    body: JSON.stringify(row),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    return { status: res.status, body: { error: errText } };
+  }
+  return { status: 200, body: { ok: true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: delete_contact
+// DELETE /rest/v1/contacts?id=eq.{data.id}
+// data: { id } — required.
+// ---------------------------------------------------------------------------
+async function handleDeleteContact({ data, svcKey }) {
+  if (!data.id) {
+    return { status: 400, body: { error: 'data.id is required' } };
+  }
+
+  const url = `${SUPABASE_URL}/rest/v1/contacts?id=eq.${encodeURIComponent(data.id)}`;
+
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'apikey':        svcKey,
+      'Authorization': 'Bearer ' + svcKey,
+    },
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    return { status: res.status, body: { error: errText } };
   }
   return { status: 200, body: { ok: true } };
 }

@@ -1,5 +1,5 @@
 // admin-read.js — authenticated read gateway, mirrors admin-write.js auth gate exactly.
-// Operations: get_leads, get_leads_count. Service-role SELECT on leads, fail-closed.
+// Operations: get_leads, get_leads_count, get_contacts. Service-role SELECT, fail-closed.
 // Place at: torque-hub-admin/netlify/functions/admin-read.js
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
@@ -12,6 +12,10 @@ const LEADS_SELECT = [
   'id','created_at','customer_name','customer_phone','customer_email',
   'dealer_name','lender','source','status','message','stock',
   'unit_title','source_url','credit_score','rep','referrer'
+].join(',');
+
+const CONTACTS_SELECT = [
+  'id','created_at','name','phone','email','dealer_name','notes'
 ].join(',');
 
 const OPERATIONS = {
@@ -31,6 +35,24 @@ const OPERATIONS = {
     }
     const rows = await res.json();
     return { status: 200, body: { leads: rows } };
+  },
+
+  // get_contacts: returns up to `limit` contacts, newest first.
+  async get_contacts({ data, svcKey }) {
+    const limit = Math.min(parseInt(data.limit, 10) || 500, 1000);
+    const url = `${SUPABASE_URL}/rest/v1/contacts?select=${CONTACTS_SELECT}&order=created_at.desc&limit=${limit}`;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': svcKey,
+        'Authorization': 'Bearer ' + svcKey,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) {
+      return { status: 502, body: { error: 'Contacts read failed', detail: res.status } };
+    }
+    const rows = await res.json();
+    return { status: 200, body: { contacts: rows } };
   },
 
   // get_leads_count: exact total via Content-Range header.
