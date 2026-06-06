@@ -5755,8 +5755,8 @@ function renderDashboardStats() {
     return new Date(u.created_at) >= monthStart;
   }).length;
   const soldThisMonth = INVENTORY.filter(u => {
-    if (!u.sold || !u.sold_at) return false;
-    return new Date(u.sold_at) >= monthStart;
+    if (!u.sold || !u.sold_date) return false;
+    return new Date(u.sold_date) >= monthStart;
   }).length;
 
   // Update stat cards by ID
