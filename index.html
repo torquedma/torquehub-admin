@@ -6589,10 +6589,13 @@ let CONTACTS_DATA = [];
 
 async function loadContacts() {
   try {
-    const r = await fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/contacts?order=created_at.desc&limit=500', {
-      headers: { 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg' }
+    const r = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      body: JSON.stringify({ operation: 'get_contacts' })
     });
-    CONTACTS_DATA = await r.json();
+    const j = await r.json();
+    CONTACTS_DATA = j.contacts || [];
   } catch(e) { CONTACTS_DATA = []; }
   renderContactsView();
 }
@@ -6645,20 +6648,22 @@ function openAddContactModal() {
 
 async function saveContact(contact) {
   try {
-    await fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/contacts', {
-      method:'POST',
-      headers:{ 'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify(contact)
+    const res = await fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      body: JSON.stringify({ operation: 'save_contact', data: { name: contact.name, phone: contact.phone, email: contact.email, dealer_name: contact.dealer_name, notes: contact.notes } })
     });
+    if (!res.ok) { const j = await res.json(); alert('Error: ' + (j.error || res.status)); return; }
     await loadContacts();
   } catch(e) { alert('Error: '+e.message); }
 }
 
 async function deleteContact(id) {
   if (!confirm('Remove this contact?')) return;
-  await fetch(`https://bxsikkmqasydosmblzov.supabase.co/rest/v1/contacts?id=eq.${id}`, {
-    method:'DELETE',
-    headers:{ 'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg' }
+  await fetch('/.netlify/functions/admin-write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    body: JSON.stringify({ operation: 'delete_contact', data: { id } })
   });
   await loadContacts();
 }
