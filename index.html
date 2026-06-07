@@ -6863,7 +6863,7 @@ async function inspectUnit(stock) {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
       },
-      body: JSON.stringify({ operation: 'get_unit_debug', stock })
+      body: JSON.stringify({ operation: 'get_unit_debug', data: { stock } })
     });
     j = await r.json();
     if (!r.ok) { out.innerHTML = `<p style="color:#dc2626;margin:0">Error ${r.status}: ${j.error || 'unknown'}</p>`; return; }
