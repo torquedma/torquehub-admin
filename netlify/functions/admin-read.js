@@ -100,6 +100,56 @@ const OPERATIONS = {
     const inventory_rows = await invRes.json();
     const cards_rows = await cardsRes.json();
     return { status: 200, body: { inventory_rows, cards_rows } };
+  },
+
+  // get_dealer_health: aggregates active inventory per dealer for the health dashboard.
+  // Read-only. Used by the Dealer Health view (roadmap #5 v1). No params.
+  async get_dealer_health({ svcKey }) {
+    const url = `${SUPABASE_URL}/rest/v1/inventory?sold=eq.false&select=dealer,photos,price,year,engine,category,description,sold&limit=5000`;
+    const res = await fetch(url, {
+      headers: {
+        'apikey': svcKey,
+        'Authorization': 'Bearer ' + svcKey,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) {
+      return { status: 502, body: { error: 'inventory read failed', detail: res.status } };
+    }
+    const rows = await res.json();
+
+    const POWERED_CATS = new Set(['Trucks', 'Construction', 'Farm']);
+    const map = {};
+    for (const row of rows) {
+      const dealer = row.dealer || '(unknown)';
+      if (!map[dealer]) {
+        map[dealer] = { dealer, units: 0, missing_photos: 0, missing_price: 0, missing_year: 0, missing_engine_powered: 0, has_dx: 0 };
+      }
+      const d = map[dealer];
+      d.units++;
+
+      // missing_photos: null, empty array, or stringified empty
+      const photos = row.photos;
+      if (photos == null || ['[]', 'null', ''].includes(String(photos))) d.missing_photos++;
+
+      // missing_price: null or zero/blank (price is a TEXT column)
+      const price = row.price;
+      if (price == null || ['', '0', '$0'].includes(String(price).trim())) d.missing_price++;
+
+      // missing_year: null or zero/blank
+      const year = row.year;
+      if (year == null || ['', '0'].includes(String(year).trim())) d.missing_year++;
+
+      // missing_engine_powered: only counted for powered categories
+      const cat = row.category || '';
+      if (POWERED_CATS.has(cat) && (row.engine == null || row.engine === '')) d.missing_engine_powered++;
+
+      // has_dx: description of meaningful length
+      if ((row.description || '').length >= 80) d.has_dx++;
+    }
+
+    const dealers = Object.values(map).sort((a, b) => b.units - a.units);
+    return { status: 200, body: { dealers } };
   }
 };
 

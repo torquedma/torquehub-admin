@@ -523,6 +523,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <a class="nav-child" href="/sold" data-view="sold" onclick="showView('sold',this);return false;">Sold Inventory</a>
         <a class="nav-child" href="/analytics" data-view="analytics" onclick="showView('analytics',this);return false;">Analytics</a>
         <a class="nav-child" href="/ingestion" data-view="ingestion" onclick="showView('ingestion',this);return false;">Ingestion Debug</a>
+        <a class="nav-child" href="/dealer-health" data-view="dealer-health" onclick="showView('dealer-health',this);return false;">Dealer Health</a>
       </div>
     </div>
     <!-- Leads group -->
@@ -1413,6 +1414,17 @@ document.querySelector('.sidebar').classList.toggle('open');
   </div>
 </div>
 
+<!-- ===================== DEALER HEALTH VIEW ===================== -->
+<div class="view" id="view-dealer-health">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Dealer Health Dashboard</div>
+      <span class="card-sub">Active inventory only &middot; read-only &middot; roadmap #5 v1</span>
+    </div>
+    <div id="dealer-health-body"><p style="color:var(--text3);margin:0">Loading…</p></div>
+  </div>
+</div>
+
   </div><!-- end content -->
 
 <!-- ===================== SALE MODAL ===================== -->
@@ -1949,7 +1961,7 @@ let CREATE_MODE_CONTEXT = null;
 
 // ---- NAVIGATION ----
 function showView(viewName, navEl, skipHistory) {
-  const validViews = ["dashboard","dealers","inventory","settings","sold","analytics","leads","contacts","ingestion"];
+  const validViews = ["dashboard","dealers","inventory","settings","sold","analytics","leads","contacts","ingestion","dealer-health"];
   if (!validViews.includes(viewName)) viewName = "dashboard";
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const viewEl = document.getElementById("view-" + viewName);
@@ -1963,7 +1975,7 @@ function showView(viewName, navEl, skipHistory) {
       if (n.getAttribute("data-view") === viewName) n.classList.add("active");
     });
   }
-  const titles = { dashboard: "Dashboard", dealers: "Dealers", inventory: "Inventory", settings: "Settings", sold: "Sold Inventory", analytics: "Inventory Analysis", leads: "Leads & CRM", contacts: "Contacts", ingestion: "Ingestion Debug" };
+  const titles = { dashboard: "Dashboard", dealers: "Dealers", inventory: "Inventory", settings: "Settings", sold: "Sold Inventory", analytics: "Inventory Analysis", leads: "Leads & CRM", contacts: "Contacts", ingestion: "Ingestion Debug", "dealer-health": "Dealer Health" };
   document.getElementById("page-title").textContent = titles[viewName] || viewName;
   if (viewName === "dealers") renderDealersView();
   if (viewName === "inventory") renderInventory();
@@ -1973,6 +1985,7 @@ function showView(viewName, navEl, skipHistory) {
   if (viewName === "leads") loadLeads();
   if (viewName === "contacts") loadContacts();
   if (viewName === "ingestion") initIngestionDebug();
+  if (viewName === "dealer-health") loadDealerHealth();
   // Update URL without hash
   if (!skipHistory) {
     const newPath = "/" + viewName;
@@ -6981,6 +6994,83 @@ async function inspectUnit(stock) {
   }).join('');
 
   out.innerHTML = sections;
+}
+
+// ===================== DEALER HEALTH VIEW =====================
+
+async function loadDealerHealth() {
+  const body = document.getElementById('dealer-health-body');
+  body.innerHTML = '<p style="color:var(--text3);margin:0">Loading…</p>';
+
+  let j;
+  try {
+    const r = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      },
+      body: JSON.stringify({ operation: 'get_dealer_health' })
+    });
+    j = await r.json();
+    if (!r.ok) { body.innerHTML = `<p style="color:#dc2626;margin:0">Error ${r.status}: ${j.error || 'unknown'}</p>`; return; }
+  } catch (e) {
+    body.innerHTML = `<p style="color:#dc2626;margin:0">Network error: ${e.message}</p>`; return;
+  }
+
+  const dealers = j.dealers || [];
+  if (!dealers.length) { body.innerHTML = '<p style="color:var(--text3);margin:0">No active inventory found.</p>'; return; }
+
+  function gapCell(count, units) {
+    let bg, fg;
+    if (count === 0) { bg = '#d1fae5'; fg = '#065f46'; }
+    else if (count / units <= 0.10) { bg = '#fef3c7'; fg = '#92400e'; }
+    else { bg = '#fee2e2'; fg = '#991b1b'; }
+    return `<td style="text-align:center"><span style="background:${bg};color:${fg};padding:2px 10px;border-radius:4px;font-size:12px;font-weight:700;display:inline-block">${count}</span></td>`;
+  }
+
+  function dxCell(hasDx, units) {
+    const pct = units > 0 ? Math.round(hasDx / units * 100) : 0;
+    let bg, fg;
+    if (pct >= 90) { bg = '#d1fae5'; fg = '#065f46'; }
+    else if (pct >= 70) { bg = '#fef3c7'; fg = '#92400e'; }
+    else { bg = '#fee2e2'; fg = '#991b1b'; }
+    return `<td style="text-align:center"><span style="background:${bg};color:${fg};padding:2px 10px;border-radius:4px;font-size:12px;font-weight:700;display:inline-block">${pct}%</span></td>`;
+  }
+
+  const rows = dealers.map(function(d) {
+    return `<tr style="cursor:pointer" onclick="drillDealer(${JSON.stringify(d.dealer)})" title="Click to view ${d.dealer} in inventory">
+      <td style="font-weight:600;padding:8px 12px">${d.dealer}</td>
+      <td style="text-align:center;padding:8px 12px">${d.units}</td>
+      ${gapCell(d.missing_photos, d.units)}
+      ${gapCell(d.missing_price, d.units)}
+      ${gapCell(d.missing_year, d.units)}
+      ${gapCell(d.missing_engine_powered, d.units)}
+      ${dxCell(d.has_dx, d.units)}
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="leads-table" style="width:100%">
+        <thead>
+          <tr>
+            <th style="text-align:left">Dealer</th>
+            <th style="text-align:center">Units</th>
+            <th style="text-align:center">No Photos</th>
+            <th style="text-align:center">No Price</th>
+            <th style="text-align:center">No Year</th>
+            <th style="text-align:center">No Engine*</th>
+            <th style="text-align:center">DX %</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px;font-size:12px;color:var(--text3)">
+      * No Engine counts only powered categories (Trucks / Construction / Farm); trailers excluded.
+      A high count may be a real ingest gap (e.g. trucks) or genuinely unavailable at source (e.g. farm/equipment) — drill into Ingestion Debug to tell which.
+    </p>`;
 }
 </script>
 </body>
