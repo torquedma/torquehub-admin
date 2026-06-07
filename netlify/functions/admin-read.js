@@ -1,5 +1,5 @@
 // admin-read.js — authenticated read gateway, mirrors admin-write.js auth gate exactly.
-// Operations: get_leads, get_leads_count, get_contacts. Service-role SELECT, fail-closed.
+// Operations: get_leads, get_leads_count, get_contacts, get_unit_debug. Service-role SELECT, fail-closed.
 // Place at: torque-hub-admin/netlify/functions/admin-read.js
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
@@ -73,6 +73,33 @@ const OPERATIONS = {
     const cr = res.headers.get('content-range') || '';
     const count = parseInt((cr.split('/')[1] || '0'), 10) || 0;
     return { status: 200, body: { count } };
+  },
+
+  // get_unit_debug: full inventory + inventory_cards rows for a stock number.
+  // Read-only. Used by the Ingestion Debug view (roadmap #4 v1).
+  // Returns ALL matching rows so duplicates are visible.
+  async get_unit_debug({ data, svcKey }) {
+    const stock = (data.stock || '').trim();
+    if (!stock) return { status: 400, body: { error: 'Missing stock param' } };
+    const headers = {
+      'apikey': svcKey,
+      'Authorization': 'Bearer ' + svcKey,
+      'Content-Type': 'application/json'
+    };
+    const enc = encodeURIComponent(stock);
+    const [invRes, cardsRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/inventory?stock=eq.${enc}&select=*`, { headers }),
+      fetch(`${SUPABASE_URL}/rest/v1/inventory_cards?stock=eq.${enc}&select=*`, { headers })
+    ]);
+    if (!invRes.ok) {
+      return { status: 502, body: { error: 'inventory read failed', detail: invRes.status } };
+    }
+    if (!cardsRes.ok) {
+      return { status: 502, body: { error: 'inventory_cards read failed', detail: cardsRes.status } };
+    }
+    const inventory_rows = await invRes.json();
+    const cards_rows = await cardsRes.json();
+    return { status: 200, body: { inventory_rows, cards_rows } };
   }
 };
 

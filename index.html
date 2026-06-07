@@ -522,6 +522,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <a class="nav-child" href="/inventory" data-view="inventory" onclick="showView('inventory',this);return false;">All Listings</a>
         <a class="nav-child" href="/sold" data-view="sold" onclick="showView('sold',this);return false;">Sold Inventory</a>
         <a class="nav-child" href="/analytics" data-view="analytics" onclick="showView('analytics',this);return false;">Analytics</a>
+        <a class="nav-child" href="/ingestion" data-view="ingestion" onclick="showView('ingestion',this);return false;">Ingestion Debug</a>
       </div>
     </div>
     <!-- Leads group -->
@@ -1397,6 +1398,21 @@ document.querySelector('.sidebar').classList.toggle('open');
   </div>
 </div>
 
+<!-- ===================== INGESTION DEBUG VIEW ===================== -->
+<div class="view" id="view-ingestion">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Unit Provenance &amp; Field-Presence Inspector</div>
+      <span class="card-sub">Read-only &middot; roadmap #4 v1</span>
+    </div>
+    <div class="search-row" style="margin-bottom:16px">
+      <input class="search-input" type="text" id="ingestion-stock-input" placeholder="Enter stock number…" style="max-width:320px">
+      <button class="topbar-btn btn-primary" style="font-size:13px;padding:7px 18px" onclick="inspectUnit(document.getElementById('ingestion-stock-input').value)">Inspect</button>
+    </div>
+    <div id="ingestion-results"></div>
+  </div>
+</div>
+
   </div><!-- end content -->
 
 <!-- ===================== SALE MODAL ===================== -->
@@ -1933,7 +1949,7 @@ let CREATE_MODE_CONTEXT = null;
 
 // ---- NAVIGATION ----
 function showView(viewName, navEl, skipHistory) {
-  const validViews = ["dashboard","dealers","inventory","settings","sold","analytics","leads","contacts"];
+  const validViews = ["dashboard","dealers","inventory","settings","sold","analytics","leads","contacts","ingestion"];
   if (!validViews.includes(viewName)) viewName = "dashboard";
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const viewEl = document.getElementById("view-" + viewName);
@@ -1947,7 +1963,7 @@ function showView(viewName, navEl, skipHistory) {
       if (n.getAttribute("data-view") === viewName) n.classList.add("active");
     });
   }
-  const titles = { dashboard: "Dashboard", dealers: "Dealers", inventory: "Inventory", settings: "Settings", sold: "Sold Inventory", analytics: "Inventory Analysis", leads: "Leads & CRM", contacts: "Contacts" };
+  const titles = { dashboard: "Dashboard", dealers: "Dealers", inventory: "Inventory", settings: "Settings", sold: "Sold Inventory", analytics: "Inventory Analysis", leads: "Leads & CRM", contacts: "Contacts", ingestion: "Ingestion Debug" };
   document.getElementById("page-title").textContent = titles[viewName] || viewName;
   if (viewName === "dealers") renderDealersView();
   if (viewName === "inventory") renderInventory();
@@ -1956,6 +1972,7 @@ function showView(viewName, navEl, skipHistory) {
   if (viewName === "analytics") renderAnalytics();
   if (viewName === "leads") loadLeads();
   if (viewName === "contacts") loadContacts();
+  if (viewName === "ingestion") initIngestionDebug();
   // Update URL without hash
   if (!skipHistory) {
     const newPath = "/" + viewName;
@@ -6821,6 +6838,150 @@ async function generateAIDescription() {
   </div>
 
 <script>
+// ===================== INGESTION DEBUG VIEW =====================
+
+function initIngestionDebug() {
+  const inp = document.getElementById('ingestion-stock-input');
+  if (!inp || inp._wired) return;
+  inp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') inspectUnit(inp.value);
+  });
+  inp._wired = true;
+}
+
+async function inspectUnit(stock) {
+  stock = (stock || '').trim();
+  const out = document.getElementById('ingestion-results');
+  if (!stock) { out.innerHTML = '<p style="color:#dc2626;margin:0">Enter a stock number.</p>'; return; }
+  out.innerHTML = '<p style="color:var(--text3);margin:0">Loading…</p>';
+
+  let j;
+  try {
+    const r = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      },
+      body: JSON.stringify({ operation: 'get_unit_debug', stock })
+    });
+    j = await r.json();
+    if (!r.ok) { out.innerHTML = `<p style="color:#dc2626;margin:0">Error ${r.status}: ${j.error || 'unknown'}</p>`; return; }
+  } catch (e) {
+    out.innerHTML = `<p style="color:#dc2626;margin:0">Network error: ${e.message}</p>`; return;
+  }
+
+  const rows = j.inventory_rows || [];
+  const cards = j.cards_rows || [];
+  if (!rows.length) {
+    out.innerHTML = `<p style="color:#dc2626;margin:0">No inventory row found for stock <b>${stock}</b>.</p>`;
+    return;
+  }
+
+  function chipField(label, val) {
+    const present = val != null && val !== '';
+    const bg = present ? '#d1fae5' : '#fee2e2';
+    const fg = present ? '#065f46' : '#991b1b';
+    const text = present ? `${label}: ${val}` : `${label}: MISSING`;
+    return `<span style="background:${bg};color:${fg};padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;margin-right:4px;display:inline-block;margin-bottom:4px">${text}</span>`;
+  }
+
+  function cell(val, fallback) {
+    if (val != null && val !== '') return val;
+    return fallback !== undefined ? fallback : '<span style="color:var(--text3)">—</span>';
+  }
+
+  function missingSpan(label) {
+    return `<span style="color:#dc2626">MISSING (${label})</span>`;
+  }
+
+  const sections = rows.map(function(row, idx) {
+    const dupBadge = rows.length > 1
+      ? ` <span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-left:6px">DUPLICATE ${idx+1}/${rows.length}</span>`
+      : '';
+
+    const card = cards.find(function(c) { return c.stock === row.stock; }) || null;
+
+    const srcUrl = row.source_url
+      ? `<a href="${row.source_url}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all">${row.source_url}</a>`
+      : missingSpan('source_url');
+
+    const descLen = (row.description || '').length;
+    const descPresent = descLen > 0
+      ? `<span style="color:#16a34a">yes</span> (${descLen} chars)`
+      : '<span style="color:#dc2626">no</span>';
+    // Non-trivial threshold: >80 chars suggests a real description, not a stub.
+    const dxPresent = descLen > 80
+      ? '<span style="color:#16a34a">yes</span>'
+      : `<span style="color:#dc2626">no</span> (${descLen} chars — threshold: >80)`;
+
+    let photos = row.photos;
+    if (typeof photos === 'string') { try { photos = JSON.parse(photos); } catch(e) { photos = []; } }
+    if (!Array.isArray(photos)) photos = photos ? [photos] : [];
+
+    // Divergence check (category, subcategory, price, engine, mileage)
+    let divergenceHtml = '';
+    if (card) {
+      const compareFields = ['category','subcategory','price','engine','mileage'];
+      const diffs = compareFields.filter(function(f) { return String(row[f]||'') !== String(card[f]||''); });
+      if (diffs.length) {
+        const diffRows = diffs.map(function(f) {
+          return `<div style="font-size:12px;color:#92400e;margin-top:3px"><b>${f}</b>: inventory=<code>${row[f]}</code> &nbsp;|&nbsp; inventory_cards=<code>${card[f]}</code></div>`;
+        }).join('');
+        divergenceHtml = `<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:12px;margin-top:12px">
+          <b style="color:#92400e">&#9888; inventory vs inventory_cards divergence</b>${diffRows}
+        </div>`;
+      } else {
+        divergenceHtml = `<div style="color:#16a34a;font-size:12px;margin-top:10px">&#10003; inventory and inventory_cards agree on: category, subcategory, price, engine, mileage</div>`;
+      }
+    } else {
+      divergenceHtml = `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:10px;margin-top:12px;color:#991b1b;font-size:13px">
+        <b>No inventory_cards row for this stock</b> — unit may not be published or cards table is out of sync.
+      </div>`;
+    }
+
+    const dealer = row.dealer_name || row.dealer || missingSpan('dealer_name/dealer');
+    const sourceType = row.source_type || row.source || '<span style="color:var(--text3)">—</span>';
+    const srcListingId = row.source_listing_id || row.external_id || '<span style="color:var(--text3)">—</span>';
+    const priceDisplay = row.price != null && row.price !== ''
+      ? '$' + Number(row.price).toLocaleString()
+      : missingSpan('price');
+    const ymm = [row.year, row.make, row.model].filter(Boolean).join(' ') || '<span style="color:var(--text3)">—</span>';
+    const fuel = row.fuel_type || row.fuel;
+
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:18px;margin-bottom:18px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:14px">Stock: ${row.stock || stock}${dupBadge}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;line-height:1.6">
+        <tbody>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;width:190px;vertical-align:top">Dealer</td><td>${dealer}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Source type</td><td>${sourceType}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Source URL</td><td>${srcUrl}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Source listing ID</td><td>${srcListingId}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Created at</td><td>${cell(row.created_at)}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Description source</td><td>${cell(row.description_source)}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Raw description</td><td>${descPresent}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">DX present?</td><td>${dxPresent}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Category</td><td>${row.category || missingSpan('category')}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Subcategory</td><td>${cell(row.subcategory)}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Trim</td><td>${cell(row.trim)}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Price</td><td>${priceDisplay}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Year / Make / Model</td><td>${ymm}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Photos</td><td>${photos.length} photo${photos.length !== 1 ? 's' : ''}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Chip fields</td><td>${chipField('Mileage',row.mileage)}${chipField('Engine',row.engine)}${chipField('Fuel',fuel)}${chipField('Condition',row.condition)}</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Last sync time</td><td style="color:var(--text3);font-style:italic">unavailable — no updated_at column</td></tr>
+          <tr><td style="color:var(--text3);padding:3px 14px 3px 0;vertical-align:top">Feed diff</td><td style="color:var(--text3);font-style:italic">unavailable — raw feed payload not stored</td></tr>
+        </tbody>
+      </table>
+      ${divergenceHtml}
+      <div style="margin-top:12px;font-size:11px;color:var(--text3)">
+        <!-- v2: compute actual leaf route from category+subcategory using the leaf-subs map in the site repo (not available here) -->
+        Leaf routing: see Category / Subcategory above — full leaf-route computation is a v2 item (requires leaf-subs map from site repo).
+      </div>
+    </div>`;
+  }).join('');
+
+  out.innerHTML = sections;
+}
 </script>
 </body>
 </html>
