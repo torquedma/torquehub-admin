@@ -2553,7 +2553,7 @@ async function loadRowThumbs() {
     if (img.getAttribute('src')) continue;
     try {
       const r = await fetch(
-        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_cards?select=photos&id=eq.${id}`,
+        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${id}`,
         { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
       );
       if (!r.ok) continue;
@@ -2598,7 +2598,7 @@ function openPhotoModal(listingKey) {
       }
       try {
         const r = await fetch(
-          `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_cards?select=photos&id=eq.${u.id}`,
+          `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${u.id}`,
           { headers: {
             'apikey': SUPABASE_ANON_KEY,
             'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
@@ -4652,7 +4652,7 @@ async function downloadListingPhotos(key) {
   if ((!PHOTO_STORE[key] || !PHOTO_STORE[key].length) && listing && listing.id) {
     try {
       const r = await fetch(
-        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_cards?select=photos&id=eq.${listing.id}`,
+        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${listing.id}`,
         { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
       );
       if (r.ok) {
