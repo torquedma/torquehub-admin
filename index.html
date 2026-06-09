@@ -5943,12 +5943,17 @@ async function buildDealerPayload(dealerKey) {
   const photosByStock = {};
   const freshByStock = {};
   try {
-    const res = await fetch(
-      `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=stock,photos,year,make,model,trim,condition,price,fuel,vin,description,mileage,engine,transmission,drivetrain,engine_description,transmission_description,category,subcategory,featured,video_url&dealer=eq.${encodeURIComponent(dealerKey)}&sold=eq.false`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
-    );
+    const res = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      },
+      body: JSON.stringify({ operation: 'get_inventory_admin', data: { dealer: dealerKey, limit: 1000 } })
+    });
     if (res.ok) {
-      const rows = await res.json();
+      const iJson = await res.json();
+      const rows = iJson.rows || [];
       rows.forEach(r => {
         if (r.stock) {
           photosByStock[r.stock] = r.photos || [];
