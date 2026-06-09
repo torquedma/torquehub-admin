@@ -18,6 +18,15 @@ const CONTACTS_SELECT = [
   'id','created_at','name','phone','email','notes'
 ].join(',');
 
+const INVENTORY_ADMIN_SELECT = [
+  'id','year','make','model','trim','condition','price','dealer','stock','created_at',
+  'fuel','description','category','subcategory','vin','featured','sold','sold_price',
+  'sold_date','sold_type','public_sold','engine','transmission','drivetrain',
+  'engine_description','transmission_description','video_url','mileage','notes','status',
+  'prod_status','dx_locked','model_locked','subcategory_locked','raw_description',
+  'description_source','photo_count','first_photo'
+].join(',');
+
 const OPERATIONS = {
   // get_leads: returns up to `limit` leads, newest first.
   async get_leads({ data, svcKey }) {
@@ -100,6 +109,35 @@ const OPERATIONS = {
     const inventory_rows = await invRes.json();
     const cards_rows = await cardsRes.json();
     return { status: 200, body: { inventory_rows, cards_rows } };
+  },
+
+  // get_inventory_admin: full admin inventory rows, paginated, optional dealer filter.
+  // Service-role SELECT behind the auth gate. Mirrors the column list the admin UI consumes.
+  // Params: limit (default 1000, clamped 1..1000), offset (default 0, min 0), dealer (optional).
+  // Returns { rows, count, has_more } — count is the exact total via Content-Range.
+  async get_inventory_admin({ data, svcKey }) {
+    const limit = Math.min(Math.max(parseInt(data.limit, 10) || 1000, 1), 1000);
+    const offset = Math.max(parseInt(data.offset, 10) || 0, 0);
+    let url = `${SUPABASE_URL}/rest/v1/inventory?select=${INVENTORY_ADMIN_SELECT}&order=dealer,stock&offset=${offset}&limit=${limit}`;
+    if (data.dealer) {
+      url += `&dealer=eq.${encodeURIComponent(data.dealer)}&sold=eq.false`;
+    }
+    const res = await fetch(url, {
+      headers: {
+        'apikey': svcKey,
+        'Authorization': 'Bearer ' + svcKey,
+        'Content-Type': 'application/json',
+        'Prefer': 'count=exact'
+      }
+    });
+    if (!res.ok && res.status !== 206 && res.status !== 200) {
+      return { status: 502, body: { error: 'inventory read failed', detail: res.status } };
+    }
+    const rows = await res.json();
+    const cr = res.headers.get('content-range') || '';
+    const count = parseInt((cr.split('/')[1] || '0'), 10) || 0;
+    const has_more = offset + rows.length < count;
+    return { status: 200, body: { rows, count, has_more } };
   },
 
   // get_dealer_health: aggregates active inventory per dealer for the health dashboard.
