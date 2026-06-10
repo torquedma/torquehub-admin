@@ -2589,55 +2589,56 @@ function openPhotoModal(listingKey) {
   resetProgress();
   renderPhotoGrid();
 
-  if (!PHOTO_LOADED[listingKey]) {
-    (async function() {
-      if (!u.id) {
+  (async function() {
+    if (!u.id) {
+      // create mode — keep staged photos, init once
+      if (!PHOTO_LOADED[listingKey]) {
         PHOTO_STORE[listingKey] = PHOTO_STORE[listingKey] || [];
         PHOTO_LOADED[listingKey] = true;
-        return;
       }
-      try {
-        const r = await fetch(
-          `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${u.id}`,
-          { headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-          }}
-        );
-        if (!r.ok) {
-          const _pmsg = document.getElementById('edit-saved-msg');
-          if (_pmsg) {
-            _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
-            _pmsg.classList.add('show');
-            setTimeout(() => _pmsg.classList.remove('show'), 5000);
-          }
-          return;
-        }
-        const rows = await r.json();
-        const raw = rows?.[0]?.photos || [];
-        PHOTO_STORE[listingKey] = raw.map((p, i) => {
-          const photoUrl = p.url || p.dataUrl || '';
-          return {
-            id: Date.now() + i,
-            name: p.name || photoUrl.split('/').pop(),
-            url: photoUrl,
-            dataUrl: photoUrl,
-            type: 'url', fromUrl: true, storage: 'supabase'
-          };
-        });
-        PHOTO_LOADED[listingKey] = true;
-        if (currentListingKey === listingKey) renderPhotoGrid();
-      } catch(e) {
-        console.warn('Photo lazy-fetch failed for', listingKey, ':', e);
+      return;
+    }
+    try {
+      const r = await fetch(
+        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${u.id}`,
+        { headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        }}
+      );
+      if (!r.ok) {
         const _pmsg = document.getElementById('edit-saved-msg');
         if (_pmsg) {
           _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
           _pmsg.classList.add('show');
           setTimeout(() => _pmsg.classList.remove('show'), 5000);
         }
+        return;
       }
-    })();
-  }
+      const rows = await r.json();
+      const raw = rows?.[0]?.photos || [];
+      PHOTO_STORE[listingKey] = raw.map((p, i) => {
+        const photoUrl = p.url || p.dataUrl || '';
+        return {
+          id: Date.now() + i,
+          name: p.name || photoUrl.split('/').pop(),
+          url: photoUrl,
+          dataUrl: photoUrl,
+          type: 'url', fromUrl: true, storage: 'supabase'
+        };
+      });
+      PHOTO_LOADED[listingKey] = true;
+      if (currentListingKey === listingKey) renderPhotoGrid();
+    } catch(e) {
+      console.warn('Photo lazy-fetch failed for', listingKey, ':', e);
+      const _pmsg = document.getElementById('edit-saved-msg');
+      if (_pmsg) {
+        _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
+        _pmsg.classList.add('show');
+        setTimeout(() => _pmsg.classList.remove('show'), 5000);
+      }
+    }
+  })();
 
   document.getElementById("photo-modal").classList.add("open");
   // Update prev/next button states
@@ -2942,6 +2943,9 @@ async function saveListingEdits() {
       return false;
     }
 
+    const _insertSeen = new Set();
+    const _dedupePhotos = uploadedPhotos.map(p => ({ url: p.url || p.dataUrl, name: p.name })).filter(p => { if (!p.url || _insertSeen.has(p.url)) return false; _insertSeen.add(p.url); return true; });
+
     const newUnit = {
       dealer,
       stock,
@@ -2968,7 +2972,7 @@ async function saveListingEdits() {
       notes:                   document.getElementById('edit-notes').value.trim(),
       prod_status:             document.getElementById('edit-prod-status').value || '',
       status:                  currentEditStatus,
-      photos:                  uploadedPhotos.map(p => ({ url: p.url || p.dataUrl, name: p.name })),
+      photos:                  _dedupePhotos,
       sold:                    false
     };
 
@@ -3157,7 +3161,9 @@ async function saveListingEdits() {
 
   // Save photos to Supabase
   if (u.stock && PHOTO_LOADED[getListingKey(u)]) {
-    const photos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
+    const _rawPhotos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
+    const _seen = new Set();
+    const photos = _rawPhotos.filter(p => { if (!p.url || _seen.has(p.url)) return false; _seen.add(p.url); return true; });
     fetch('/.netlify/functions/admin-write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
