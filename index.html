@@ -2366,7 +2366,7 @@ function renderInventory() {
       <td style="font-size:12px;color:var(--text3)">${u.days}d</td>
       <td style="font-size:12px;color:var(--text3)">${u.fuel||"—"}</td>
       <td>${photoBadge}</td>
-      <td class="action-cell">${photoCount > 0 ? `<button class="sold-btn" style="margin-right:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}')">⬇ Photos</button>` : ''}${u.description ? `<button class="sold-btn" style="margin-right:4px;background:#6366f1;color:#fff" onclick="event.stopPropagation();copyDX('${key.replace(/'/g,"\\'")}')">📋 DX</button>` : ''}<button class="sold-btn" style="margin-right:4px;background:#0ea5e9;color:#fff" onclick="event.stopPropagation();copyLinks('${key.replace(/'/g,"\\'")}')" title="Copy VDP, Finance & QR links">🔗 Links</button>${soldBtn}${removeBtn}</td>
+      <td class="action-cell">${photoCount > 0 ? `<button class="sold-btn" style="margin-right:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}', this)">⬇ Photos</button>` : ''}${u.description ? `<button class="sold-btn" style="margin-right:4px;background:#6366f1;color:#fff" onclick="event.stopPropagation();copyDX('${key.replace(/'/g,"\\'")}')">📋 DX</button>` : ''}<button class="sold-btn" style="margin-right:4px;background:#0ea5e9;color:#fff" onclick="event.stopPropagation();copyLinks('${key.replace(/'/g,"\\'")}')" title="Copy VDP, Finance & QR links">🔗 Links</button>${soldBtn}${removeBtn}</td>
 
     </tr>`;
   }).join("");
@@ -2410,7 +2410,7 @@ function renderInventory() {
               <div class="inv-card-stats"><span class="cond-badge ${condClass}" style="font-size:10px">${u.condition}</span><span style="color:var(--text3);font-size:12px"> ${u.days}d listed</span>${u.fuel ? ` <span style="color:var(--text3);font-size:12px">· ${u.fuel}</span>` : ''}${u.mileage ? ` <span style="color:var(--text3);font-size:12px">· ${u.mileage}</span>` : ''}</div>
             </div>
             <div class="inv-card-actions">
-              ${photoCount > 0 ? `<button class="sold-btn" style="margin-bottom:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}')">⬇ Photos</button>` : ''}
+              ${photoCount > 0 ? `<button class="sold-btn" style="margin-bottom:4px" onclick="event.stopPropagation();downloadListingPhotos('${key.replace(/'/g,"\\'")}', this)">⬇ Photos</button>` : ''}
               ${u.description ? `<button class="sold-btn" style="margin-bottom:4px;background:#6366f1;color:#fff" onclick="event.stopPropagation();copyDX('${key.replace(/'/g,"\\'")}')">📋 DX</button>` : ''}
               <button class="sold-btn" style="margin-bottom:4px;background:#0ea5e9;color:#fff" onclick="event.stopPropagation();copyLinks('${key.replace(/'/g,"\\'")}')" title="Copy VDP, Finance & QR links">🔗 Links</button>
               ${soldBtn}
@@ -4649,13 +4649,14 @@ function exportInventoryCSV() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-async function downloadListingPhotos(key) {
+async function downloadListingPhotos(key, triggerBtn = null) {
   const listing = INVENTORY.find(item => getListingKey(item) === key);
 
-  // PHOTO_STORE[key] is only populated after the photo modal has been opened or
-  // loadRowThumbs has run. When called directly from the table-row button neither
-  // may have happened yet, so fetch from Supabase the same way openPhotoModal does.
-  if ((!PHOTO_STORE[key] || !PHOTO_STORE[key].length) && listing && listing.id) {
+  // Always fetch fresh from DB when the listing has an id — never trust a
+  // potentially-stale PHOTO_STORE[key] as the download source.
+  // For create-mode TMP- listings (no id), use staged photos from PHOTO_STORE.
+  let photos;
+  if (listing && listing.id) {
     try {
       const r = await fetch(
         `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${listing.id}`,
@@ -4664,19 +4665,23 @@ async function downloadListingPhotos(key) {
       if (r.ok) {
         const rows = await r.json();
         const raw = rows?.[0]?.photos || [];
-        PHOTO_STORE[key] = raw.map((p, i) => {
+        photos = raw.map((p, i) => {
           const photoUrl = p.url || p.dataUrl || '';
           return { id: Date.now() + i, name: p.name || photoUrl.split('/').pop(),
                    url: photoUrl, dataUrl: photoUrl, type: 'url', fromUrl: true, storage: 'supabase' };
         });
+        PHOTO_STORE[key] = photos;
         PHOTO_LOADED[key] = true;
+      } else {
+        photos = PHOTO_STORE[key] || [];
       }
     } catch(e) {
       console.warn('[downloadListingPhotos] photo pre-fetch failed:', e);
+      photos = PHOTO_STORE[key] || [];
     }
+  } else {
+    photos = PHOTO_STORE[key] || [];
   }
-
-  const photos = PHOTO_STORE[key] || [];
   if (!photos.length) { alert('No photos for this listing.'); return; }
   const name = listing ? `${listing.year}-${listing.make}-${listing.model}-${listing.stock}`.replace(/\s+/g,'-').toLowerCase() : key;
 
@@ -4698,13 +4703,15 @@ async function downloadListingPhotos(key) {
   const proxyBase64 = {}; // keyed by original photo index
   let proxyFailed = 0, proxyFailedUrls = [];
 
+  const dlBtn = triggerBtn || document.getElementById('dl-all-btn');
+  const _origBtnHtml = triggerBtn ? triggerBtn.innerHTML : null;
+
   if (remoteEntries.length > 0) {
     // One photo per proxy call keeps each response under the 4.4 MB raw budget.
     // DOWNLOAD_CONCURRENCY calls run in parallel so 12 photos take ~3 round-trips
     // instead of 12 sequential ones. proxyBase64 is keyed by originalIndex so
     // parallel completion never scrambles photo order.
     const DOWNLOAD_CONCURRENCY = 4;
-    const dlBtn = document.getElementById('dl-all-btn');
     let settled = 0;
 
     const tasks = remoteEntries.map(entry => async () => {
@@ -4773,6 +4780,7 @@ async function downloadListingPhotos(key) {
   });
 
   if (added === 0) {
+    if (triggerBtn && _origBtnHtml !== null) triggerBtn.innerHTML = _origBtnHtml;
     alert(`None of the ${photos.length} photo${photos.length !== 1 ? 's' : ''} could be downloaded.${proxyFailed > 0 ? ` (${proxyFailed} failed — see console)` : ''}`);
     return;
   }
@@ -4790,6 +4798,7 @@ async function downloadListingPhotos(key) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  if (triggerBtn && _origBtnHtml !== null) triggerBtn.innerHTML = _origBtnHtml;
 }
 
 function exportPhotoStore() {
