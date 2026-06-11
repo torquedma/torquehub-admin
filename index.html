@@ -1904,7 +1904,7 @@ async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, index) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      'Authorization': 'Bearer ' + (await getValidToken())
     },
     body: JSON.stringify({ imageUrl, dealerSlug, stockNum, index })
   });
@@ -2821,12 +2821,12 @@ function setInvFeaturedFilter(el) {
 }
 var invFeaturedOnly = false;
 
-function toggleFeatured(stock, val) {
+async function toggleFeatured(stock, val) {
   fetch('/.netlify/functions/admin-write', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      'Authorization': 'Bearer ' + (await getValidToken())
     },
     body: JSON.stringify({ operation: 'toggle_featured', data: { stock: stock, featured: val } })
   }).then(r => {
@@ -3003,7 +3003,7 @@ async function saveListingEdits() {
       method: 'POST',
       headers: {
         'Content-Type':  'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'create_inventory', data: {
         stock:                    newUnit.stock,
@@ -3140,7 +3140,7 @@ async function saveListingEdits() {
     const filterStock = u._originalStock || oldKey;
     fetch('/.netlify/functions/admin-write', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
       body: JSON.stringify({ operation: 'update_inventory', data: {
         filterStock: filterStock, dealer: u.dealer,
         year: u.year, make: u.make, model: u.model, trim: u.trim || u.subcategory || '', price: u.price,
@@ -3166,7 +3166,7 @@ async function saveListingEdits() {
     const photos = _rawPhotos.filter(p => { if (!p.url || _seen.has(p.url)) return false; _seen.add(p.url); return true; });
     fetch('/.netlify/functions/admin-write', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
       body: JSON.stringify({ operation: 'patch_inventory_photos', data: { stock: u.stock, dealer: u.dealer, photos: photos } })
     }).then(r => {
       if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits PHOTOS] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
@@ -4609,7 +4609,7 @@ async function importCFSInventory(input) {
       const batch = newUnits.slice(i, i + 50);
       const res = await fetch('/.netlify/functions/admin-write', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
         body: JSON.stringify({ operation: 'csv_import_inventory', data: { rows: batch.map(u => ({
           stock: u.stock, dealer: u.dealer, year: u.year, make: u.make,
           model: u.model, condition: u.condition, price: u.price,
@@ -4860,7 +4860,7 @@ function closeSaleModal() {
   _soldKey = null;
 }
 
-function confirmMarkSold() {
+async function confirmMarkSold() {
   if (!_soldKey) return;
   const u = INVENTORY.find(u => getListingKey(u) === _soldKey);
   if (!u) return;
@@ -4879,7 +4879,7 @@ function confirmMarkSold() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'mark_sold', data: {
         stock: u.stock, dealer: u.dealer,
@@ -4904,7 +4904,7 @@ function confirmMarkSold() {
   renderCategoryWidget();
 }
 
-function unmarkSold(key) {
+async function unmarkSold(key) {
   const u = INVENTORY.find(u => getListingKey(u) === key);
   if (!u) return;
   u.sold = false;
@@ -4915,7 +4915,7 @@ function unmarkSold(key) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'unmark_sold', data: { stock: u.stock, dealer: u.dealer } })
     }).then(r => {
@@ -4935,7 +4935,7 @@ function unmarkSold(key) {
   renderCategoryWidget();
 }
 
-function removeListing(key) {
+async function removeListing(key) {
   const u = INVENTORY.find(u => getListingKey(u) === key);
   if (!u) return;
   if (!confirm(`Remove ${u.year} ${u.make} ${u.model} (${u.stock}) from inventory? This cannot be undone.`)) return;
@@ -4947,7 +4947,7 @@ function removeListing(key) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'remove_inventory', data: { stock: u.stock, dealer: u.dealer } })
     }).then(r => {
@@ -5028,7 +5028,7 @@ async function settingsSaveDealerName(i, input) {
   if (!newName || newName === old) { renderSettings(); return; }
   const r = await fetch('/.netlify/functions/admin-write', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
     body: JSON.stringify({ operation: 'rename_dealer', data: { oldName: old, newName: newName } })
   }).catch(err => { alert('Network error renaming dealer: ' + err.message); renderSettings(); return null; });
   if (!r) return;
@@ -5048,7 +5048,7 @@ async function settingsSaveDealerName(i, input) {
   renderDealerTable();
 }
 
-function settingsAddDealer() {
+async function settingsAddDealer() {
   const nameEl = document.getElementById('settings-new-dealer-name');
   const catEl = document.getElementById('settings-new-dealer-cat');
   const name = nameEl.value.trim();
@@ -5067,7 +5067,7 @@ function settingsAddDealer() {
   // Save to Supabase
   fetch('/.netlify/functions/admin-write', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
     body: JSON.stringify({ operation: 'add_dealer', data: { name: name, category: catEl.value, status: 'Active' } })
   }).then(r => {
     if (!r.ok) r.text().then(t => { console.warn('Add dealer failed:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
@@ -5089,7 +5089,7 @@ async function settingsRemoveDealer(i) {
   if (input !== d.name) return;
   const r = await fetch('/.netlify/functions/admin-write', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
     body: JSON.stringify({ operation: 'remove_dealer', data: { name: d.name } })
   }).catch(err => { alert('Network error removing dealer: ' + err.message); return null; });
   if (!r) return;
@@ -5784,7 +5784,7 @@ function smartFormatDX(input, u) {
 // DX auto-format removed
 
 // ===================== INIT =====================
-function renderDashboardStats() {
+async function renderDashboardStats() {
   const active = INVENTORY.filter(u => !u.sold);
   const total = active.length;
   const newCount = active.filter(u => u.condition === 'New').length;
@@ -5829,7 +5829,7 @@ function renderDashboardStats() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+      'Authorization': 'Bearer ' + (await getValidToken())
     },
     body: JSON.stringify({ operation: 'get_leads_count' })
   }).then(r => r.json()).then(j => {
@@ -5962,7 +5962,7 @@ async function buildDealerPayload(dealerKey) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'get_inventory_admin', data: { dealer: dealerKey, limit: 1000 } })
     });
@@ -6288,7 +6288,7 @@ async function loadApp() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+              'Authorization': 'Bearer ' + (await getValidToken())
             },
             body: JSON.stringify({ operation: 'get_inventory_admin', data: { offset: off, limit: 1000 } }),
             signal: ctrl.signal
@@ -6369,10 +6369,42 @@ async function loadApp() {
   init();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+async function getValidToken() {
+  const token     = localStorage.getItem('torquehub_token');
+  const refresh   = localStorage.getItem('torquehub_refresh');
+  const expiresAt = parseInt(localStorage.getItem('torquehub_expires_at') || '0', 10);
+  if (token && Date.now() < expiresAt - 60000) return token;
+  if (!refresh) { forceReauth(); return null; }
+  try {
+    const res  = await fetch('https://bxsikkmqasydosmblzov.supabase.co/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ refresh_token: refresh })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.access_token) throw new Error('refresh failed');
+    localStorage.setItem('torquehub_token',      data.access_token);
+    localStorage.setItem('torquehub_refresh',    data.refresh_token);
+    localStorage.setItem('torquehub_expires_at', String(Date.now() + (data.expires_in || 3600) * 1000));
+    return data.access_token;
+  } catch (e) {
+    console.warn('[auth] token refresh failed, session dead:', e.message);
+    forceReauth();
+    return null;
+  }
+}
+function forceReauth() {
+  localStorage.removeItem('torquehub_token');
+  localStorage.removeItem('torquehub_refresh');
+  localStorage.removeItem('torquehub_expires_at');
+  location.reload();
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
   const token = localStorage.getItem('torquehub_token');
   if (token) {
-    loadApp();
+    const valid = await getValidToken();
+    if (valid) loadApp();
   } else {
     document.getElementById('login-screen').style.display = 'flex';
   }
@@ -6385,7 +6417,7 @@ async function handleLogin() {
   errEl.style.display = 'none';
   const res = await fetch('https://bxsikkmqasydosmblzov.supabase.co/auth/v1/token?grant_type=password', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg' },
+    headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
     body: JSON.stringify({ email, password })
   });
   const data = await res.json();
@@ -6394,7 +6426,9 @@ async function handleLogin() {
     errEl.style.display = 'block';
     return;
   }
-  localStorage.setItem('torquehub_token', data.access_token);
+  localStorage.setItem('torquehub_token',      data.access_token);
+  localStorage.setItem('torquehub_refresh',    data.refresh_token);
+  localStorage.setItem('torquehub_expires_at', String(Date.now() + (data.expires_in || 3600) * 1000));
   document.getElementById('login-screen').style.display = 'none';
   document.querySelector('.sidebar').style.display = 'flex';
   document.querySelector('.main').style.display = 'flex';
@@ -6402,6 +6436,8 @@ async function handleLogin() {
 }
 function logout() {
   localStorage.removeItem('torquehub_token');
+  localStorage.removeItem('torquehub_refresh');
+  localStorage.removeItem('torquehub_expires_at');
   localStorage.removeItem('torquehub_dealers_session_v1');
   localStorage.removeItem('torquehub_listing_cat_overrides_v1');
   localStorage.removeItem('torquehub_photos_v1');
@@ -6544,7 +6580,7 @@ async function loadLeads() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'get_leads' })
     });
@@ -6648,7 +6684,7 @@ async function loadContacts() {
   try {
     const r = await fetch('/.netlify/functions/admin-read', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
       body: JSON.stringify({ operation: 'get_contacts' })
     });
     const j = await r.json();
@@ -6695,7 +6731,7 @@ async function saveContact(contact) {
   try {
     const res = await fetch('/.netlify/functions/admin-write', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
       body: JSON.stringify({ operation: 'save_contact', data: { name: contact.name, phone: contact.phone, email: contact.email, notes: contact.notes } })
     });
     if (!res.ok) { const j = await res.json(); alert('Error: ' + (j.error || res.status)); return; }
@@ -6707,7 +6743,7 @@ async function deleteContact(id) {
   if (!confirm('Remove this contact?')) return;
   await fetch('/.netlify/functions/admin-write', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token') },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
     body: JSON.stringify({ operation: 'delete_contact', data: { id } })
   });
   await loadContacts();
@@ -6902,7 +6938,7 @@ async function inspectUnit(stock) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'get_unit_debug', data: { stock } })
     });
@@ -7036,7 +7072,7 @@ async function loadDealerHealth() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('torquehub_token')
+        'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'get_dealer_health' })
     });
