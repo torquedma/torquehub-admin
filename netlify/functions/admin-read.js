@@ -24,7 +24,7 @@ const INVENTORY_ADMIN_SELECT = [
   'sold_date','sold_type','public_sold','engine','transmission','drivetrain',
   'engine_description','transmission_description','video_url','mileage','notes','status',
   'prod_status','dx_locked','model_locked','subcategory_locked','raw_description',
-  'description_source','photo_count','first_photo','photos'
+  'description_source','photo_count','first_photo'
 ].join(',');
 
 const OPERATIONS = {
