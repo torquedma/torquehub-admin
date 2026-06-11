@@ -5971,7 +5971,6 @@ async function buildDealerPayload(dealerKey) {
       const rows = iJson.rows || [];
       rows.forEach(r => {
         if (r.stock) {
-          photosByStock[r.stock] = r.photos || [];
           freshByStock[r.stock] = r;
         }
       });
@@ -5980,6 +5979,21 @@ async function buildDealerPayload(dealerKey) {
     }
   } catch (err) {
     console.warn(`[buildDealerPayload] fetch error for ${dealerKey} — falling back to in-memory INVENTORY:`, err.message);
+  }
+
+  try {
+    const photosRes = await fetch(
+      `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=stock,photos&dealer=eq.${encodeURIComponent(dealerKey)}&sold=eq.false&limit=1000`,
+      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
+    );
+    if (photosRes.ok) {
+      const photoRows = await photosRes.json();
+      photoRows.forEach(r => { if (r.stock) photosByStock[r.stock] = r.photos || []; });
+    } else {
+      console.warn(`[buildDealerPayload] photos fetch failed for ${dealerKey} (HTTP ${photosRes.status})`);
+    }
+  } catch (err) {
+    console.warn(`[buildDealerPayload] photos fetch error for ${dealerKey}:`, err.message);
   }
 
   return INVENTORY
