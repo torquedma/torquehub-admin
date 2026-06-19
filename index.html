@@ -1136,16 +1136,8 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="card">
           <div class="card-header"><div class="card-title">Dealer Management</div><span class="card-sub" id="settings-dealer-count">5 dealers</span></div>
           <div id="settings-dealer-list" style="margin-bottom:16px"></div>
-          <div class="settings-add-row">
-            <input class="search-input" type="text" id="settings-new-dealer-name" placeholder="Dealer name..." style="flex:1;min-width:0">
-            <select class="search-input" id="settings-new-dealer-cat" style="flex:0;width:auto;padding:7px 10px">
-              <option value="Trucks">Trucks</option>
-              <option value="Construction">Construction</option>
-              <option value="Landscape">Landscape</option>
-              <option value="Farm">Farm</option>
-              <option value="Trailers">Trailers</option>
-            </select>
-            <button class="topbar-btn btn-primary" onclick="settingsAddDealer()" style="white-space:nowrap;flex-shrink:0">+ Add Dealer</button>
+          <div class="settings-add-row" style="justify-content:flex-end">
+            <button class="topbar-btn btn-primary" onclick="openDealerEditModal(-1)" style="white-space:nowrap;flex-shrink:0">+ Add Dealer</button>
           </div>
         </div>
       </div>
@@ -1479,6 +1471,66 @@ document.querySelector('.sidebar').classList.toggle('open');
     <div class="modal-footer" style="justify-content:flex-end;gap:10px">
       <button class="modal-cancel" onclick="closeSaleModal()">Cancel</button>
       <button class="topbar-btn btn-primary" onclick="confirmMarkSold()" style="padding:8px 20px">✓ Mark as Sold</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================== DEALER EDITOR MODAL ===================== -->
+<div class="modal-overlay" id="dealer-edit-modal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="dem-title">Edit Dealer</div>
+        <div class="modal-sub" id="dem-sub"></div>
+      </div>
+      <button class="modal-close" onclick="closeDealerEditModal()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="edit-form" style="grid-template-columns:1fr 1fr;gap:14px">
+        <div class="edit-field" style="grid-column:1/-1">
+          <label class="edit-label">Dealer Name <span style="color:#dc2626">*</span></label>
+          <input class="edit-input" id="dem-name" type="text" placeholder="Legal business name">
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">Phone</label>
+          <input class="edit-input" id="dem-phone" type="tel" placeholder="555-555-5555">
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">Website</label>
+          <input class="edit-input" id="dem-website" type="url" placeholder="https://…">
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">City</label>
+          <input class="edit-input" id="dem-city" type="text" placeholder="City">
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">State</label>
+          <input class="edit-input" id="dem-state" type="text" placeholder="NC" maxlength="2" style="text-transform:uppercase">
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">Category</label>
+          <select class="edit-input" id="dem-category">
+            <option value="Trucks">Trucks</option>
+            <option value="Trailers">Trailers</option>
+            <option value="Construction">Construction</option>
+            <option value="Farm">Farm</option>
+            <option value="Landscape">Landscape</option>
+          </select>
+        </div>
+        <div class="edit-field">
+          <label class="edit-label">Status</label>
+          <select class="edit-input" id="dem-status">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+            <option value="Paused">Paused</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end;gap:10px">
+      <button class="modal-cancel" onclick="closeDealerEditModal()">Cancel</button>
+      <button class="topbar-btn btn-primary" id="dem-save-btn" onclick="saveDealerEdit()" style="padding:8px 20px">Save</button>
     </div>
   </div>
 </div>
@@ -2196,13 +2248,14 @@ function renderDealersView() {
   const tbody = document.getElementById("dealers-tbody");
   tbody.innerHTML = filtered.map(d => {
     const cats = d.cats.map(c => `<span class="cat-tag cat-${c.toLowerCase()}">${c}</span>`).join("");
+    const di = DEALERS.findIndex(x => x.name === d.name);
     return `<tr onclick="drillDealer('${d.name.replace(/'/g,"\\'")}')">
       <td><div class="dealer-name">${d.name}</div></td>
       <td>${cats}</td>
       <td><span class="inv-count">${d.count}</span></td>
       <td>${d.new}</td><td>${d.used}</td>
-      <td><span class="status-dot status-active"></span>Active</td>
-      <td><span class="link-btn">View Listings →</span></td>
+      <td><span class="status-dot status-active"></span>${d.status || 'Active'}</td>
+      <td><span class="link-btn" onclick="event.stopPropagation();openDealerEditModal(${di})">Edit</span> <span class="link-btn">View Listings →</span></td>
     </tr>`;
   }).join("");
   updateSortHeaders('dvh-', ['name','count','new','used'], dealersViewSort.key, dealersViewSort.dir);
@@ -5014,12 +5067,100 @@ function renderSettings() {
   renderPublishDealerList();
 }
 
-function settingsEditDealer(i) {
-  const el = document.getElementById(`sdname-${i}`);
-  if (!el) return;
-  const current = DEALERS[i].name;
-  el.innerHTML = `<input type="text" value="${current}" onblur="settingsSaveDealerName(${i},this)" onkeydown="if(event.key==='Enter')this.blur()" autofocus style="width:100%;border:1px solid var(--accent);border-radius:5px;padding:4px 8px;font-size:13px;font-family:'Barlow',sans-serif">`;
-  el.querySelector('input').focus();
+function settingsEditDealer(i) { openDealerEditModal(i); }
+
+let _demDealerIdx = -1;
+
+function openDealerEditModal(i) {
+  _demDealerIdx = i;
+  const isAdd = i === -1;
+  const d = isAdd ? {} : (DEALERS[i] || {});
+  document.getElementById('dem-title').textContent = isAdd ? 'Add Dealer' : 'Edit Dealer';
+  document.getElementById('dem-sub').textContent   = isAdd ? '' : d.name || '';
+  document.getElementById('dem-name').value     = d.name    || '';
+  document.getElementById('dem-phone').value    = d.phone   || '';
+  document.getElementById('dem-website').value  = d.website || '';
+  document.getElementById('dem-city').value     = d.city    || '';
+  document.getElementById('dem-state').value    = (d.state  || '').toUpperCase();
+  document.getElementById('dem-category').value = (d.cats   || ['Trucks'])[0] || 'Trucks';
+  document.getElementById('dem-status').value   = d.status  || 'Active';
+  document.getElementById('dealer-edit-modal').classList.add('open');
+  setTimeout(() => document.getElementById('dem-name').focus(), 60);
+}
+
+function closeDealerEditModal() {
+  document.getElementById('dealer-edit-modal').classList.remove('open');
+  _demDealerIdx = -1;
+}
+
+async function saveDealerEdit() {
+  const btn     = document.getElementById('dem-save-btn');
+  const name    = document.getElementById('dem-name').value.trim();
+  const phone   = document.getElementById('dem-phone').value.trim();
+  const website = document.getElementById('dem-website').value.trim();
+  const city    = document.getElementById('dem-city').value.trim();
+  const state   = document.getElementById('dem-state').value.trim().toUpperCase();
+  const cat     = document.getElementById('dem-category').value;
+  const status  = document.getElementById('dem-status').value;
+
+  if (!name) { document.getElementById('dem-name').focus(); return; }
+
+  const isAdd  = _demDealerIdx === -1;
+  const oldName = isAdd ? null : (DEALERS[_demDealerIdx] || {}).name;
+
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  try {
+    // Step 1 (edit only): cascade rename if name changed
+    if (!isAdd && name !== oldName) {
+      const r = await fetch('/.netlify/functions/admin-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+        body: JSON.stringify({ operation: 'rename_dealer', data: { oldName, newName: name } }),
+      });
+      if (!r.ok) { const t = await r.text(); let m = t; try { m = JSON.parse(t).error || t; } catch(e) {} throw new Error(m); }
+    }
+
+    // Step 2 (add only): create the row
+    if (isAdd) {
+      if (DEALERS.find(d => d.name.toLowerCase() === name.toLowerCase())) {
+        throw new Error('A dealer with that name already exists.');
+      }
+      const r = await fetch('/.netlify/functions/admin-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+        body: JSON.stringify({ operation: 'add_dealer', data: { name, category: cat, status } }),
+      });
+      if (!r.ok) { const t = await r.text(); let m = t; try { m = JSON.parse(t).error || t; } catch(e) {} throw new Error(m); }
+    }
+
+    // Step 3: write metadata fields via update_dealer
+    const address = [city, state].filter(Boolean).join(', ');
+    const r2 = await fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+      body: JSON.stringify({ operation: 'update_dealer', data: { name, phone, address, city, state, website, site_url: website, category: cat, status } }),
+    });
+    if (!r2.ok) { const t = await r2.text(); let m = t; try { m = JSON.parse(t).error || t; } catch(e) {} throw new Error(m); }
+
+    // Update local state
+    if (isAdd) {
+      DEALERS.push({ name, cats: [cat], status, phone, city, state, website, count: 0, avg_days: 0 });
+    } else {
+      Object.assign(DEALERS[_demDealerIdx], { name, cats: [cat], status, phone, city, state, website });
+      if (name !== oldName) INVENTORY.forEach(u => { if (u.dealer === oldName) u.dealer = name; });
+    }
+    saveAppSession();
+    refreshDealerCategoryMap();
+    closeDealerEditModal();
+    renderSettings();
+    renderDealerTable();
+
+  } catch (err) {
+    alert('Save failed: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 
 async function settingsSaveDealerName(i, input) {
@@ -6276,13 +6417,17 @@ async function loadApp() {
 
   try {
     // Load dealers
-    const dRes = await fetch(`${SUPABASE_URL}/rest/v1/dealers?select=name,category,status&order=name`, { headers });
+    const dRes = await fetch(`${SUPABASE_URL}/rest/v1/dealers?select=name,category,status,phone,city,state,website,site_url&order=name`, { headers });
     if (dRes.ok) {
       const dData = await dRes.json();
       DEALERS = dData.map(d => ({
-        name: d.name,
-        cats: d.category ? [d.category] : [],
-        status: d.status || 'Active',
+        name:    d.name,
+        cats:    d.category ? [d.category] : [],
+        status:  d.status   || 'Active',
+        phone:   d.phone    || '',
+        city:    d.city     || '',
+        state:   d.state    || '',
+        website: d.website  || d.site_url || '',
         count: 0,
         avg_days: 0
       }));

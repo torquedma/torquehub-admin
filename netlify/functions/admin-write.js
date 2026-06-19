@@ -31,6 +31,11 @@ const MARK_SOLD_FIELDS = [
 
 const DEALER_FIELDS = ['name', 'category', 'status'];
 
+const DEALER_UPDATE_FIELDS = [
+  'phone', 'address', 'city', 'state', 'zip',
+  'website', 'site_url', 'status', 'category',
+];
+
 const CONTACT_FIELDS = ['name', 'phone', 'email', 'notes'];
 
 // ---------------------------------------------------------------------------
@@ -48,6 +53,7 @@ const OPERATIONS = {
   add_dealer:             handleAddDealer,
   rename_dealer:          handleRenameDealer,
   remove_dealer:          handleRemoveDealer,
+  update_dealer:          handleUpdateDealer,
   save_contact:           handleSaveContact,
   delete_contact:         handleDeleteContact,
 };
@@ -458,6 +464,42 @@ async function handleAddDealer({ data, svcKey }) {
     body: JSON.stringify([row]),
   });
 
+  if (!res.ok) {
+    const errText = await res.text();
+    return { status: res.status, body: { error: errText } };
+  }
+  return { status: 200, body: { ok: true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: update_dealer
+// PATCH /rest/v1/dealers?name=eq.{name}
+// data: { name, phone?, city?, state?, zip?, address?, website?, site_url?,
+//         status?, category? }
+// name is required (URL filter only — not written; use rename_dealer to change name).
+// ---------------------------------------------------------------------------
+async function handleUpdateDealer({ data, svcKey }) {
+  const err = requireString(data, 'name');
+  if (err) return { status: 400, body: { error: err } };
+
+  const row = pickFields(data, DEALER_UPDATE_FIELDS);
+  if (Object.keys(row).length === 0) {
+    return { status: 400, body: { error: 'No updatable fields provided' } };
+  }
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/dealers?name=eq.${encodeURIComponent(data.name.trim())}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'apikey':        svcKey,
+        'Authorization': 'Bearer ' + svcKey,
+        'Content-Type':  'application/json',
+        'Prefer':        'return=minimal',
+      },
+      body: JSON.stringify(row),
+    }
+  );
   if (!res.ok) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
