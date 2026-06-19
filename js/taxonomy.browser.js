@@ -23,6 +23,7 @@
     "Concrete Mixer",
     "Grain Dump Truck",
     "Bucket Truck",
+    "Roll-Off",
     "Boom Truck",
     "Mixer Truck",
     "Yard Spotter",
@@ -58,7 +59,6 @@
     "Curtain-Side Trailer",
     "Lowboy Trailer",
     "Flatbed Trailer",
-    "Vending / Concession Trailer",
     "Skid Steer",
     "Mini Skid Steer",
     "Compact Track Loader",
@@ -114,6 +114,7 @@
     "Body"
   ];
   var aliases = {
+    'Vending / Concession Trailer': 'Concession Trailer',
     'Cargo / Enclosed Trailer': 'Enclosed Trailer',
     'Cargo Trailer': 'Enclosed Trailer',
     'Refrigerated Trailer': 'Reefer Trailer',
