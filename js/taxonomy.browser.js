@@ -110,8 +110,7 @@
     "Engine",
     "Side by Side",
     "Boat",
-    "Freezer Box Body",
-    "Body"
+    "Truck Body"
   ];
   var aliases = {
     'Vending / Concession Trailer': 'Concession Trailer',
@@ -147,6 +146,8 @@
     'Boom Flail Mower': 'Boom Mower',
     'Enclosed Landscape Truck': 'Landscape Truck',
     'Hay Wagon': 'Wagon',
+    'Body': 'Truck Body',
+    'Freezer Box Body': 'Truck Body',
     'Mower': '',
     'Lawn & Garden': ''
   };

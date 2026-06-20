@@ -111,8 +111,7 @@ const CANONICAL_SUBCATEGORIES = new Set([
   'Engine',
   'Side by Side',
   'Boat',
-  'Freezer Box Body',
-  'Body'
+  'Truck Body'
 ]);
 
 const SUBCATEGORY_ALIASES = {
@@ -149,6 +148,8 @@ const SUBCATEGORY_ALIASES = {
   'Boom Flail Mower': 'Boom Mower',
   'Enclosed Landscape Truck': 'Landscape Truck',
   'Hay Wagon': 'Wagon',
+  'Body': 'Truck Body',
+  'Freezer Box Body': 'Truck Body',
   'Mower': '',
   'Lawn & Garden': ''
 };
