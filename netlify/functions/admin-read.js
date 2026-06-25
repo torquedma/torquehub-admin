@@ -27,6 +27,19 @@ const INVENTORY_ADMIN_SELECT = [
   'description_source','photo_count','first_photo'
 ].join(',');
 
+// Walkaround Review queue columns the admin UI consumes.
+const WALKAROUND_QUEUE_SELECT = [
+  'id','stock','title','category','subcategory','generated_bi','edited_bi',
+  'uncertainty_type','status','engine_version','review_outcome'
+].join(',');
+
+// Source inventory facts shown alongside each queue row so reviewers can sanity-check
+// the BI payload against the underlying listing.
+const WALKAROUND_FACT_SELECT = [
+  'stock','year','make','model','trim','price','hours','horsepower','mileage',
+  'engine','fuel','condition','description'
+].join(',');
+
 const OPERATIONS = {
   // get_leads: returns up to `limit` leads, newest first.
   async get_leads({ data, svcKey }) {
@@ -188,6 +201,61 @@ const OPERATIONS = {
 
     const dealers = Object.values(map).sort((a, b) => b.units - a.units);
     return { status: 200, body: { dealers } };
+  },
+
+  // get_walkaround_queue: returns review-queue rows joined with their source inventory
+  // facts. Default status='generated' (pending review); accept data.status to fetch
+  // approved/published/rejected later. Two reads: queue rows, then inventory for those
+  // stocks. Attach source facts as row.source_facts (null when no matching inventory row).
+  async get_walkaround_queue({ data, svcKey }) {
+    const status = (typeof data.status === 'string' && data.status.trim())
+      ? data.status.trim()
+      : 'generated';
+    const limit = Math.min(Math.max(parseInt(data.limit, 10) || 500, 1), 1000);
+
+    const headers = {
+      'apikey':        svcKey,
+      'Authorization': 'Bearer ' + svcKey,
+      'Content-Type':  'application/json'
+    };
+
+    // 1. Queue rows
+    const queueUrl = `${SUPABASE_URL}/rest/v1/walkaround_review_queue`
+      + `?select=${WALKAROUND_QUEUE_SELECT}`
+      + `&status=eq.${encodeURIComponent(status)}`
+      + `&order=id&limit=${limit}`;
+    const qRes = await fetch(queueUrl, { headers });
+    if (!qRes.ok) {
+      return { status: 502, body: { error: 'walkaround_review_queue read failed', detail: qRes.status } };
+    }
+    const queueRows = await qRes.json();
+    if (!Array.isArray(queueRows) || queueRows.length === 0) {
+      return { status: 200, body: { rows: [] } };
+    }
+
+    // 2. Source facts for the matching stocks
+    const stocks = [...new Set(queueRows.map(r => r.stock).filter(Boolean))];
+    const factsByStock = new Map();
+    if (stocks.length) {
+      // PostgREST IN filter: stock=in.(val1,val2,...). Each value URL-encoded so
+      // commas/parens/quotes inside values don't break the filter parser.
+      const inList = stocks.map(s => encodeURIComponent(s)).join(',');
+      const factsUrl = `${SUPABASE_URL}/rest/v1/inventory`
+        + `?stock=in.(${inList})`
+        + `&select=${WALKAROUND_FACT_SELECT}`;
+      const fRes = await fetch(factsUrl, { headers });
+      if (!fRes.ok) {
+        return { status: 502, body: { error: 'inventory facts read failed', detail: fRes.status } };
+      }
+      const factsRows = await fRes.json();
+      for (const f of (factsRows || [])) {
+        if (f && f.stock) factsByStock.set(f.stock, f);
+      }
+    }
+
+    // 3. Attach source_facts to each queue row (null when no matching inventory row)
+    const rows = queueRows.map(r => ({ ...r, source_facts: factsByStock.get(r.stock) || null }));
+    return { status: 200, body: { rows } };
   }
 };
 
