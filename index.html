@@ -524,6 +524,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <a class="nav-child" href="/analytics" data-view="analytics" onclick="showView('analytics',this);return false;">Analytics</a>
         <a class="nav-child" href="/ingestion" data-view="ingestion" onclick="showView('ingestion',this);return false;">Ingestion Debug</a>
         <a class="nav-child" href="/dealer-health" data-view="dealer-health" onclick="showView('dealer-health',this);return false;">Dealer Health</a>
+        <a class="nav-child" href="/walkaround-review" data-view="walkaround-review" onclick="showView('walkaround-review',this);return false;">Walkaround Review</a>
       </div>
     </div>
     <!-- Leads group -->
@@ -1417,6 +1418,19 @@ document.querySelector('.sidebar').classList.toggle('open');
   </div>
 </div>
 
+<!-- ===================== WALKAROUND REVIEW VIEW ===================== -->
+<div class="view" id="view-walkaround-review">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Walkaround Review Queue</div>
+      <span class="card-sub" id="wa-review-count">Loading…</span>
+    </div>
+    <div id="wa-review-list" style="margin-top:12px">
+      <p style="color:var(--text3);margin:0">Loading…</p>
+    </div>
+  </div>
+</div>
+
   </div><!-- end content -->
 
 <!-- ===================== SALE MODAL ===================== -->
@@ -1602,7 +1616,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field"><label class="edit-label">Year</label><input class="edit-input" id="edit-year" type="text" placeholder="Year"></div>
         <div class="edit-field"><label class="edit-label">Make</label><input class="edit-input" id="edit-make" type="text" placeholder="Make"></div>
         <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:4px"><div style="display:flex;align-items:center;justify-content:space-between;width:100%"><label class="edit-label" style="margin:0">Model</label><button class="dx-btn" id="model-lock-btn" onclick="toggleModelLock()" style="font-size:11px;padding:2px 8px">Lock Model</button></div><div id="model-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px">Model Locked - feed sync will not overwrite</div><input class="edit-input" id="edit-model" type="text" placeholder="Model" style="width:100%"></div>
-        <div class="edit-field"><label class="edit-label">Trim</label><input class="edit-input" id="edit-trim" type="text" placeholder="e.g. XLT, Laramie, Limited"></div>
+        <div class="edit-field"><label class="edit-label">Trim / Body Descriptor</label><input class="edit-input" id="edit-trim" type="text" placeholder="OEM trim (XLT, Laramie) or body descriptor (Flatbed Dump Truck) — not the subcategory"></div>
         <div class="edit-field"><label class="edit-label">Price</label><input class="edit-input" id="edit-price" type="text" placeholder="e.g. $12,500" onblur="formatPriceInput(this)" onfocus="unformatPriceInput(this)"></div>
         <div class="edit-field"><label class="edit-label">Stock #</label><input class="edit-input" id="edit-stock" type="text" placeholder="Stock #"><div class="decode-note" id="edit-stock-note"></div></div>
         <div class="edit-field"><label class="edit-label">Days Listed</label><input class="edit-input" id="edit-days" type="text" placeholder="Days"></div>
@@ -2013,7 +2027,7 @@ let CREATE_MODE_CONTEXT = null;
 
 // ---- NAVIGATION ----
 function showView(viewName, navEl, skipHistory) {
-  const validViews = ["dashboard","dealers","inventory","settings","sold","analytics","leads","contacts","ingestion","dealer-health"];
+  const validViews = ["dashboard","dealers","inventory","settings","sold","analytics","leads","contacts","ingestion","dealer-health","walkaround-review"];
   if (!validViews.includes(viewName)) viewName = "dashboard";
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   const viewEl = document.getElementById("view-" + viewName);
@@ -2027,7 +2041,7 @@ function showView(viewName, navEl, skipHistory) {
       if (n.getAttribute("data-view") === viewName) n.classList.add("active");
     });
   }
-  const titles = { dashboard: "Dashboard", dealers: "Dealers", inventory: "Inventory", settings: "Settings", sold: "Sold Inventory", analytics: "Inventory Analysis", leads: "Leads & CRM", contacts: "Contacts", ingestion: "Ingestion Debug", "dealer-health": "Dealer Health" };
+  const titles = { dashboard: "Dashboard", dealers: "Dealers", inventory: "Inventory", settings: "Settings", sold: "Sold Inventory", analytics: "Inventory Analysis", leads: "Leads & CRM", contacts: "Contacts", ingestion: "Ingestion Debug", "dealer-health": "Dealer Health", "walkaround-review": "Walkaround Review" };
   document.getElementById("page-title").textContent = titles[viewName] || viewName;
   if (viewName === "dealers") renderDealersView();
   if (viewName === "inventory") renderInventory();
@@ -2038,6 +2052,7 @@ function showView(viewName, navEl, skipHistory) {
   if (viewName === "contacts") loadContacts();
   if (viewName === "ingestion") initIngestionDebug();
   if (viewName === "dealer-health") loadDealerHealth();
+  if (viewName === "walkaround-review") loadWalkaroundReview();
   // Update URL without hash
   if (!skipHistory) {
     const newPath = "/" + viewName;
@@ -7294,6 +7309,296 @@ async function loadDealerHealth() {
       * No Engine counts only powered categories (Trucks / Construction / Farm); trailers excluded.
       A high count may be a real ingest gap (e.g. trucks) or genuinely unavailable at source (e.g. farm/equipment) — drill into Ingestion Debug to tell which.
     </p>`;
+}
+
+// ============================================================================
+// WALKAROUND REVIEW (Phase B v1) — minimal list → review → tag → approve/reject → publish.
+// Auth: every fetch uses Bearer (await getValidToken()) — same pattern as other admin calls.
+// Backend ops: admin-read#get_walkaround_queue, admin-write#review_walkaround,
+//              admin-write#publish_walkaround, admin-write#unpublish_walkaround.
+// ============================================================================
+
+let WALKAROUND_QUEUE_DATA = [];
+
+// The 8 review-outcome taxonomy values — must match admin-write.js
+// WALKAROUND_REVIEW_OUTCOMES Set byte-for-byte.
+const WALKAROUND_REVIEW_OUTCOMES = [
+  'published_unchanged',
+  'minor_wording_edit',
+  'buyer_insight_changed',
+  'wrong_factual_assumption',
+  'feed_data_error',
+  'wrong_uncertainty_selected',
+  'abstain_should_have_generated',
+  'generated_should_have_abstained',
+];
+
+function _waEscapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function _waToast(message, isError) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);'
+    + 'background:' + (isError ? '#dc2626' : '#16a34a') + ';color:#fff;'
+    + 'padding:10px 20px;border-radius:6px;font-size:13px;font-weight:600;'
+    + 'z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+  t.textContent = message;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+async function _waAuthFetch(operation, data) {
+  const r = await fetch('/.netlify/functions/admin-write', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + (await getValidToken())
+    },
+    body: JSON.stringify({ operation: operation, data: data })
+  });
+  const text = await r.text();
+  let body = {};
+  try { body = JSON.parse(text); } catch (e) { body = { error: text }; }
+  return { ok: r.ok, status: r.status, body: body };
+}
+
+async function loadWalkaroundReview() {
+  const list = document.getElementById('wa-review-list');
+  const count = document.getElementById('wa-review-count');
+  if (list) list.innerHTML = '<p style="color:var(--text3);margin:0">Loading…</p>';
+  if (count) count.textContent = 'Loading…';
+  try {
+    const r = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (await getValidToken())
+      },
+      body: JSON.stringify({ operation: 'get_walkaround_queue', data: { status: 'generated' } })
+    });
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) {
+        alert('Your session may have expired. Please log in again.');
+        return;
+      }
+      const txt = await r.text();
+      if (list) list.innerHTML = '<p style="color:#dc2626;margin:0;padding:14px">Read failed: ' + _waEscapeHtml(txt) + '</p>';
+      if (count) count.textContent = 'Error';
+      return;
+    }
+    const j = await r.json();
+    WALKAROUND_QUEUE_DATA = Array.isArray(j.rows) ? j.rows : [];
+    renderWalkaroundQueue();
+  } catch (e) {
+    if (list) list.innerHTML = '<p style="color:#dc2626;margin:0;padding:14px">Error: ' + _waEscapeHtml(e.message) + '</p>';
+    if (count) count.textContent = 'Error';
+  }
+}
+
+function renderWalkaroundQueue() {
+  const list = document.getElementById('wa-review-list');
+  const count = document.getElementById('wa-review-count');
+  if (!list) return;
+  const rows = WALKAROUND_QUEUE_DATA;
+  if (count) count.textContent = rows.length + ' pending review';
+  if (!rows.length) {
+    list.innerHTML = '<p style="color:var(--text3);margin:0;padding:14px">No rows pending review.</p>';
+    return;
+  }
+  list.innerHTML = rows.map(_waRenderCard).join('');
+}
+
+function _waRenderCard(r) {
+  const bi = r.edited_bi || r.generated_bi || {};
+  const isAbstain = bi && bi.abstain === true;
+  const facts = r.source_facts || null;
+  const id = r.id;
+  const idAttr = _waEscapeHtml(String(id));
+  const idJson = JSON.stringify(String(id));
+  const status = String(r.status || '');
+  const isApproved = status === 'approved';
+
+  // LEFT — Walkaround preview (matches VDP renderer: torque_take.slice(1))
+  let waContent;
+  if (isAbstain) {
+    waContent = '<div style="padding:14px;color:#ca8a04;background:var(--surface2);border:1px solid var(--border);border-radius:8px">Abstain object — the model declined to write a Walkaround for this unit.</div>';
+  } else {
+    const meet = bi.meet || '';
+    const meetTitle = bi.meet_title || 'Meet';
+    const tt = Array.isArray(bi.torque_take) ? bi.torque_take.slice(1).filter(Boolean) : [];
+    const df = bi.decision_factors || {};
+    const yes = Array.isArray(df.makes_it_a_yes) ? df.makes_it_a_yes.filter(Boolean) : [];
+    const yesFooter = df.makes_it_a_yes_footer || '';
+    waContent =
+      '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px">' +
+        '<div style="font-weight:700;font-size:15px;margin-bottom:6px">' + _waEscapeHtml(meetTitle) + '</div>' +
+        '<p style="margin:0 0 12px;color:var(--text2);font-size:13px;line-height:1.5;white-space:pre-wrap">' + _waEscapeHtml(meet) + '</p>' +
+        (tt.length
+          ? '<div style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin:12px 0 6px">Torque Take</div>' +
+            tt.map(p => '<p style="margin:0 0 8px;color:var(--text2);font-size:13px;line-height:1.5;white-space:pre-wrap">' + _waEscapeHtml(p) + '</p>').join('')
+          : '') +
+        (yes.length
+          ? '<div style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin:12px 0 6px">Buyer Checklist</div>' +
+            '<ul style="margin:0 0 8px;padding-left:20px;color:var(--text2);font-size:13px;line-height:1.6">' +
+              yes.map(x => '<li>' + _waEscapeHtml(x) + '</li>').join('') +
+            '</ul>' +
+            (yesFooter ? '<p style="margin:8px 0 0;color:var(--text3);font-size:12px;font-style:italic">' + _waEscapeHtml(yesFooter) + '</p>' : '')
+          : '') +
+      '</div>';
+  }
+
+  // RIGHT — source facts (null = no matching inventory row)
+  let factsContent;
+  if (facts) {
+    const factRows = [
+      ['Year',       facts.year],
+      ['Make',       facts.make],
+      ['Model',      facts.model],
+      ['Trim',       facts.trim],
+      ['Price',      facts.price],
+      ['Hours',      facts.hours],
+      ['Horsepower', facts.horsepower],
+      ['Mileage',    facts.mileage],
+      ['Engine',     facts.engine],
+      ['Fuel',       facts.fuel],
+      ['Condition',  facts.condition],
+    ];
+    factsContent =
+      '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px">' +
+        '<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;margin-bottom:12px">' +
+          factRows.map(kv =>
+            '<span style="color:var(--text3)">' + kv[0] + '</span>' +
+            '<span style="color:var(--text2)">' + (kv[1] == null || kv[1] === '' ? '—' : _waEscapeHtml(String(kv[1]))) + '</span>'
+          ).join('') +
+        '</div>' +
+        '<div style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin:8px 0 4px">Description</div>' +
+        '<div style="max-height:200px;overflow-y:auto;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.5;color:var(--text2);white-space:pre-wrap">' + _waEscapeHtml(facts.description || '—') + '</div>' +
+      '</div>';
+  } else {
+    factsContent =
+      '<div style="padding:14px;background:var(--surface2);border:1px solid #dc2626;border-radius:8px;color:#dc2626">' +
+        '⚠ no matching inventory row for stock <strong>' + _waEscapeHtml(r.stock || '') + '</strong>' +
+      '</div>';
+  }
+
+  // Outcome dropdown + actions row
+  const outcomeOptions =
+    '<option value="">— Choose outcome —</option>' +
+    WALKAROUND_REVIEW_OUTCOMES.map(v => '<option value="' + v + '">' + v + '</option>').join('');
+
+  const publishDisabled = (isApproved && !isAbstain) ? '' : 'disabled';
+  const publishHint = isAbstain
+    ? '<span style="font-size:12px;color:#ca8a04;margin-left:6px">(abstain cannot be published)</span>'
+    : (!isApproved ? '<span style="font-size:12px;color:var(--text3);margin-left:6px">(approve first to enable Publish)</span>' : '');
+
+  return (
+    '<div class="card" style="margin-bottom:16px" id="wa-card-' + idAttr + '">' +
+      '<div class="card-header" style="border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:12px">' +
+        '<div>' +
+          '<div class="card-title">' + _waEscapeHtml(r.stock || '—') + ' — ' + _waEscapeHtml(r.title || '') + '</div>' +
+          '<span class="card-sub">' +
+            'status: <strong>' + _waEscapeHtml(status) + '</strong>' +
+            (r.uncertainty_type ? ' &middot; uncertainty: <strong>' + _waEscapeHtml(r.uncertainty_type) + '</strong>' : '') +
+            (r.engine_version ? ' &middot; engine: ' + _waEscapeHtml(r.engine_version) : '') +
+          '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+        '<div>' +
+          '<div style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:6px">Walkaround Preview</div>' +
+          waContent +
+        '</div>' +
+        '<div>' +
+          '<div style="font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:6px">Source Facts</div>' +
+          factsContent +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;align-items:center;padding-top:14px;margin-top:14px;border-top:1px solid var(--border);flex-wrap:wrap">' +
+        '<label style="font-size:13px;color:var(--text2)">Outcome:</label>' +
+        '<select id="wa-outcome-' + idAttr + '" class="edit-input" style="max-width:280px;font-size:13px" onchange="onWalkaroundOutcomeChange(' + idJson + ')">' +
+          outcomeOptions +
+        '</select>' +
+        '<button id="wa-approve-' + idAttr + '" class="topbar-btn btn-primary" disabled style="font-size:13px;padding:7px 14px" onclick="approveWalkaround(' + idJson + ')">Approve</button>' +
+        '<button id="wa-reject-' + idAttr + '" class="topbar-btn" disabled style="font-size:13px;padding:7px 14px" onclick="rejectWalkaround(' + idJson + ')">Reject</button>' +
+        '<button id="wa-publish-' + idAttr + '" class="topbar-btn btn-primary" ' + publishDisabled + ' style="font-size:13px;padding:7px 14px" onclick="publishWalkaround(' + idJson + ')">Publish</button>' +
+        publishHint +
+      '</div>' +
+      '<div id="wa-msg-' + idAttr + '" style="display:none;margin-top:8px;font-size:12px"></div>' +
+    '</div>'
+  );
+}
+
+// Outcome dropdown gates the Approve/Reject buttons. Publish is gated separately
+// by row status (only enabled when status === 'approved' and payload is not abstain).
+function onWalkaroundOutcomeChange(id) {
+  const sel = document.getElementById('wa-outcome-' + id);
+  const approve = document.getElementById('wa-approve-' + id);
+  const reject = document.getElementById('wa-reject-' + id);
+  const has = sel && sel.value;
+  if (approve) approve.disabled = !has;
+  if (reject) reject.disabled = !has;
+}
+
+function _waShowMsg(id, msg, isError) {
+  const el = document.getElementById('wa-msg-' + id);
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = msg;
+  el.style.color = isError ? '#dc2626' : '#16a34a';
+}
+
+async function _waReviewWrite(id, status) {
+  const sel = document.getElementById('wa-outcome-' + id);
+  if (!sel || !sel.value) {
+    _waShowMsg(id, 'Pick an outcome first.', true);
+    return;
+  }
+  const res = await _waAuthFetch('review_walkaround', { id: id, status: status, review_outcome: sel.value });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      alert('Your session may have expired. Please log in again.');
+      return;
+    }
+    _waShowMsg(id, (res.body && res.body.error) ? res.body.error : 'Review failed', true);
+    return;
+  }
+  _waToast(status === 'approved' ? '✓ Approved' : '✓ Rejected');
+  if (status === 'rejected') {
+    // Drop the rejected card (this list shows status=generated rows; reject moves it out of scope)
+    WALKAROUND_QUEUE_DATA = WALKAROUND_QUEUE_DATA.filter(x => String(x.id) !== String(id));
+  } else {
+    // status='approved' — keep the row locally so reviewer can click Publish in the same session.
+    const row = WALKAROUND_QUEUE_DATA.find(x => String(x.id) === String(id));
+    if (row) row.status = 'approved';
+  }
+  renderWalkaroundQueue();
+}
+
+async function approveWalkaround(id) { return _waReviewWrite(id, 'approved'); }
+async function rejectWalkaround(id) { return _waReviewWrite(id, 'rejected'); }
+
+async function publishWalkaround(id) {
+  const row = WALKAROUND_QUEUE_DATA.find(x => String(x.id) === String(id));
+  if (!row || row.status !== 'approved') {
+    _waShowMsg(id, 'Approve this row first.', true);
+    return;
+  }
+  const res = await _waAuthFetch('publish_walkaround', { id: id });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      alert('Your session may have expired. Please log in again.');
+      return;
+    }
+    _waShowMsg(id, (res.body && res.body.error) ? res.body.error : 'Publish failed', true);
+    return;
+  }
+  _waToast('🚀 Published to inventory');
+  // Row is now status='published'; drop from this view (which lists pending generated/approved).
+  WALKAROUND_QUEUE_DATA = WALKAROUND_QUEUE_DATA.filter(x => String(x.id) !== String(id));
+  renderWalkaroundQueue();
 }
 </script>
 </body>
