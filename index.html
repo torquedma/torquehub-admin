@@ -7429,7 +7429,7 @@ async function loadWalkaroundReview() {
     // Filter client-side to the current production engine version. Earlier
     // generations (v1, v1.1) still sit in the queue but are noise for review —
     // bump this string when a newer engine_version becomes the production target.
-    WALKAROUND_QUEUE_DATA = (Array.isArray(j.rows) ? j.rows : []).filter(r => r.engine_version === 'walkaround-v1.2-text');
+    WALKAROUND_QUEUE_DATA = (Array.isArray(j.rows) ? j.rows : []).filter(r => r.engine_version === 'walkaround-v1.2-text' || r.engine_version === 'walkaround-v1.3-text');
     renderWalkaroundQueue();
   } catch (e) {
     if (list) list.innerHTML = '<p style="color:#dc2626;margin:0;padding:14px">Error: ' + _waEscapeHtml(e.message) + '</p>';
@@ -7492,6 +7492,11 @@ function _waOnListChange(e) {
   if (id != null) onWalkaroundOutcomeChange(id);
 }
 
+// Detect the buyer_intelligence shape so the preview renderer can switch
+// between the v1.2 Meet-prose card and the v1.3 Confirmation card.
+// v1.3 introduces a top-level `identity` object; its presence is the marker.
+function waGetShape(bi){ if (bi && bi.identity) return 'v1.3'; return 'v1.2'; }
+
 function _waRenderCard(r) {
   // ── Data extraction (unchanged from prior version) ─────────────────────────
   const bi = r.edited_bi || r.generated_bi || {};
@@ -7519,17 +7524,73 @@ function _waRenderCard(r) {
         '<strong style="color:#ca8a04">⚠ Abstain object.</strong> The model declined to write a Walkaround for this unit.' +
       '</div>';
   } else {
-    const meet = bi.meet || '';
-    const meetTitle = bi.meet_title || 'Meet';
+    const shape = waGetShape(bi);
+
+    // Torque Take is identical for both shapes (slice(1) drop preserved).
     const tt = Array.isArray(bi.torque_take) ? bi.torque_take.slice(1).filter(Boolean) : [];
-    const df = bi.decision_factors || {};
-    const yes = Array.isArray(df.makes_it_a_yes) ? df.makes_it_a_yes.filter(Boolean) : [];
-    const yesFooter = df.makes_it_a_yes_footer || '';
+
+    // Buyer Checklist source switches by shape; UI is identical.
+    // v1.3 reads bi.buyer_checklist; v1.2 reads bi.decision_factors. Both expose
+    // makes_it_a_yes[] + makes_it_a_yes_footer with the same semantics.
+    const ck = (shape === 'v1.3') ? (bi.buyer_checklist || {}) : (bi.decision_factors || {});
+    const yes = Array.isArray(ck.makes_it_a_yes) ? ck.makes_it_a_yes.filter(Boolean) : [];
+    const yesFooter = ck.makes_it_a_yes_footer || '';
+
+    // Header section: v1.3 Confirmation card built from normalized identity
+    // slots, v1.2 Meet prose preserved exactly as before.
+    let headerSection;
+    if (shape === 'v1.3') {
+      const identity = bi.identity || {};
+      const ctx = (typeof identity.context === 'string' && identity.context.trim())
+        ? identity.context.trim()
+        : '';
+
+      // Deterministic bullet order per spec, SKIPPING EMPTY values:
+      //   vehicle_type, configuration, powertrain, mileage, ownership,
+      //   each equipment_facts item, condition.
+      // Raw identity field values; no invented labels or explanations.
+      const idBullets = [];
+      const addIfPresent = (val) => {
+        if (typeof val === 'string' && val.trim()) idBullets.push(val.trim());
+      };
+      addIfPresent(identity.vehicle_type);
+      addIfPresent(identity.configuration);
+      addIfPresent(identity.powertrain);
+      addIfPresent(identity.mileage);
+      addIfPresent(identity.ownership);
+      if (Array.isArray(identity.equipment_facts)) identity.equipment_facts.forEach(addIfPresent);
+      addIfPresent(identity.condition);
+
+      headerSection =
+        // Confirmation heading
+        '<div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.3;margin:0 0 10px">Confirmation</div>' +
+        // Optional context line — muted italic above the bullets
+        (ctx
+          ? '<div style="margin:0 0 14px;color:var(--text3);font-size:13px;font-style:italic;line-height:1.5">' + _waEscapeHtml(ctx) + '</div>'
+          : '') +
+        // Identity bullets — compact checkmark rows
+        (idBullets.length
+          ? '<ul style="margin:0;padding:0;list-style:none;color:var(--text2);font-size:14px;line-height:1.5">' +
+            idBullets.map(b =>
+              '<li style="margin-bottom:8px;display:flex;align-items:flex-start;gap:10px">' +
+                '<span style="color:var(--accent);font-weight:700;flex-shrink:0;line-height:1.5">✓</span>' +
+                '<span style="word-break:break-word">' + _waEscapeHtml(b) + '</span>' +
+              '</li>'
+            ).join('') +
+          '</ul>'
+          : '');
+    } else {
+      // v1.2 — Meet prose preserved exactly as before
+      const meet = bi.meet || '';
+      const meetTitle = bi.meet_title || 'Meet';
+      headerSection =
+        // Meet — primary heading + spacious body
+        '<div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.3;margin:0 0 10px">' + _waEscapeHtml(meetTitle) + '</div>' +
+        '<p style="margin:0;color:var(--text2);font-size:14px;line-height:1.65;white-space:pre-wrap">' + _waEscapeHtml(meet) + '</p>';
+    }
 
     waContent =
-      // Meet — primary heading + spacious body
-      '<div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.3;margin:0 0 10px">' + _waEscapeHtml(meetTitle) + '</div>' +
-      '<p style="margin:0;color:var(--text2);font-size:14px;line-height:1.65;white-space:pre-wrap">' + _waEscapeHtml(meet) + '</p>' +
+      headerSection +
       // Torque Take
       (tt.length
         ? sectionLabel('Torque Take') +
