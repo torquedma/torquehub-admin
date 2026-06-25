@@ -1424,6 +1424,8 @@ document.querySelector('.sidebar').classList.toggle('open');
     <div class="card-header">
       <div class="card-title">Walkaround Review Queue</div>
       <span class="card-sub" id="wa-review-count">Loading…</span>
+      <!-- session-only counter rendered by _waRenderSessionSummary(); empty until first review action -->
+      <div id="wa-session-summary" style="margin-top:6px;font-size:12px;color:var(--text3);line-height:1.5"></div>
     </div>
     <div id="wa-review-list" style="margin-top:12px">
       <p style="color:var(--text3);margin:0">Loading…</p>
@@ -7333,6 +7335,40 @@ const WALKAROUND_REVIEW_OUTCOMES = [
   'generated_should_have_abstained',
 ];
 
+// Session-only counter — client-side, resets on page reload, no persistence.
+// Buckets:
+//   - published   = publish_unchanged outcomes that completed publish
+//   - minor_edits = any non-published_unchanged outcome that completed publish
+//                   (the row needed editing or had a flagged issue but was still published)
+//   - rejected    = any reject action (taxonomy bucket from the dropdown is recorded
+//                   server-side; locally we just count the action)
+let WA_REVIEW_SESSION = { published: 0, minor_edits: 0, rejected: 0 };
+
+function _waBumpSession(bucket) {
+  if (bucket !== 'published' && bucket !== 'minor_edits' && bucket !== 'rejected') return;
+  WA_REVIEW_SESSION[bucket] += 1;
+  _waRenderSessionSummary();
+}
+
+// Idempotent render — called by _waBumpSession AND by renderWalkaroundQueue
+// (so the line stays in sync when the queue length changes from any path).
+function _waRenderSessionSummary() {
+  const el = document.getElementById('wa-session-summary');
+  if (!el) return;
+  const s = WA_REVIEW_SESSION;
+  const total = s.published + s.minor_edits + s.rejected;
+  const pending = Array.isArray(WALKAROUND_QUEUE_DATA) ? WALKAROUND_QUEUE_DATA.length : 0;
+  const denom = total + pending;
+  if (denom === 0) { el.innerHTML = ''; return; }
+  const pct = Math.round((total / denom) * 100);
+  el.innerHTML =
+    'Reviewed this session: <strong style="color:var(--text2)">' + total + ' / ' + denom + '</strong> (' + pct + '%)' +
+    '<span style="color:var(--border);margin:0 10px">|</span>' +
+    'Published: <strong style="color:var(--text2)">' + s.published + '</strong> · ' +
+    'Minor edits: <strong style="color:var(--text2)">' + s.minor_edits + '</strong> · ' +
+    'Rejected: <strong style="color:var(--text2)">' + s.rejected + '</strong>';
+}
+
 function _waEscapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -7407,6 +7443,9 @@ function renderWalkaroundQueue() {
   if (!list) return;
   const rows = WALKAROUND_QUEUE_DATA;
   if (count) count.textContent = rows.length + ' pending review';
+  // Keep the session summary line in sync — pending count changes after every
+  // approve/reject/publish, so the denominator and percentage update with the list.
+  _waRenderSessionSummary();
   if (!rows.length) {
     list.innerHTML = '<p style="color:var(--text3);margin:0;padding:14px">No rows pending review.</p>';
     // Attach (idempotent) so the listener is wired even on empty-state first paint;
@@ -7572,9 +7611,9 @@ function _waRenderCard(r) {
 
   // Engine summary strip derivations.
   // buyer_question: HONEST ABSENCE — if the engine hasn't emitted it yet (v1.2 and
-  // earlier), show "Not emitted yet" in muted text. NEVER synthesize one from
-  // uncertainty_type. When v1.2.1+ engines start emitting bi.buyer_question this
-  // will populate automatically with no further UI change.
+  // earlier), show "(not emitted)" in fainter muted text. NEVER synthesize one
+  // from uncertainty_type. When v1.2.1+ engines start emitting bi.buyer_question
+  // this will populate automatically with no further UI change.
   const buyerQuestion = (typeof bi.buyer_question === 'string' && bi.buyer_question.trim())
     ? bi.buyer_question.trim()
     : '';
@@ -7610,7 +7649,8 @@ function _waRenderCard(r) {
           stripLabel('Buyer Question') +
           (buyerQuestion
             ? '<span title="' + _waEscapeHtml(buyerQuestion) + '" style="color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">' + _waEscapeHtml(buyerQuestion) + '</span>'
-            : '<span style="color:var(--text3);font-style:italic">Not emitted yet</span>') +
+            // Absent state: smaller + lower opacity than --text3 so the eye skips it until the engine starts emitting buyer_question in v1.2.1+.
+            : '<span style="color:var(--text3);font-style:italic;font-size:11px;opacity:0.55">(not emitted)</span>') +
         '</div>' +
         // Uncertainty (moved from header — pill style reused as-is)
         '<div style="display:flex;align-items:center;gap:8px">' +
@@ -7698,10 +7738,12 @@ async function _waReviewWrite(id, status) {
   if (status === 'rejected') {
     // Drop the rejected card (this list shows status=generated rows; reject moves it out of scope)
     WALKAROUND_QUEUE_DATA = WALKAROUND_QUEUE_DATA.filter(x => String(x.id) !== String(id));
+    _waBumpSession('rejected');
   } else {
     // status='approved' — keep the row locally so reviewer can click Publish in the same session.
+    // Stash the submitted outcome on the local row so publishWalkaround can bucket it correctly.
     const row = WALKAROUND_QUEUE_DATA.find(x => String(x.id) === String(id));
-    if (row) row.status = 'approved';
+    if (row) { row.status = 'approved'; row._waSubmittedOutcome = sel.value; }
   }
   renderWalkaroundQueue();
 }
@@ -7725,9 +7767,13 @@ async function publishWalkaround(id) {
     return;
   }
   _waToast('🚀 Published to inventory');
+  // Capture the outcome that was tagged at approve-time (stashed by _waReviewWrite)
+  // BEFORE the row is filtered out — so session counter can bucket it correctly.
+  const bucket = (row._waSubmittedOutcome === 'published_unchanged') ? 'published' : 'minor_edits';
   // Row is now status='published'; drop from this view (which lists pending generated/approved).
   WALKAROUND_QUEUE_DATA = WALKAROUND_QUEUE_DATA.filter(x => String(x.id) !== String(id));
   renderWalkaroundQueue();
+  _waBumpSession(bucket);
 }
 </script>
 </body>
