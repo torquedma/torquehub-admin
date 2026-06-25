@@ -7409,9 +7409,48 @@ function renderWalkaroundQueue() {
   if (count) count.textContent = rows.length + ' pending review';
   if (!rows.length) {
     list.innerHTML = '<p style="color:var(--text3);margin:0;padding:14px">No rows pending review.</p>';
+    // Attach (idempotent) so the listener is wired even on empty-state first paint;
+    // re-rendering replaces innerHTML but leaves the parent listener intact.
+    _waAttachReviewListeners(list);
     return;
   }
   list.innerHTML = rows.map(_waRenderCard).join('');
+  _waAttachReviewListeners(list);
+}
+
+// Delegated click/change listeners on the queue list container. innerHTML
+// re-renders inside the container don't disturb the listener since it lives on
+// the persistent parent. Idempotent: the data-wa-listeners attribute marker
+// prevents double-binding across re-renders or navigation back to the view.
+//
+// Buttons opt in via data-wa-action="approve|reject|publish" + data-id="<uuid>".
+// The outcome <select> opts in via data-wa-outcome="1" + data-id="<uuid>".
+// data-id values flow through getAttribute(), which returns the raw decoded
+// string — so UUIDs (and any other characters) round-trip cleanly without the
+// quote-collision that broke the old inline onclick="fn(' + idJson + ')" form.
+function _waAttachReviewListeners(list) {
+  if (!list || list.hasAttribute('data-wa-listeners')) return;
+  list.addEventListener('click', _waOnListClick);
+  list.addEventListener('change', _waOnListChange);
+  list.setAttribute('data-wa-listeners', '1');
+}
+
+function _waOnListClick(e) {
+  const btn = e.target && e.target.closest && e.target.closest('[data-wa-action]');
+  if (!btn || btn.disabled) return;
+  const id = btn.getAttribute('data-id');
+  if (id == null) return;
+  const action = btn.getAttribute('data-wa-action');
+  if (action === 'approve')      approveWalkaround(id);
+  else if (action === 'reject')  rejectWalkaround(id);
+  else if (action === 'publish') publishWalkaround(id);
+}
+
+function _waOnListChange(e) {
+  const sel = e.target && e.target.closest && e.target.closest('[data-wa-outcome]');
+  if (!sel) return;
+  const id = sel.getAttribute('data-id');
+  if (id != null) onWalkaroundOutcomeChange(id);
 }
 
 function _waRenderCard(r) {
@@ -7421,7 +7460,10 @@ function _waRenderCard(r) {
   const facts = r.source_facts || null;
   const id = r.id;
   const idAttr = _waEscapeHtml(String(id));
-  const idJson = JSON.stringify(String(id));
+  // idJson removed: button/select clicks are now wired via a delegated listener
+  // on #wa-review-list reading data-id with getAttribute(). The prior
+  // onclick="fn(' + idJson + ')" pattern silently broke for UUIDs because
+  // JSON.stringify embeds double-quotes that collided with the HTML attribute.
   const status = String(r.status || '');
   const isApproved = status === 'approved';
 
@@ -7559,13 +7601,13 @@ function _waRenderCard(r) {
       '<div style="padding:16px 24px;border-top:1px solid var(--border);background:var(--surface2)">' +
         '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
           '<label style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-right:4px">Outcome</label>' +
-          '<select id="wa-outcome-' + idAttr + '" class="edit-input" style="max-width:280px;font-size:13px" onchange="onWalkaroundOutcomeChange(' + idJson + ')">' +
+          '<select id="wa-outcome-' + idAttr + '" class="edit-input" style="max-width:280px;font-size:13px" data-wa-outcome="1" data-id="' + idAttr + '">' +
             outcomeOptions +
           '</select>' +
-          '<button id="wa-approve-' + idAttr + '" class="topbar-btn btn-primary" disabled style="font-size:13px;padding:7px 16px" onclick="approveWalkaround(' + idJson + ')">Approve</button>' +
-          '<button id="wa-reject-' + idAttr + '" class="topbar-btn" disabled style="font-size:13px;padding:7px 16px" onclick="rejectWalkaround(' + idJson + ')">Reject</button>' +
+          '<button id="wa-approve-' + idAttr + '" class="topbar-btn btn-primary" disabled style="font-size:13px;padding:7px 16px" data-wa-action="approve" data-id="' + idAttr + '">Approve</button>' +
+          '<button id="wa-reject-' + idAttr + '" class="topbar-btn" disabled style="font-size:13px;padding:7px 16px" data-wa-action="reject" data-id="' + idAttr + '">Reject</button>' +
           '<div style="flex:1"></div>' +
-          '<button id="wa-publish-' + idAttr + '" class="topbar-btn btn-primary" ' + publishDisabled + ' style="font-size:13px;padding:7px 16px" onclick="publishWalkaround(' + idJson + ')">Publish</button>' +
+          '<button id="wa-publish-' + idAttr + '" class="topbar-btn btn-primary" ' + publishDisabled + ' style="font-size:13px;padding:7px 16px" data-wa-action="publish" data-id="' + idAttr + '">Publish</button>' +
           publishHint +
         '</div>' +
         '<div id="wa-msg-' + idAttr + '" style="display:none;margin-top:10px;font-size:12px"></div>' +
