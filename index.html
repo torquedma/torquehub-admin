@@ -7390,7 +7390,10 @@ async function loadWalkaroundReview() {
       return;
     }
     const j = await r.json();
-    WALKAROUND_QUEUE_DATA = Array.isArray(j.rows) ? j.rows : [];
+    // Filter client-side to the current production engine version. Earlier
+    // generations (v1, v1.1) still sit in the queue but are noise for review —
+    // bump this string when a newer engine_version becomes the production target.
+    WALKAROUND_QUEUE_DATA = (Array.isArray(j.rows) ? j.rows : []).filter(r => r.engine_version === 'walkaround-v1.2-text');
     renderWalkaroundQueue();
   } catch (e) {
     if (list) list.innerHTML = '<p style="color:#dc2626;margin:0;padding:14px">Error: ' + _waEscapeHtml(e.message) + '</p>';
