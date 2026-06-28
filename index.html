@@ -395,6 +395,7 @@
   .edit-save-btn:hover { background: #c73508; }
   .edit-saved-msg { font-size: 12px; color: #16a34a; font-weight: 600; opacity: 0; transition: opacity 0.3s; }
   .edit-saved-msg.show { opacity: 1; }
+  .edit-saved-msg.warn { color: #b45309; }
   .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-shrink: 0; }
   .modal-title { font-size: 18px; font-weight: 700; color: var(--text); line-height: 1.2; }
   .modal-subtitle { font-size: 12px; color: var(--text3); margin-top: 2px; }
@@ -2924,6 +2925,14 @@ function gateSubcategory(typed) {
   return { value: trimmed, proceed: false };
 }
 
+function warnOffCanonSubcategory(sub) {
+  const msg = document.getElementById('edit-saved-msg');
+  if (!msg) return;
+  msg.textContent = '⚠ Saved — "' + sub + '" is not in the canonical taxonomy (kept as-is)';
+  msg.classList.add('show', 'warn');
+  setTimeout(() => { msg.classList.remove('show', 'warn'); msg.textContent = '✓ Saved'; }, 4000);
+}
+
 async function saveAndClose() {
   const btn = document.getElementById('save-close-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
@@ -3179,12 +3188,31 @@ async function saveListingEdits() {
   u.vin       = document.getElementById("edit-vin").value.trim();
   u.category  = document.getElementById("edit-site-tag").value;
   u.featured  = document.getElementById("edit-featured").checked ? 1 : 0;
-  const _subGateUpdate = gateSubcategory(document.getElementById("edit-subcategory").value);
+  const _subInputRaw = document.getElementById("edit-subcategory").value;
+  const _subGateUpdate = gateSubcategory(_subInputRaw);
   if (_subGateUpdate.proceed === false) {
-    alert("\"" + _subGateUpdate.value + "\" is not in the canonical taxonomy.\n\nPick a value from the suggestions, or add it to taxonomy.json first. The listing cannot be saved with an off-taxonomy subcategory.");
-    return false;
+    // off-canon input. Allow only if it's UNCHANGED or taxonomy-equivalent to the original.
+    const _canon = (s) => {
+      const r = (window.TAXONOMY && window.TAXONOMY.canonicalize) ? window.TAXONOMY.canonicalize(s) : '';
+      return r ? r : null;            // normalize '' / undefined -> null
+    };
+    const _origSub  = (u.subcategory || '').trim();
+    const _inputSub = (_subInputRaw  || '').trim();
+    const _origCanon  = _canon(_origSub);
+    const _inputCanon = _canon(_inputSub);
+    const _equivalent = (_inputSub === _origSub) || (_origCanon && _inputCanon && _origCanon === _inputCanon);
+    if (_equivalent) {
+      // UNCHANGED / equivalent off-canon (legacy or locked debt) -> allow, warn only.
+      warnOffCanonSubcategory(_inputSub);
+      u.subcategory = _origSub;       // keep original value as-is, do NOT block
+    } else {
+      // user CHANGED subcategory to a NEW off-canon value -> hard-block (unchanged behavior).
+      alert("\"" + _subGateUpdate.value + "\" is not in the canonical taxonomy.\n\nPick a value from the suggestions, or add it to taxonomy.json first. The listing cannot be saved with an off-taxonomy subcategory.");
+      return false;
+    }
+  } else {
+    u.subcategory = _subGateUpdate.value;
   }
-  u.subcategory = _subGateUpdate.value;
   u.description = document.getElementById("edit-description").value.trim();
   u.notes = document.getElementById("edit-notes").value.trim();
   u.prod_status = document.getElementById("edit-prod-status").value;
