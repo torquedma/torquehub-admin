@@ -2356,6 +2356,17 @@ function getListingKey(u) {
   return `${u.year}_${u.make}_${u.model}_${u.stock || 'nostock'}_${u.dealer}`.replace(/\s+/g,'_');
 }
 
+function showMileage(u) {
+  if (String(u.category || '').toLowerCase() === 'farm') return false;
+  const v = u.mileage;
+  if (v == null) return false;
+  const s = String(v).trim();
+  if (s === '') return false;
+  const numPart = s.replace(/[^0-9.]/g, '');
+  if (numPart !== '' && Number(numPart) === 0) return false;
+  return true;
+}
+
 function getPhotoCount(u) {
   const key = getListingKey(u);
   // Prefer PHOTO_STORE when populated (lazy-fetched or uploaded this session)
@@ -2775,14 +2786,14 @@ function generateTorqueHubDX() {
   var title = parts.join(' ');
   var lines = [title, ''];
 
-  var hasSpecs = u.engine || u.horsepower || u.transmission || u.drivetrain || u.mileage || u.hours || u.vin || u.stock;
+  var hasSpecs = u.engine || u.horsepower || u.transmission || u.drivetrain || showMileage(u) || u.hours || u.vin || u.stock;
   if (hasSpecs) {
     lines.push('Key Specs:');
     if (u.engine)       lines.push('Engine: ' + u.engine);
     if (u.horsepower)   lines.push('Horsepower: ' + u.horsepower);
     if (u.transmission) lines.push('Transmission: ' + u.transmission);
     if (u.drivetrain)   lines.push('Drivetrain: ' + u.drivetrain);
-    if (u.mileage)      lines.push('Mileage: ' + u.mileage);
+    if (showMileage(u)) lines.push('Mileage: ' + u.mileage);
     if (u.hours)        lines.push('Hours: Shows ' + u.hours);
     if (u.vin)          lines.push('VIN: ' + u.vin);
     if (u.stock)        lines.push('Stock #: ' + u.stock);
