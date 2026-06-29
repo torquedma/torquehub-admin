@@ -3,6 +3,18 @@ function trimSpec(val) {
   return val.split(/\s*[—–]\s*|\s+-\s+/)[0].trim();
 }
 
+function showMileage(unit) {
+  // Farm equipment uses hours, not mileage — never show mileage for Farm.
+  if (String(unit.category || '').toLowerCase() === 'farm') return false;
+  const v = unit.mileage;
+  if (v == null) return false;
+  const s = String(v).trim();
+  if (s === '') return false;
+  const numPart = s.replace(/[^0-9.]/g, '');
+  if (numPart !== '' && Number(numPart) === 0) return false; // reject "0", "0 miles", etc.
+  return true;
+}
+
 function buildPrompt(unit, dealer) {
   const d = dealer || {};
   const price = unit.price ? '$' + Number(unit.price).toLocaleString() : 'Call for Price';
@@ -13,7 +25,7 @@ function buildPrompt(unit, dealer) {
   if (unit.make)  lines.push('Make: ' + unit.make);
   if (unit.model) lines.push('Model: ' + unit.model);
   lines.push('Price: ' + price);
-  if (unit.mileage)                    lines.push('Mileage: ' + unit.mileage);
+  if (showMileage(unit))               lines.push('Mileage: ' + unit.mileage);
   if (trimSpec(unit.engine))           lines.push('Engine: ' + trimSpec(unit.engine));
   if (trimSpec(unit.transmission))     lines.push('Transmission: ' + trimSpec(unit.transmission));
   if (unit.drivetrain)                 lines.push('Drivetrain: ' + unit.drivetrain);
@@ -50,7 +62,7 @@ async function generateDescription(unit, dealer, apiKey) {
   if (unit.year)                   detailLines.push('- Year: ' + unit.year);
   if (unit.make)                   detailLines.push('- Make: ' + unit.make);
   if (unit.model)                  detailLines.push('- Model: ' + unit.model);
-  if (unit.mileage)                detailLines.push('- Mileage: ' + unit.mileage);
+  if (showMileage(unit))           detailLines.push('- Mileage: ' + unit.mileage);
   if (trimSpec(unit.engine))       detailLines.push('- Engine: ' + trimSpec(unit.engine));
   if (trimSpec(unit.transmission)) detailLines.push('- Transmission: ' + trimSpec(unit.transmission));
   if (unit.drivetrain)             detailLines.push('- Drivetrain: ' + unit.drivetrain);
