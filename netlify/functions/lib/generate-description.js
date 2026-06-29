@@ -35,7 +35,7 @@ function buildPrompt(unit, dealer) {
 
   return `You are writing inventory descriptions for Torque Hub, a commercial equipment marketplace.
 
-Rewrite the following raw dealer description into the Torque Hub standard format:
+Rewrite the following raw seller description into the Torque Hub standard format:
 
 UNIT INFO:
 ${lines.join('\n')}
@@ -48,6 +48,8 @@ Use ONLY information explicitly present in UNIT INFO or RAW DESCRIPTION above.
 Do not infer, guess, decode, assume, or add any engine manufacturer, horsepower, torque, body style, drivetrain, mileage, condition, or specification that is not explicitly stated in the source.
 If the source does not state it, omit it.
 Accuracy over completeness.
+
+TERMINOLOGY: Always refer to the inventory source as the "seller" — never "dealer" or "dealership" — in all output text, even if the raw description uses those words.
 
 OUTPUT FORMAT — return EXACTLY two parts separated by a line containing only "===":
 [Year] [Make] [Model] – [Short Buyer Hook]
@@ -119,7 +121,7 @@ async function generateDescription(unit, dealer, apiKey) {
   let text = headline + '\n\nKey Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
   if (d.name || d.phone || d.location) {
     const contactBits = [d.phone, d.location].filter(Boolean).join(' | ');
-    text += '\n\nInterested In This Unit?\nCall ' + (d.name || 'the dealer') + (contactBits ? ': ' + contactBits : '');
+    text += '\n\nInterested In This Unit?\nCall ' + (d.name || 'the seller') + (contactBits ? ': ' + contactBits : '');
   }
   return text;
 }
