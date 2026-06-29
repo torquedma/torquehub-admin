@@ -45,8 +45,9 @@ RULES:
 - For every field, include a confidence 0.0-1.0 and a short reason (e.g. 'Bobcat decals visible', 'hour meter reads 487', 'not determinable from photos').
 - If a field cannot be determined, return value null with confidence 0. Do not omit it.
 - NEVER include price, condition, service history, or title — these are not photo-derivable.
+ADDITIONALLY: include a "review_flags" array of short string flags noting items that should be manually checked, OR where a better photo would help determination. Examples: "Hours not visible — upload an hour-meter photo or ask the seller", "Track condition not assessable from photos — inspect manually". Return an empty array if nothing needs flagging.
 Return ONLY valid JSON, no prose, no markdown fences, in exactly this shape:
-{ "make": {"value":..., "confidence":..., "reason":"..."}, ... }`;
+{ "make": {"value":..., "confidence":..., "reason":"..."}, ..., "review_flags": ["...", "..."] }`;
 }
 
 exports.handler = async function (event) {
@@ -152,9 +153,9 @@ exports.handler = async function (event) {
     const fence = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (fence && fence[1]) jsonText = fence[1].trim();
 
-    let proposals;
+    let parsed;
     try {
-      proposals = JSON.parse(jsonText);
+      parsed = JSON.parse(jsonText);
     } catch (parseErr) {
       return {
         statusCode: 502,
@@ -163,10 +164,17 @@ exports.handler = async function (event) {
       };
     }
 
+    // Split review_flags out of the parsed object so the response shape is
+    // { subcategory, proposals: {field map}, review_flags: [...] } rather than
+    // nesting flags inside the field map. Default to [] if model omits or
+    // returns a non-array (defensive).
+    const { review_flags: rawReviewFlags, ...proposals } = parsed;
+    const reviewFlags = Array.isArray(rawReviewFlags) ? rawReviewFlags : [];
+
     return {
       statusCode: 200,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subcategory, proposals })
+      body: JSON.stringify({ subcategory, proposals, review_flags: reviewFlags })
     };
   } catch (err) {
     console.error('analyze-photos error:', err.message);
