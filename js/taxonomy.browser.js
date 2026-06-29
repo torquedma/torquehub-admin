@@ -59,6 +59,8 @@
     "Curtain-Side Trailer",
     "Lowboy Trailer",
     "Flatbed Trailer",
+    "Hopper Bottom Trailer",
+    "Belt Trailer",
     "Skid Steer",
     "Mini Skid Steer",
     "Compact Track Loader",
