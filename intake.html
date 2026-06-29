@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual AI Intake — Torque Hub Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #0f1923;
+    --accent: #e8410a;
+    --accent2: #f59e0b;
+    --surface: #ffffff;
+    --surface2: #f4f6f9;
+    --surface3: #eaecf0;
+    --text: #0f1923;
+    --text2: #4b5563;
+    --text3: #9ca3af;
+    --border: #e5e7eb;
+    --green: #16a34a;
+    --blue: #2563eb;
+    --orange: #ea580c;
+    --red: #dc2626;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Barlow", sans-serif; background: var(--surface2); color: var(--text); min-height: 100vh; }
+
+  .topbar { background: var(--primary); color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.01em; }
+  .topbar .sub { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+  .topbar a { color: rgba(255,255,255,0.85); text-decoration: none; font-size: 13px; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; transition: 0.15s; }
+  .topbar a:hover { background: rgba(255,255,255,0.06); color: #fff; }
+
+  .container { max-width: 820px; margin: 32px auto; padding: 0 24px 64px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .card .sub { font-size: 13px; color: var(--text2); margin-bottom: 20px; }
+  .card h3 { font-size: 14px; font-weight: 700; margin: 22px 0 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .form-row { margin-bottom: 14px; }
+  .form-row label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .form-row .req { color: var(--accent); }
+  .edit-input, .photo-url { width: 100%; border: 1px solid var(--border); border-radius: 7px; padding: 8px 11px; font-size: 13px; font-family: "Barlow", sans-serif; color: var(--text); background: var(--surface); transition: border-color 0.15s; }
+  .edit-input:focus, .photo-url:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,65,10,0.10); }
+  .edit-input:disabled { background: var(--surface3); color: var(--text3); cursor: not-allowed; }
+  select.edit-input { cursor: pointer; }
+
+  .photo-list { display: flex; flex-direction: column; gap: 6px; }
+  .photo-row { display: flex; gap: 6px; align-items: center; }
+  .photo-row .photo-url { flex: 1; }
+  .btn { padding: 8px 16px; border: none; border-radius: 7px; font-size: 13px; font-weight: 700; font-family: "Barlow", sans-serif; cursor: pointer; transition: 0.15s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #c73508; }
+  .btn-primary:disabled { background: var(--text3); cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--surface3); }
+  .btn-mini { padding: 4px 10px; font-size: 11px; }
+
+  .error-msg { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 10px 14px; border-radius: 7px; font-size: 13px; margin-bottom: 14px; }
+  .info-msg { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; padding: 10px 14px; border-radius: 7px; font-size: 13px; margin-bottom: 14px; }
+  .ok-msg { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 10px 14px; border-radius: 7px; font-size: 13px; margin-bottom: 14px; }
+  .warn-msg { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; padding: 10px 14px; border-radius: 7px; font-size: 13px; margin-bottom: 14px; }
+
+  .loading-block { text-align: center; padding: 48px 24px; }
+  .loading-block .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 14px; }
+  .loading-block .msg { font-size: 14px; color: var(--text2); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .prop-row { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 12px; background: var(--surface); }
+  .prop-row.not-stored { background: #fafafa; border-style: dashed; }
+  .prop-row.rejected { opacity: 0.55; }
+  .prop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .prop-label { font-size: 13px; font-weight: 700; color: var(--text); text-transform: capitalize; }
+  .prop-label .raw { color: var(--text3); font-weight: 500; text-transform: none; font-size: 11px; margin-left: 6px; }
+  .not-stored-badge { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; padding: 2px 7px; border-radius: 99px; }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .pill-green { background: #dcfce7; color: #166534; }
+  .pill-amber { background: #fef3c7; color: #92400e; }
+  .pill-red { background: #fee2e2; color: #991b1b; }
+  .prop-reason { font-size: 12px; color: var(--text2); margin: 6px 0 10px; font-style: italic; }
+  .prop-actions { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 12px; }
+  .prop-actions label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+  .prop-actions input[type="radio"] { cursor: pointer; }
+  .prop-actions .state-needs { color: var(--text3); margin-left: auto; font-style: italic; }
+  .prop-actions .state-accept { color: var(--green); margin-left: auto; font-weight: 700; }
+  .prop-actions .state-edit { color: var(--blue); margin-left: auto; font-weight: 700; }
+  .prop-actions .state-reject { color: var(--red); margin-left: auto; font-weight: 700; }
+
+  .flag-list { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; }
+  .flag-list ul { list-style: none; padding-left: 0; }
+  .flag-list li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text2); display: flex; align-items: flex-start; gap: 8px; }
+  .flag-list li:last-child { border-bottom: none; }
+  .flag-list li::before { content: "⚑"; color: var(--accent2); flex-shrink: 0; }
+  .flag-list-empty { font-size: 12px; color: var(--text3); font-style: italic; }
+
+  .save-row { display: flex; align-items: center; gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .save-row .summary { font-size: 12px; color: var(--text2); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>Manual AI Intake</h1>
+    <div class="sub">v1 — Compact Track Loader · paste 1-8 photo URLs · review · save as draft</div>
+  </div>
+  <a href="/index.html">← Back to Admin</a>
+</div>
+
+<main class="container">
+
+  <!-- VIEW 1: PRE-MENU -->
+  <section id="view-premenu" class="card">
+    <h2>1. Listing basics</h2>
+    <p class="sub">Stock # and seller are required (the create path needs both). Photos must be public URLs Anthropic can fetch.</p>
+
+    <div id="premenu-error" class="error-msg" style="display:none;"></div>
+
+    <div class="form-row">
+      <label>Stock # <span class="req">*</span></label>
+      <input type="text" id="f-stock" class="edit-input" placeholder="e.g. MAP-184603" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <label>Seller <span class="req">*</span></label>
+      <select id="f-dealer" class="edit-input"><option value="">Loading dealers…</option></select>
+    </div>
+    <div class="form-row">
+      <label>Category</label>
+      <input type="text" id="f-category" class="edit-input" value="Construction">
+    </div>
+    <div class="form-row">
+      <label>Subcategory</label>
+      <input type="text" id="f-subcategory" class="edit-input" value="Compact Track Loader">
+    </div>
+
+    <div class="form-row">
+      <label>Photo URLs (1-8) <span class="req">*</span></label>
+      <div id="photo-list" class="photo-list"></div>
+      <button type="button" class="btn btn-secondary btn-mini" id="add-photo-btn" style="margin-top:6px" onclick="addPhotoRow()">+ Add another URL</button>
+    </div>
+
+    <button type="button" class="btn btn-primary" id="analyze-btn" style="margin-top:14px" onclick="analyzePhotos()">Analyze Photos</button>
+  </section>
+
+  <!-- VIEW 2: LOADING -->
+  <section id="view-loading" class="card" style="display:none;">
+    <div class="loading-block">
+      <div class="spinner"></div>
+      <div class="msg">Analyzing photos with Claude vision… (typically ~10 seconds)</div>
+    </div>
+  </section>
+
+  <!-- VIEW 3: REVIEW -->
+  <section id="view-review" class="card" style="display:none;">
+    <h2>2. Review proposals</h2>
+    <p class="sub">Default state for every field is <em>needs review</em>. Edit a value to mark it accept-with-edit, or use the radios. Rejected and unreviewed fields are NOT saved. Only the 5 storable fields land in the DB regardless.</p>
+
+    <div id="review-error" class="error-msg" style="display:none;"></div>
+
+    <h3>Field proposals</h3>
+    <div id="proposal-rows"></div>
+
+    <h3>Review flags <span style="text-transform:none; font-weight:500; color:var(--text3); letter-spacing:0;">— things to check, not values</span></h3>
+    <div class="flag-list" id="flag-list-wrap">
+      <ul id="flag-list"></ul>
+      <div id="flag-empty" class="flag-list-empty" style="display:none;">No flags returned by the model.</div>
+    </div>
+
+    <div class="save-row">
+      <button type="button" class="btn btn-primary" id="save-btn" onclick="saveDraft()">Save Draft</button>
+      <div class="summary" id="save-summary"></div>
+    </div>
+    <div id="save-result" style="margin-top:12px;"></div>
+  </section>
+
+</main>
+
+<script>
+  // ============================================================
+  // CONFIG
+  // ============================================================
+  // SUPABASE_URL + SUPABASE_ANON_KEY mirror index.html exactly (anon key
+  // is intentionally public per Supabase RLS model).
+  const SUPABASE_URL      = 'https://bxsikkmqasydosmblzov.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
+
+  // The 5 columns that actually exist in inventory + are in admin-write's
+  // CREATE allowlist (after commit cee7d5f adds 'hours'). The other 4 CTL
+  // proposal fields are shown in the review UI but never sent to the DB.
+  const STORABLE_FIELDS  = new Set(['make','model','year','fuel','hours']);
+  const PROPOSAL_FIELDS  = ['make','model','year','hours','cab_type','aux_hydraulics','track_type','fuel','attachments_included'];
+  const FIELD_LABELS = {
+    make: 'Make', model: 'Model', year: 'Year', hours: 'Hours',
+    cab_type: 'Cab Type', aux_hydraulics: 'Aux Hydraulics',
+    track_type: 'Track Type', fuel: 'Fuel',
+    attachments_included: 'Attachments Included'
+  };
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  let DEALERS = [];
+  let lastResponse = null;   // the analyze-photos response, after we get it
+  let actions = {};          // field -> 'accept' | 'edit' | 'reject' | null (= needs review)
+  let originalValues = {};   // field -> the value the model proposed (for "accept = as-is")
+
+  // ============================================================
+  // AUTH — inline copy of getValidToken() from index.html L6587
+  // ============================================================
+  async function getValidToken() {
+    const token     = localStorage.getItem('torquehub_token');
+    const refresh   = localStorage.getItem('torquehub_refresh');
+    const expiresAt = parseInt(localStorage.getItem('torquehub_expires_at') || '0', 10);
+    if (token && Date.now() < expiresAt - 60000) return token;
+    if (!refresh) { forceReauth(); return null; }
+    try {
+      const res = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ refresh_token: refresh })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.access_token) throw new Error('refresh failed');
+      localStorage.setItem('torquehub_token',      data.access_token);
+      localStorage.setItem('torquehub_refresh',    data.refresh_token);
+      localStorage.setItem('torquehub_expires_at', String(Date.now() + (data.expires_in || 3600) * 1000));
+      return data.access_token;
+    } catch (e) {
+      console.warn('[auth] token refresh failed:', e.message);
+      forceReauth();
+      return null;
+    }
+  }
+  function forceReauth() {
+    localStorage.removeItem('torquehub_token');
+    localStorage.removeItem('torquehub_refresh');
+    localStorage.removeItem('torquehub_expires_at');
+    // Send user back to the main admin (which will trigger its login flow)
+    location.href = '/index.html';
+  }
+
+  // ============================================================
+  // VIEW HELPERS
+  // ============================================================
+  function showView(id) {
+    ['view-premenu','view-loading','view-review'].forEach(v => {
+      document.getElementById(v).style.display = (v === id) ? '' : 'none';
+    });
+  }
+  function setErr(id, msg) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (msg) { el.textContent = msg; el.style.display = ''; }
+    else     { el.textContent = '';  el.style.display = 'none'; }
+  }
+
+  // ============================================================
+  // DEALERS — mirror index.html's anon-key fetch from /rest/v1/dealers
+  // ============================================================
+  async function loadDealers() {
+    const sel = document.getElementById('f-dealer');
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/dealers?select=name,status&order=name', {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const rows = await res.json();
+      DEALERS = Array.isArray(rows) ? rows.filter(r => r && r.name) : [];
+      sel.innerHTML = '<option value="">— Select a seller —</option>' +
+        DEALERS.map(d => '<option value="' + escapeAttr(d.name) + '">' + escapeText(d.name) + '</option>').join('');
+    } catch (e) {
+      sel.innerHTML = '<option value="">(failed to load dealers — refresh to retry)</option>';
+      console.warn('[intake] dealer load failed:', e.message);
+    }
+  }
+
+  // ============================================================
+  // PHOTO INPUT ROWS
+  // ============================================================
+  function addPhotoRow() {
+    const list = document.getElementById('photo-list');
+    if (list.children.length >= 8) return;
+    const row = document.createElement('div');
+    row.className = 'photo-row';
+    row.innerHTML =
+      '<input type="url" class="photo-url" placeholder="https://...">' +
+      '<button type="button" class="btn btn-secondary btn-mini" onclick="this.parentNode.remove(); refreshAddBtn();">Remove</button>';
+    list.appendChild(row);
+    refreshAddBtn();
+  }
+  function refreshAddBtn() {
+    const list = document.getElementById('photo-list');
+    document.getElementById('add-photo-btn').disabled = list.children.length >= 8;
+  }
+  function getPhotoUrls() {
+    const inputs = document.querySelectorAll('#photo-list .photo-url');
+    const out = [];
+    const seen = new Set();
+    inputs.forEach(i => {
+      const v = (i.value || '').trim();
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      out.push(v);
+    });
+    return out;
+  }
+
+  // ============================================================
+  // ANALYZE
+  // ============================================================
+  async function analyzePhotos() {
+    setErr('premenu-error', '');
+    const stock    = document.getElementById('f-stock').value.trim();
+    const dealer   = document.getElementById('f-dealer').value;
+    const category = document.getElementById('f-category').value.trim() || 'Construction';
+    const sub      = document.getElementById('f-subcategory').value.trim() || 'Compact Track Loader';
+    const photos   = getPhotoUrls();
+
+    if (!stock)         { setErr('premenu-error', 'Stock # is required.'); return; }
+    if (!dealer)        { setErr('premenu-error', 'Seller selection is required.'); return; }
+    if (photos.length === 0) { setErr('premenu-error', 'At least one photo URL is required.'); return; }
+    if (photos.length > 8)   { setErr('premenu-error', 'Maximum 8 photos.'); return; }
+
+    showView('view-loading');
+
+    try {
+      const res = await fetch('/.netlify/functions/analyze-photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, subcategory: sub, vin: '', photos })
+      });
+      const text = await res.text();
+      let body;
+      try { body = JSON.parse(text); } catch { body = { _raw: text }; }
+
+      if (!res.ok) {
+        // Surface a helpful message but STILL go to review so the operator can fill manually
+        let msg;
+        const errStr = (body && body.error) ? String(body.error) : (body && body._raw) ? body._raw : ('HTTP ' + res.status);
+        if (/Unable to download the file|verify the URL/i.test(errStr)) {
+          msg = 'Could not analyze the photo(s) — image host may be unreachable. Enter values manually.';
+        } else if (res.status === 502) {
+          msg = 'Analyzer returned 502 (upstream model or image fetch error). Enter values manually. Details: ' + errStr;
+        } else if (res.status === 500) {
+          msg = 'Analyzer 500 (server error, possibly missing ANTHROPIC_API_KEY in this preview). Enter values manually. Details: ' + errStr;
+        } else {
+          msg = 'Analyzer error (' + res.status + '). Enter values manually. Details: ' + errStr;
+        }
+        renderReview(null, msg);
+        return;
+      }
+
+      lastResponse = body || {};
+      renderReview(lastResponse, null);
+    } catch (e) {
+      // Network / JSON parse / abort → still render review so page stays usable
+      renderReview(null, 'Network or parse error: ' + (e && e.message ? e.message : String(e)) + '. Enter values manually.');
+    }
+  }
+
+  // ============================================================
+  // REVIEW RENDERING
+  // ============================================================
+  function pillFor(conf) {
+    if (conf == null || conf < 0.4) return '<span class="pill pill-red">low ' + fmtConf(conf) + '</span>';
+    if (conf < 0.8)                  return '<span class="pill pill-amber">mid ' + fmtConf(conf) + '</span>';
+    return '<span class="pill pill-green">high ' + fmtConf(conf) + '</span>';
+  }
+  function fmtConf(c) { return (c == null) ? '—' : (Math.round(c * 100) + '%'); }
+
+  function valueToInput(val) {
+    if (val == null) return '';
+    if (Array.isArray(val)) return val.join(', ');
+    return String(val);
+  }
+
+  function renderReview(response, errorMsg) {
+    showView('view-review');
+    setErr('review-error', errorMsg || '');
+    document.getElementById('save-result').innerHTML = '';
+    document.getElementById('save-summary').textContent = '';
+
+    // Reset state for this review session
+    actions = {};
+    originalValues = {};
+
+    const proposals = (response && response.proposals) || {};
+    const flags     = (response && Array.isArray(response.review_flags)) ? response.review_flags : [];
+
+    // Render field rows
+    const wrap = document.getElementById('proposal-rows');
+    wrap.innerHTML = PROPOSAL_FIELDS.map(f => rowHtml(f, proposals[f] || {})).join('');
+
+    // Hydrate state
+    PROPOSAL_FIELDS.forEach(f => {
+      const p = proposals[f] || {};
+      originalValues[f] = valueToInput(p.value);
+      actions[f] = null; // needs review
+      updateStateLabel(f);
+    });
+
+    // Render flags
+    const ul = document.getElementById('flag-list');
+    const empty = document.getElementById('flag-empty');
+    if (flags.length === 0) {
+      ul.innerHTML = '';
+      empty.style.display = '';
+    } else {
+      ul.innerHTML = flags.map(s => '<li>' + escapeText(String(s)) + '</li>').join('');
+      empty.style.display = 'none';
+    }
+
+    updateSaveSummary();
+  }
+
+  function rowHtml(field, proposal) {
+    const stored = STORABLE_FIELDS.has(field);
+    const valStr = valueToInput(proposal.value);
+    const reason = proposal.reason ? escapeText(proposal.reason) : '(no reason returned)';
+    const label  = FIELD_LABELS[field] || field;
+    return (
+      '<div class="prop-row' + (stored ? '' : ' not-stored') + '" id="row-' + field + '" data-field="' + field + '">' +
+        '<div class="prop-head">' +
+          '<span class="prop-label">' + escapeText(label) + ' <span class="raw">(' + field + ')</span></span>' +
+          pillFor(typeof proposal.confidence === 'number' ? proposal.confidence : null) +
+          (stored ? '' : '<span class="not-stored-badge">Reviewed — not stored yet (no schema home)</span>') +
+        '</div>' +
+        '<input type="text" class="edit-input" id="val-' + field + '" value="' + escapeAttr(valStr) + '" ' +
+          'oninput="onValueEdit(\'' + field + '\')">' +
+        '<div class="prop-reason">' + reason + '</div>' +
+        '<div class="prop-actions">' +
+          '<label><input type="radio" name="act-' + field + '" value="accept" onclick="setAction(\'' + field + '\', \'accept\')"> Accept</label>' +
+          '<label><input type="radio" name="act-' + field + '" value="reject" onclick="setAction(\'' + field + '\', \'reject\')"> Reject</label>' +
+          '<span class="state-needs" id="state-' + field + '">needs review</span>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function setAction(field, act) {
+    actions[field] = act;
+    // If Reject was clicked, disable the value input visually; clear the input field
+    const valEl = document.getElementById('val-' + field);
+    if (valEl) valEl.disabled = (act === 'reject');
+    // Toggle .rejected class for opacity
+    const row = document.getElementById('row-' + field);
+    if (row) row.classList.toggle('rejected', act === 'reject');
+    updateStateLabel(field);
+    updateSaveSummary();
+  }
+
+  function onValueEdit(field) {
+    // Editing the value implies accept-with-edit
+    if (actions[field] === 'reject') return; // ignore typed input on rejected row
+    actions[field] = 'edit';
+    // Visually clear any radio selection (edit is a distinct state)
+    document.querySelectorAll('input[name="act-' + field + '"]').forEach(r => { r.checked = false; });
+    updateStateLabel(field);
+    updateSaveSummary();
+  }
+
+  function updateStateLabel(field) {
+    const el = document.getElementById('state-' + field);
+    if (!el) return;
+    const a = actions[field];
+    el.classList.remove('state-needs','state-accept','state-edit','state-reject');
+    if (a === 'accept') { el.textContent = 'accepted (as proposed)'; el.classList.add('state-accept'); }
+    else if (a === 'edit')   { el.textContent = 'accepted (edited)';     el.classList.add('state-edit'); }
+    else if (a === 'reject') { el.textContent = 'rejected';              el.classList.add('state-reject'); }
+    else                     { el.textContent = 'needs review';          el.classList.add('state-needs'); }
+  }
+
+  function updateSaveSummary() {
+    const storable = PROPOSAL_FIELDS.filter(f => STORABLE_FIELDS.has(f));
+    const willSave = storable.filter(f => {
+      const a = actions[f];
+      if (a !== 'accept' && a !== 'edit') return false;
+      const v = (document.getElementById('val-' + f)?.value || '').trim();
+      return v !== '';
+    });
+    document.getElementById('save-summary').textContent =
+      willSave.length + ' of 5 storable fields will be saved' +
+      (willSave.length ? ' (' + willSave.join(', ') + ')' : '') + '. The 4 not-stored fields are never sent.';
+  }
+
+  // ============================================================
+  // SAVE DRAFT — POST /.netlify/functions/admin-write
+  //   operation: 'create_inventory'
+  //   status: 'draft', sold: false
+  //   only ACCEPTED storable fields included
+  //   photos shape: [{ url, name }]  (mirrors index.html L3037)
+  // ============================================================
+  async function saveDraft() {
+    setErr('review-error', '');
+    document.getElementById('save-result').innerHTML = '';
+
+    const stock    = document.getElementById('f-stock').value.trim();
+    const dealer   = document.getElementById('f-dealer').value;
+    const category = document.getElementById('f-category').value.trim() || 'Construction';
+    const sub      = document.getElementById('f-subcategory').value.trim() || 'Compact Track Loader';
+    const photos   = getPhotoUrls();
+
+    if (!stock || !dealer) {
+      setErr('review-error', 'Stock # and seller are still required.');
+      return;
+    }
+
+    // Build the data payload — start with required + meta fields
+    const data = {
+      stock,
+      dealer,
+      category,
+      subcategory: sub,
+      status: 'draft',
+      sold: false,
+      // Photos shape mirrors index.html create-mode (L3037): [{ url, name }]
+      // dedupe by url; derive name from stock + index since there's no uploaded file name
+      photos: photos.map((u, i) => ({ url: u, name: stock + '-' + (i + 1) + '.jpg' }))
+    };
+
+    // Collect ONLY accepted (or edited) STORABLE fields with non-empty values
+    PROPOSAL_FIELDS.forEach(f => {
+      if (!STORABLE_FIELDS.has(f)) return;
+      const a = actions[f];
+      if (a !== 'accept' && a !== 'edit') return;
+      const raw = (document.getElementById('val-' + f)?.value || '').trim();
+      if (raw === '') return;
+      // year + hours → numeric; others → string
+      if (f === 'year' || f === 'hours') {
+        const n = parseInt(raw.replace(/[^0-9]/g, ''), 10);
+        if (Number.isFinite(n)) data[f] = n;
+      } else {
+        data[f] = raw;
+      }
+    });
+
+    // Disable button while submitting
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    try {
+      const token = await getValidToken();
+      if (!token) {
+        // getValidToken triggers a reauth flow; bail
+        setErr('review-error', 'Not authenticated. Redirecting to login…');
+        return;
+      }
+      const res = await fetch('/.netlify/functions/admin-write', {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ operation: 'create_inventory', data })
+      });
+      const text = await res.text();
+      let body;
+      try { body = JSON.parse(text); } catch { body = { _raw: text }; }
+
+      if (!res.ok) {
+        const errStr = (body && body.error) ? String(body.error) : (body && body._raw) ? body._raw : ('HTTP ' + res.status);
+        let msg = 'Save failed (' + res.status + ')';
+        if (res.status === 401 || res.status === 403) msg = 'Save rejected by gateway (' + res.status + ' — auth/admin allowlist): ' + errStr;
+        else if (res.status === 400)                  msg = 'Validation error (400): ' + errStr;
+        else                                          msg += ': ' + errStr;
+        document.getElementById('save-result').innerHTML = '<div class="error-msg">' + escapeText(msg) + '</div>';
+      } else {
+        const idStr = (body && body.id) ? (' · id=' + escapeText(String(body.id))) : '';
+        document.getElementById('save-result').innerHTML =
+          '<div class="ok-msg">✓ Draft saved — stock <strong>' + escapeText(stock) + '</strong>' + idStr + ' · status=<strong>draft</strong> (NOT published).</div>';
+      }
+    } catch (e) {
+      document.getElementById('save-result').innerHTML =
+        '<div class="error-msg">Network error: ' + escapeText(e && e.message ? e.message : String(e)) + '</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Draft';
+    }
+  }
+
+  // ============================================================
+  // SMALL HELPERS
+  // ============================================================
+  function escapeText(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escapeAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    addPhotoRow();  // start with one photo input
+    loadDealers();
+  });
+</script>
+
+</body>
+</html>
