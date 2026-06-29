@@ -1,0 +1,28 @@
+[
+  {
+    "name": "JCB 3TS-8T CTL (DSE-032901) — known-real seed case",
+    "category": "Construction",
+    "subcategory": "Compact Track Loader",
+    "photos": [
+      "https://bxsikkmqasydosmblzov.supabase.co/storage/v1/render/image/public/vehicle-photos/dick-smith-equipment/DSE032901/0.jpg?width=1400&quality=78"
+    ]
+  },
+  {
+    "name": "PLACEHOLDER — replace with a real multi-photo CTL listing (different make, ideally with a legible hour meter in one frame)",
+    "category": "Construction",
+    "subcategory": "Compact Track Loader",
+    "photos": [
+      "https://REPLACE-WITH-REAL-CTL-PHOTO-1.jpg",
+      "https://REPLACE-WITH-REAL-CTL-PHOTO-2.jpg",
+      "https://REPLACE-WITH-REAL-CTL-PHOTO-3.jpg"
+    ]
+  },
+  {
+    "name": "PLACEHOLDER — replace with a real electric or hybrid CTL listing to exercise the fuel-rule exception path",
+    "category": "Construction",
+    "subcategory": "Compact Track Loader",
+    "photos": [
+      "https://REPLACE-WITH-REAL-ELECTRIC-CTL-PHOTO.jpg"
+    ]
+  }
+]

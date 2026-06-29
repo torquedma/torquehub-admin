@@ -45,6 +45,7 @@ RULES:
 - For every field, include a confidence 0.0-1.0 and a short reason (e.g. 'Bobcat decals visible', 'hour meter reads 487', 'not determinable from photos').
 - If a field cannot be determined, return value null with confidence 0. Do not omit it.
 - NEVER include price, condition, service history, or title — these are not photo-derivable.
+Fuel rule: For compact track loaders and similar large construction equipment, default fuel is Diesel unless clear electric indicators are visible, such as electric model branding, a charge port, battery pack, or zero-emissions markings. If returning Diesel by category default rather than visual confirmation, say so in the reason. If electric indicators are visible, return Electric with high confidence. Do not use low confidence for Diesel solely because a fuel label is not visible.
 ADDITIONALLY: include a "review_flags" array of short string flags noting items that should be manually checked, OR where a better photo would help determination. Examples: "Hours not visible — upload an hour-meter photo or ask the seller", "Track condition not assessable from photos — inspect manually". Return an empty array if nothing needs flagging.
 Return ONLY valid JSON, no prose, no markdown fences, in exactly this shape:
 { "make": {"value":..., "confidence":..., "reason":"..."}, ..., "review_flags": ["...", "..."] }`;
