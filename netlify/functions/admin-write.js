@@ -7,7 +7,7 @@ const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 // ---------------------------------------------------------------------------
 const INVENTORY_CREATE_FIELDS = [
   'stock', 'dealer', 'year', 'make', 'model', 'trim', 'price', 'days',
-  'condition', 'fuel', 'mileage', 'engine', 'engine_description',
+  'condition', 'fuel', 'mileage', 'hours', 'engine', 'engine_description',
   'transmission', 'transmission_description', 'drivetrain', 'video_url',
   'vin', 'category', 'subcategory', 'featured', 'description', 'notes',
   'prod_status', 'status', 'photos', 'sold',
