@@ -175,11 +175,21 @@
     return allowMileage.indexOf(sub) !== -1 || suppressBoth.indexOf(sub) !== -1;
   }
 
+  // Pure subcategory classifier — see CJS mirror for full rationale.
+  function usageClass(unit) {
+    var sub = normalizeSubcategory(unit);
+    if (!sub) return 'neither';
+    if (allowHours.indexOf(sub)   !== -1) return 'hours-based';
+    if (allowMileage.indexOf(sub) !== -1) return 'odometer';
+    return 'neither';
+  }
+
   root.UsageDisplay = {
     showMileage: showMileage,
     showHours: showHours,
     isKnownSuppressMileage: isKnownSuppressMileage,
     isKnownSuppressHours: isKnownSuppressHours,
+    usageClass: usageClass,
     normalizeSubcategory: normalizeSubcategory
   };
 }(typeof window !== 'undefined' ? window : this));
