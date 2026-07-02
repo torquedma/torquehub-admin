@@ -163,4 +163,20 @@ function showHours(unit) {
   return hasRealNumber(unit.hours);
 }
 
-module.exports = { showMileage, showHours, normalizeSubcategory };
+// Conservative variants for DESTRUCTIVE contexts (e.g. import scrubs that null
+// the DB row). Returns TRUE only when the subcategory is KNOWN to disallow the
+// field — never on unknown/unmapped/aliased-to-empty. Prefer these over
+// !showMileage/!showHours anywhere raw data would be discarded on a guess.
+function isKnownSuppressMileage(unit) {
+  const sub = normalizeSubcategory(unit);
+  if (!sub) return false;
+  return ALLOW_HOURS.has(sub) || SUPPRESS_BOTH.has(sub);
+}
+
+function isKnownSuppressHours(unit) {
+  const sub = normalizeSubcategory(unit);
+  if (!sub) return false;
+  return ALLOW_MILEAGE.has(sub) || SUPPRESS_BOTH.has(sub);
+}
+
+module.exports = { showMileage, showHours, isKnownSuppressMileage, isKnownSuppressHours, normalizeSubcategory };

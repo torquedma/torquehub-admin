@@ -162,9 +162,24 @@
     return hasRealNumber(unit.hours);
   }
 
+  // Conservative variants — see CJS mirror for full rationale.
+  function isKnownSuppressMileage(unit) {
+    var sub = normalizeSubcategory(unit);
+    if (!sub) return false;
+    return allowHours.indexOf(sub) !== -1 || suppressBoth.indexOf(sub) !== -1;
+  }
+
+  function isKnownSuppressHours(unit) {
+    var sub = normalizeSubcategory(unit);
+    if (!sub) return false;
+    return allowMileage.indexOf(sub) !== -1 || suppressBoth.indexOf(sub) !== -1;
+  }
+
   root.UsageDisplay = {
     showMileage: showMileage,
     showHours: showHours,
+    isKnownSuppressMileage: isKnownSuppressMileage,
+    isKnownSuppressHours: isKnownSuppressHours,
     normalizeSubcategory: normalizeSubcategory
   };
 }(typeof window !== 'undefined' ? window : this));
