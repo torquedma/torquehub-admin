@@ -1864,6 +1864,7 @@ document.querySelector('.sidebar').classList.toggle('open');
 </div>
 
 <script src="js/taxonomy.browser.js"></script>
+<script src="js/usage-display.browser.js"></script>
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ===================== DATA =====================
 let DEALERS = [];
@@ -2357,17 +2358,6 @@ function getListingKey(u) {
   return `${u.year}_${u.make}_${u.model}_${u.stock || 'nostock'}_${u.dealer}`.replace(/\s+/g,'_');
 }
 
-function showMileage(u) {
-  if (String(u.category || '').toLowerCase() === 'farm') return false;
-  const v = u.mileage;
-  if (v == null) return false;
-  const s = String(v).trim();
-  if (s === '') return false;
-  const numPart = s.replace(/[^0-9.]/g, '');
-  if (numPart !== '' && Number(numPart) === 0) return false;
-  return true;
-}
-
 function getPhotoCount(u) {
   const key = getListingKey(u);
   // Prefer PHOTO_STORE when populated (lazy-fetched or uploaded this session)
@@ -2787,15 +2777,15 @@ function generateTorqueHubDX() {
   var title = parts.join(' ');
   var lines = [title, ''];
 
-  var hasSpecs = u.engine || u.horsepower || u.transmission || u.drivetrain || showMileage(u) || u.hours || u.vin || u.stock;
+  var hasSpecs = u.engine || u.horsepower || u.transmission || u.drivetrain || UsageDisplay.showMileage(u) || UsageDisplay.showHours(u) || u.vin || u.stock;
   if (hasSpecs) {
     lines.push('Key Specs:');
-    if (u.engine)       lines.push('Engine: ' + u.engine);
-    if (u.horsepower)   lines.push('Horsepower: ' + u.horsepower);
-    if (u.transmission) lines.push('Transmission: ' + u.transmission);
-    if (u.drivetrain)   lines.push('Drivetrain: ' + u.drivetrain);
-    if (showMileage(u)) lines.push('Mileage: ' + u.mileage);
-    if (u.hours)        lines.push('Hours: Shows ' + u.hours);
+    if (u.engine)                    lines.push('Engine: ' + u.engine);
+    if (u.horsepower)                lines.push('Horsepower: ' + u.horsepower);
+    if (u.transmission)              lines.push('Transmission: ' + u.transmission);
+    if (u.drivetrain)                lines.push('Drivetrain: ' + u.drivetrain);
+    if (UsageDisplay.showMileage(u)) lines.push('Mileage: ' + u.mileage);
+    if (UsageDisplay.showHours(u))   lines.push('Hours: Shows ' + u.hours);
     if (u.vin)          lines.push('VIN: ' + u.vin);
     if (u.stock)        lines.push('Stock #: ' + u.stock);
     lines.push('');
@@ -3307,30 +3297,6 @@ async function saveListingEdits() {
   else console.warn("No dealer config found for:", u.dealer);
   return true;
   } finally { savingListing = false; }
-}
-
-function generateDX() {
-  const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
-  if (!u) return;
-  const title = [u.year, u.make, u.model].filter(Boolean).join(' ');
-  const price = u.price || 'Call';
-  const specs = [];
-  if (u.make) specs.push('Make: ' + u.make);
-  if (u.model) specs.push('Model: ' + u.model);
-  if (u.year) specs.push('Year: ' + u.year);
-  if (u.mileage) specs.push('Mileage: ' + u.mileage);
-  if (u.engine) specs.push('Engine: ' + u.engine);
-  if (u.transmission) specs.push('Transmission: ' + u.transmission);
-  if (u.drivetrain) specs.push('Drivetrain: ' + u.drivetrain);
-  if (u.fuel) specs.push('Fuel: ' + u.fuel);
-  if (u.vin) specs.push('VIN: ' + u.vin);
-  if (u.stock) specs.push('Stock #: ' + u.stock);
-  const desc = (u.description || '').trim();
-  const dx = title + '\n\nKey Specs:\n' + specs.join('\n') + (desc ? '\n\nFeatures:\n' + desc : '') + '\n\nPrice: ' + price + '\n\nLocation: ' + (u.dealer || '');
-  navigator.clipboard.writeText(dx).then(() => {
-    const msg = document.getElementById('edit-saved-msg');
-    if (msg) { msg.textContent = '✓ DX Copied'; msg.classList.add('show'); setTimeout(() => { msg.textContent = '✓ Saved'; msg.classList.remove('show'); }, 2500); }
-  }).catch(() => { prompt('Copy your DX:', dx); });
 }
 
 function filterNoPhotos() {
@@ -7014,97 +6980,6 @@ function renderFeedConfigs() {
 const _origShowView = showView;
 
 
-// ===================== AI SCAN & GENERATE =====================
-async function generateAIDescription() {
-  const btn = document.getElementById('btn-generate-desc');
-  const icon = document.getElementById('gen-btn-icon');
-  const label = document.getElementById('gen-btn-label');
-
-  // Gather all text fields
-  const year         = document.getElementById('edit-year')?.value || '';
-  const make         = document.getElementById('edit-make')?.value || '';
-  const model        = document.getElementById('edit-model')?.value || '';
-  const price        = document.getElementById('edit-price')?.value || '';
-  const fuel         = document.getElementById('edit-fuel')?.value || '';
-  const condition    = document.getElementById('edit-condition')?.value || '';
-  const subcategory  = document.getElementById('edit-subcategory')?.value || '';
-  const stock_number = document.getElementById('edit-stock')?.value || '';
-  const vin          = document.getElementById('edit-vin')?.value || '';
-  const mileage      = document.getElementById('edit-mileage')?.value || '';
-  const engine       = document.getElementById('edit-engine')?.value || '';
-  const transmission = document.getElementById('edit-transmission')?.value || '';
-  const drivetrain   = document.getElementById('edit-drivetrain')?.value || '';
-  const description  = document.getElementById('edit-description')?.value || '';
-
-  // Gather photo URLs from current listing
-  const listingKey = currentListingKey;
-  const photos = (PHOTO_STORE[listingKey] || []).map(p => p.url).filter(u => u && u.startsWith('http')).slice(0, 3);
-
-  btn.disabled = true;
-  const hasPhotos = photos.length > 0;
-  icon.textContent = '⏳';
-  label.textContent = hasPhotos ? `Scanning ${photos.length} photo${photos.length>1?'s':''}…` : 'Generating…';
-
-  try {
-    const res = await fetch('/.netlify/functions/generate-description', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        year, make, model, price, fuel, condition, subcategory,
-        stock_number, vin, mileage, engine, transmission, drivetrain,
-        description, photo_urls: photos
-      })
-    });
-
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || 'Generation failed');
-
-    // Fill in fields — only update if AI returned a non-empty value
-    const fillField = (id, val) => {
-      if (val && val.trim()) {
-        const el = document.getElementById(id);
-        if (el) el.value = val.trim();
-      }
-    };
-
-    fillField('edit-year', data.year);
-    fillField('edit-make', data.make);
-    fillField('edit-model', data.model);
-    fillField('edit-subcategory', data.subcategory);
-    fillField('edit-engine', data.engine);
-    fillField('edit-transmission', data.transmission);
-    fillField('edit-drivetrain', data.drivetrain);
-    fillField('edit-fuel', data.fuel);
-    fillField('edit-description', data.description);
-
-    // Put condition notes into the internal notes field if we got them
-    if (data.condition_notes && data.condition_notes.trim()) {
-      const notesEl = document.getElementById('edit-notes');
-      if (notesEl) {
-        const existing = notesEl.value.trim();
-        notesEl.value = existing ? existing + '\n' + data.condition_notes : data.condition_notes;
-      }
-    }
-
-    icon.textContent = '✅';
-    label.textContent = hasPhotos ? 'Scanned & Generated!' : 'Generated!';
-    setTimeout(() => {
-      icon.textContent = '✨';
-      label.textContent = 'Scan & Generate';
-      btn.disabled = false;
-    }, 3000);
-
-  } catch (err) {
-    console.error('AI scan error:', err);
-    icon.textContent = '❌';
-    label.textContent = 'Failed - retry';
-    setTimeout(() => {
-      icon.textContent = '✨';
-      label.textContent = 'Scan & Generate';
-      btn.disabled = false;
-    }, 3000);
-  }
-}
 
 </script>
 
