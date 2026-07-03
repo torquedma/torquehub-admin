@@ -104,7 +104,7 @@
 <div class="topbar">
   <div>
     <h1>Manual AI Intake</h1>
-    <div class="sub">v1 — Compact Track Loader · paste 1-8 photo URLs · review · save as draft</div>
+    <div class="sub">v2 · paste 1-8 photo URLs · review · save as draft</div>
   </div>
   <a href="/index.html">← Back to Admin</a>
 </div>
@@ -127,12 +127,16 @@
       <select id="f-dealer" class="edit-input"><option value="">Loading dealers…</option></select>
     </div>
     <div class="form-row">
-      <label>Category</label>
-      <input type="text" id="f-category" class="edit-input" value="Construction">
+      <label>Category <span class="req">*</span></label>
+      <select id="f-category" class="edit-input" onchange="onCategoryChange()">
+        <option value="">— Select category —</option>
+      </select>
     </div>
     <div class="form-row">
-      <label>Subcategory</label>
-      <input type="text" id="f-subcategory" class="edit-input" value="Compact Track Loader">
+      <label>Subcategory <span class="req">*</span></label>
+      <select id="f-subcategory" class="edit-input" disabled onchange="onSubcategoryChange()">
+        <option value="">— Select subcategory —</option>
+      </select>
     </div>
 
     <div class="form-row">
@@ -155,7 +159,7 @@
   <!-- VIEW 3: REVIEW -->
   <section id="view-review" class="card" style="display:none;">
     <h2>2. Review proposals</h2>
-    <p class="sub">Default state for every field is <em>needs review</em>. Edit a value to mark it accept-with-edit, or use the radios. Rejected and unreviewed fields are NOT saved. Only the 5 storable fields land in the DB regardless.</p>
+    <p class="sub">Default state for every field is <em>needs review</em>. Edit a value to mark it accept-with-edit, or use the radios. Rejected and unreviewed fields are NOT saved. Only fields marked storable in the current fieldset land in the DB regardless.</p>
 
     <div id="review-error" class="error-msg" style="display:none;"></div>
 
@@ -168,6 +172,12 @@
       <div id="flag-empty" class="flag-list-empty" style="display:none;">No flags returned by the model.</div>
     </div>
 
+    <h3>Human checklist <span style="text-transform:none; font-weight:500; color:var(--text3); letter-spacing:0;">— confirm before publishing (reminders only, not saved)</span></h3>
+    <div class="flag-list" id="human-checklist-wrap">
+      <ul id="human-checklist"></ul>
+      <div id="human-checklist-empty" class="flag-list-empty" style="display:none;">No human-review reminders for this fieldset.</div>
+    </div>
+
     <div class="save-row">
       <button type="button" class="btn btn-primary" id="save-btn" onclick="saveDraft()">Save Draft</button>
       <div class="summary" id="save-summary"></div>
@@ -177,6 +187,10 @@
 
 </main>
 
+<!-- Order matters: taxonomy → usage-display → intake-fieldsets. -->
+<script src="/js/taxonomy.browser.js"></script>
+<script src="/js/usage-display.browser.js"></script>
+<script src="/js/intake-fieldsets.browser.js"></script>
 <script>
   // ============================================================
   // CONFIG
@@ -186,17 +200,19 @@
   const SUPABASE_URL      = 'https://bxsikkmqasydosmblzov.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
 
-  // The 5 columns that actually exist in inventory + are in admin-write's
-  // CREATE allowlist (after commit cee7d5f adds 'hours'). The other 4 CTL
-  // proposal fields are shown in the review UI but never sent to the DB.
-  const STORABLE_FIELDS  = new Set(['make','model','year','fuel','hours']);
-  const PROPOSAL_FIELDS  = ['make','model','year','hours','cab_type','aux_hydraulics','track_type','fuel','attachments_included'];
-  const FIELD_LABELS = {
-    make: 'Make', model: 'Model', year: 'Year', hours: 'Hours',
-    cab_type: 'Cab Type', aux_hydraulics: 'Aux Hydraulics',
-    track_type: 'Track Type', fuel: 'Fuel',
-    attachments_included: 'Attachments Included'
-  };
+  // Fieldset selection is reactive to (category, subcategory) — resolved via
+  // window.IntakeFieldsets.getFieldset(). Field metadata (label, type, storable,
+  // question, prompt_rule, ai_review_flag) comes from the resolved fieldset.
+  // No hardcoded per-category constant lists anywhere in this file.
+  let currentFieldset = null;
+
+  function fieldsList()       { return (currentFieldset && Array.isArray(currentFieldset.fields))     ? currentFieldset.fields     : []; }
+  function humanOnlyList()    { return (currentFieldset && Array.isArray(currentFieldset.human_only)) ? currentFieldset.human_only : []; }
+  function fieldSpec(key)     { return fieldsList().find(f => f.key === key) || {}; }
+  function proposalKeys()     { return fieldsList().map(f => f.key); }
+  function isStorable(key)    { return fieldSpec(key).storable === true; }
+  function labelFor(key)      { return fieldSpec(key).label || key; }
+  function isNumericField(k)  { return fieldSpec(k).type === 'number'; }
 
   // ============================================================
   // STATE
@@ -308,18 +324,61 @@
   }
 
   // ============================================================
+  // CATEGORY / SUBCATEGORY DROPDOWNS — driven by IntakeFieldsets
+  // ============================================================
+  function populateCategoryDropdown() {
+    const sel = document.getElementById('f-category');
+    if (!sel) return;
+    const cats = (window.IntakeFieldsets && window.IntakeFieldsets.getCategories)
+      ? window.IntakeFieldsets.getCategories() : [];
+    sel.innerHTML = '<option value="">— Select category —</option>' +
+      cats.map(c => '<option value="' + escapeAttr(c) + '">' + escapeText(c) + '</option>').join('');
+  }
+
+  function onCategoryChange() {
+    const cat    = document.getElementById('f-category').value;
+    const subSel = document.getElementById('f-subcategory');
+    if (!cat) {
+      subSel.innerHTML = '<option value="">— Select subcategory —</option>';
+      subSel.disabled = true;
+      resolveCurrentFieldset();
+      return;
+    }
+    const subs = (window.IntakeFieldsets && window.IntakeFieldsets.getSubcategories)
+      ? window.IntakeFieldsets.getSubcategories(cat) : [];
+    subSel.innerHTML = '<option value="">— Select subcategory —</option>' +
+      subs.map(s => '<option value="' + escapeAttr(s) + '">' + escapeText(s) + '</option>').join('');
+    subSel.disabled = subs.length === 0;
+    resolveCurrentFieldset();
+  }
+
+  function onSubcategoryChange() { resolveCurrentFieldset(); }
+
+  function resolveCurrentFieldset() {
+    const cat = document.getElementById('f-category').value;
+    const sub = document.getElementById('f-subcategory').value;
+    if (cat && sub && window.IntakeFieldsets && window.IntakeFieldsets.getFieldset) {
+      currentFieldset = window.IntakeFieldsets.getFieldset(cat, sub);
+    } else {
+      currentFieldset = null;
+    }
+  }
+
+  // ============================================================
   // ANALYZE
   // ============================================================
   async function analyzePhotos() {
     setErr('premenu-error', '');
     const stock    = document.getElementById('f-stock').value.trim();
     const dealer   = document.getElementById('f-dealer').value;
-    const category = document.getElementById('f-category').value.trim() || 'Construction';
-    const sub      = document.getElementById('f-subcategory').value.trim() || 'Compact Track Loader';
+    const category = document.getElementById('f-category').value;
+    const sub      = document.getElementById('f-subcategory').value;
     const photos   = getPhotoUrls();
 
     if (!stock)         { setErr('premenu-error', 'Stock # is required.'); return; }
     if (!dealer)        { setErr('premenu-error', 'Seller selection is required.'); return; }
+    if (!category)      { setErr('premenu-error', 'Category is required.'); return; }
+    if (!sub)           { setErr('premenu-error', 'Subcategory is required.'); return; }
     if (photos.length === 0) { setErr('premenu-error', 'At least one photo URL is required.'); return; }
     if (photos.length > 8)   { setErr('premenu-error', 'Maximum 8 photos.'); return; }
 
@@ -389,12 +448,19 @@
     const proposals = (response && response.proposals) || {};
     const flags     = (response && Array.isArray(response.review_flags)) ? response.review_flags : [];
 
-    // Render field rows
+    // Defensive: ensure fieldset is resolved from current dropdown values
+    resolveCurrentFieldset();
+
+    // Render field rows — iterate the resolved fieldset's fields (not a
+    // hardcoded list). If a proposal lacks a key the fieldset expects, the
+    // row still renders (empty value). If a proposal has extra keys the
+    // fieldset doesn't declare, they are dropped silently.
+    const keys = proposalKeys();
     const wrap = document.getElementById('proposal-rows');
-    wrap.innerHTML = PROPOSAL_FIELDS.map(f => rowHtml(f, proposals[f] || {})).join('');
+    wrap.innerHTML = keys.map(f => rowHtml(f, proposals[f] || {})).join('');
 
     // Hydrate state
-    PROPOSAL_FIELDS.forEach(f => {
+    keys.forEach(f => {
       const p = proposals[f] || {};
       originalValues[f] = valueToInput(p.value);
       actions[f] = null; // needs review
@@ -412,14 +478,41 @@
       empty.style.display = 'none';
     }
 
+    renderHumanChecklist();
     updateSaveSummary();
   }
 
+  function renderHumanChecklist() {
+    const ul    = document.getElementById('human-checklist');
+    const empty = document.getElementById('human-checklist-empty');
+    if (!ul || !empty) return;
+    const items = [];
+    // Fieldset-level review warning (generic_minimal ships one).
+    if (currentFieldset && currentFieldset.review_warning) {
+      items.push('⚠ ' + currentFieldset.review_warning);
+    }
+    // human_only fields' ai_review_flag strings (per-fieldset reminders).
+    humanOnlyList().forEach(f => {
+      if (f.ai_review_flag) items.push((f.label || f.key) + ': ' + f.ai_review_flag);
+    });
+    // Shared human-review checklist — same across every fieldset.
+    const shared = (window.IntakeFieldsets && Array.isArray(window.IntakeFieldsets.shared_human_review))
+      ? window.IntakeFieldsets.shared_human_review : [];
+    shared.forEach(s => items.push('Confirm with seller: ' + s));
+    if (items.length === 0) {
+      ul.innerHTML = '';
+      empty.style.display = '';
+    } else {
+      ul.innerHTML = items.map(s => '<li>' + escapeText(s) + '</li>').join('');
+      empty.style.display = 'none';
+    }
+  }
+
   function rowHtml(field, proposal) {
-    const stored = STORABLE_FIELDS.has(field);
+    const stored = isStorable(field);
     const valStr = valueToInput(proposal.value);
     const reason = proposal.reason ? escapeText(proposal.reason) : '(no reason returned)';
-    const label  = FIELD_LABELS[field] || field;
+    const label  = labelFor(field);
     return (
       '<div class="prop-row' + (stored ? '' : ' not-stored') + '" id="row-' + field + '" data-field="' + field + '">' +
         '<div class="prop-head">' +
@@ -473,16 +566,19 @@
   }
 
   function updateSaveSummary() {
-    const storable = PROPOSAL_FIELDS.filter(f => STORABLE_FIELDS.has(f));
-    const willSave = storable.filter(f => {
+    const keys      = proposalKeys();
+    const storable  = keys.filter(f => isStorable(f));
+    const nonStored = keys.length - storable.length;
+    const willSave  = storable.filter(f => {
       const a = actions[f];
       if (a !== 'accept' && a !== 'edit') return false;
       const v = (document.getElementById('val-' + f)?.value || '').trim();
       return v !== '';
     });
     document.getElementById('save-summary').textContent =
-      willSave.length + ' of 5 storable fields will be saved' +
-      (willSave.length ? ' (' + willSave.join(', ') + ')' : '') + '. The 4 not-stored fields are never sent.';
+      willSave.length + ' of ' + storable.length + ' storable fields will be saved' +
+      (willSave.length ? ' (' + willSave.join(', ') + ')' : '') +
+      '. The ' + nonStored + ' not-stored field' + (nonStored === 1 ? ' is' : 's are') + ' never sent.';
   }
 
   // ============================================================
@@ -498,12 +594,12 @@
 
     const stock    = document.getElementById('f-stock').value.trim();
     const dealer   = document.getElementById('f-dealer').value;
-    const category = document.getElementById('f-category').value.trim() || 'Construction';
-    const sub      = document.getElementById('f-subcategory').value.trim() || 'Compact Track Loader';
+    const category = document.getElementById('f-category').value;
+    const sub      = document.getElementById('f-subcategory').value;
     const photos   = getPhotoUrls();
 
-    if (!stock || !dealer) {
-      setErr('review-error', 'Stock # and seller are still required.');
+    if (!stock || !dealer || !category || !sub) {
+      setErr('review-error', 'Stock #, seller, category, and subcategory are all required.');
       return;
     }
 
@@ -520,15 +616,16 @@
       photos: photos.map((u, i) => ({ url: u, name: stock + '-' + (i + 1) + '.jpg' }))
     };
 
-    // Collect ONLY accepted (or edited) STORABLE fields with non-empty values
-    PROPOSAL_FIELDS.forEach(f => {
-      if (!STORABLE_FIELDS.has(f)) return;
+    // Collect ONLY accepted (or edited) storable fields with non-empty values.
+    // Filter + numeric-parse derive from the resolved fieldset — no hardcoded
+    // per-field key lists here.
+    proposalKeys().forEach(f => {
+      if (!isStorable(f)) return;
       const a = actions[f];
       if (a !== 'accept' && a !== 'edit') return;
       const raw = (document.getElementById('val-' + f)?.value || '').trim();
       if (raw === '') return;
-      // year + hours → numeric; others → string
-      if (f === 'year' || f === 'hours') {
+      if (isNumericField(f)) {
         const n = parseInt(raw.replace(/[^0-9]/g, ''), 10);
         if (Number.isFinite(n)) data[f] = n;
       } else {
@@ -598,8 +695,12 @@
   // INIT
   // ============================================================
   document.addEventListener('DOMContentLoaded', () => {
+    if (typeof window.IntakeFieldsets === 'undefined') {
+      console.error('[intake] window.IntakeFieldsets missing — ensure /js/intake-fieldsets.browser.js loads BEFORE the inline script (order: taxonomy → usage-display → intake-fieldsets).');
+    }
     addPhotoRow();  // start with one photo input
     loadDealers();
+    populateCategoryDropdown();
   });
 </script>
 
