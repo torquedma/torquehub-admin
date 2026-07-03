@@ -48,7 +48,8 @@
     'Air Compressor',
     'Motor Grader',
     'Backhoe Attachment',
-    'Crawler Loader'
+    'Crawler Loader',
+    'Side by Side'
   ];
   var allowMileage = [
     'Box Truck',
@@ -85,8 +86,7 @@
     'Water Truck',
     'SUV',
     'Motorcycle',
-    'Classic Car',
-    'Side by Side'
+    'Classic Car'
   ];
   var suppressBoth = [
     'Enclosed Trailer',
