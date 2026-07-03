@@ -132,6 +132,62 @@ assertFs('Construction', 'Crane Truck',      'truck',                  'Construc
 assertFs('Zoo',          'Unicorn',          'generic_minimal',        'unknown category');
 assertFs('',             '',                 'generic_minimal',        'empty category/subcategory');
 
+// ── (e) category_subcategories map — structure, dedup, Farm/Side-by-Side ─────
+const REQUIRED_CATEGORY_KEYS = ['Trucks', 'Trailers', 'Construction', 'Farm', 'Other'];
+const catMap = src.category_subcategories || {};
+for (const key of REQUIRED_CATEGORY_KEYS) {
+  if (!Array.isArray(catMap[key])) {
+    console.error(`FAIL: category_subcategories is missing key "${key}" (or value is not an array)`);
+    failures++;
+  }
+}
+const catKeys = Object.keys(catMap);
+if (catKeys.length !== REQUIRED_CATEGORY_KEYS.length) {
+  console.error(`FAIL: expected exactly ${REQUIRED_CATEGORY_KEYS.length} category keys, got ${catKeys.length}: ${JSON.stringify(catKeys)}`);
+  failures++;
+} else {
+  console.log(`OK: category_subcategories has all ${REQUIRED_CATEGORY_KEYS.length} required category keys`);
+}
+
+// Flatten + dedup — every subcategory must appear exactly once across the map.
+const flat = [];
+for (const key of catKeys) {
+  for (const sub of (catMap[key] || [])) flat.push({ sub, cat: key });
+}
+const seen = new Map();
+let dupes = 0;
+for (const { sub, cat } of flat) {
+  if (seen.has(sub)) {
+    console.error(`FAIL: duplicate subcategory "${sub}" — appears in both ${seen.get(sub)} and ${cat}`);
+    failures++;
+    dupes++;
+  } else {
+    seen.set(sub, cat);
+  }
+}
+if (dupes === 0) {
+  console.log(`OK: no duplicate subcategories across category_subcategories (total: ${flat.length}, unique: ${seen.size})`);
+}
+
+// Explicit Farm → Side by Side (post-usage-display reclassification lock)
+const cjsExports = require(path.join(ROOT, 'netlify/functions/lib/intake-fieldsets.generated.js'));
+const farmSubs = cjsExports.getSubcategories('Farm');
+if (farmSubs.includes('Side by Side')) {
+  console.log("OK: getSubcategories('Farm') includes 'Side by Side'");
+} else {
+  console.error("FAIL: getSubcategories('Farm') does NOT include 'Side by Side'");
+  failures++;
+}
+
+// getCategories parity
+const catsFromApi = cjsExports.getCategories();
+if (JSON.stringify(catsFromApi) === JSON.stringify(catKeys)) {
+  console.log(`OK: getCategories() = ${JSON.stringify(catsFromApi)}`);
+} else {
+  console.error(`FAIL: getCategories() = ${JSON.stringify(catsFromApi)}, source map keys = ${JSON.stringify(catKeys)}`);
+  failures++;
+}
+
 if (failures) {
   console.error(`\nverify-intake-fieldsets: ${failures} failure(s)`);
   process.exit(1);

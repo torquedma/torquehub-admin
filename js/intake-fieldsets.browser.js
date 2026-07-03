@@ -732,12 +732,137 @@
       ]
     }
   },
+  "category_subcategories": {
+    "Trucks": [
+      "Box Truck",
+      "Day Cab Tractor",
+      "Sleeper Tractor",
+      "Service Truck",
+      "Dump Truck",
+      "Rollback Tow Truck",
+      "Tow Truck",
+      "Flatbed Truck",
+      "Car Carrier Truck",
+      "Cargo Van",
+      "Passenger Van",
+      "Pickup Truck",
+      "Crane Truck",
+      "Refrigerated Truck",
+      "Tanker Truck",
+      "Vacuum Truck",
+      "Fuel Truck",
+      "Step Van",
+      "Garbage Truck",
+      "Concrete Mixer",
+      "Grain Dump Truck",
+      "Bucket Truck",
+      "Roll-Off",
+      "Boom Truck",
+      "Mixer Truck",
+      "Yard Spotter",
+      "Cab & Chassis",
+      "Fire Truck",
+      "Winch Truck",
+      "Crane Service Truck",
+      "Landscape Truck",
+      "Water Truck"
+    ],
+    "Trailers": [
+      "Enclosed Trailer",
+      "Car Hauler Trailer",
+      "Utility Trailer",
+      "Dump Trailer",
+      "Equipment Trailer",
+      "Gooseneck Trailer",
+      "Conestoga Trailer",
+      "Concession Trailer",
+      "Race Trailer",
+      "Living Quarters Trailer",
+      "Deckover Trailer",
+      "Tilt Trailer",
+      "Dovetail Trailer",
+      "Tank Trailer",
+      "Tanker Trailer",
+      "Dry Van Trailer",
+      "Motorcycle Trailer",
+      "Landscape Trailer",
+      "Frameless Dump",
+      "Other Trailer",
+      "Reefer Trailer",
+      "Pole Trailer",
+      "Reel / Cable Trailer",
+      "Curtain-Side Trailer",
+      "Lowboy Trailer",
+      "Flatbed Trailer",
+      "Hopper Bottom Trailer",
+      "Belt Trailer"
+    ],
+    "Construction": [
+      "Skid Steer",
+      "Mini Skid Steer",
+      "Compact Track Loader",
+      "Loader",
+      "Wheel Loader",
+      "Boom Lift",
+      "Backhoe",
+      "Excavator",
+      "Mini Excavator",
+      "Crawler Dozer",
+      "Forklift",
+      "Digger Derrick",
+      "Trencher",
+      "Scissor Lift",
+      "Compactor",
+      "Scraper",
+      "Air Compressor",
+      "Motor Grader",
+      "Backhoe Attachment",
+      "Crawler Loader"
+    ],
+    "Farm": [
+      "Tractor",
+      "Lawn Tractor",
+      "Zero Turn Mower",
+      "Walk Behind Mower",
+      "Front Mounted Mower",
+      "Field Mower",
+      "Finish Mower",
+      "Rotary Cutter",
+      "Boom Mower",
+      "Drum Mower",
+      "Hay Rake",
+      "Baler",
+      "Cultivator",
+      "Planter",
+      "Combine",
+      "Log Splitter",
+      "Wagon",
+      "Harrow",
+      "Disk",
+      "Box Scraper",
+      "Utility Vehicle",
+      "Land Leveler",
+      "Overseeder",
+      "V-Ripper",
+      "Turf & Grounds Care",
+      "Side by Side"
+    ],
+    "Other": [
+      "SUV",
+      "Motorcycle",
+      "Classic Car",
+      "Engine",
+      "Boat",
+      "Truck Body"
+    ]
+  },
   "subcategory_overrides": {}
 };
 
   var fieldsets = DATA.fieldsets;
   var shared_human_review = DATA.shared_human_review;
   var subcategory_overrides = DATA.subcategory_overrides || {};
+  var category_subcategories = DATA.category_subcategories || {};
 
   function getFieldset(category, subcategory) {
     var cat = String(category || '').toLowerCase().trim();
@@ -764,9 +889,21 @@
     return fieldsets.generic_minimal;
   }
 
+  // Intake's authored category → subcategory grouping. See CJS mirror for rationale.
+  function getCategories() {
+    return Object.keys(category_subcategories);
+  }
+  function getSubcategories(category) {
+    var list = category_subcategories[category];
+    return (list && list.slice) ? list.slice() : [];
+  }
+
   root.IntakeFieldsets = {
     getFieldset: getFieldset,
+    getCategories: getCategories,
+    getSubcategories: getSubcategories,
     fieldsets: fieldsets,
-    shared_human_review: shared_human_review
+    shared_human_review: shared_human_review,
+    category_subcategories: category_subcategories
   };
 }(typeof window !== 'undefined' ? window : this));

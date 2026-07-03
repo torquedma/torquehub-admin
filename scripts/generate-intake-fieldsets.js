@@ -35,6 +35,7 @@ const DATA = ${DATA_JSON};
 const fieldsets = DATA.fieldsets;
 const shared_human_review = DATA.shared_human_review;
 const subcategory_overrides = DATA.subcategory_overrides || {};
+const category_subcategories = DATA.category_subcategories || {};
 
 // Dispatch on (category, subcategory). Category matches are case-insensitive
 // against the taxonomy's canonical category names (Trucks / Trailers / Farm /
@@ -61,7 +62,18 @@ function getFieldset(category, subcategory) {
   return fieldsets.generic_minimal;
 }
 
-module.exports = { getFieldset, fieldsets, shared_human_review };
+// Intake's authored category → subcategory grouping (NOT derived from taxonomy,
+// NOT from usage-display). Drives the intake dropdown pair. Return copies so
+// callers can't mutate the underlying arrays.
+function getCategories() {
+  return Object.keys(category_subcategories);
+}
+function getSubcategories(category) {
+  const list = category_subcategories[category];
+  return Array.isArray(list) ? list.slice() : [];
+}
+
+module.exports = { getFieldset, getCategories, getSubcategories, fieldsets, shared_human_review, category_subcategories };
 `;
 }
 
@@ -80,6 +92,7 @@ function buildBrowser() {
   var fieldsets = DATA.fieldsets;
   var shared_human_review = DATA.shared_human_review;
   var subcategory_overrides = DATA.subcategory_overrides || {};
+  var category_subcategories = DATA.category_subcategories || {};
 
   function getFieldset(category, subcategory) {
     var cat = String(category || '').toLowerCase().trim();
@@ -106,10 +119,22 @@ function buildBrowser() {
     return fieldsets.generic_minimal;
   }
 
+  // Intake's authored category → subcategory grouping. See CJS mirror for rationale.
+  function getCategories() {
+    return Object.keys(category_subcategories);
+  }
+  function getSubcategories(category) {
+    var list = category_subcategories[category];
+    return (list && list.slice) ? list.slice() : [];
+  }
+
   root.IntakeFieldsets = {
     getFieldset: getFieldset,
+    getCategories: getCategories,
+    getSubcategories: getSubcategories,
     fieldsets: fieldsets,
-    shared_human_review: shared_human_review
+    shared_human_review: shared_human_review,
+    category_subcategories: category_subcategories
   };
 }(typeof window !== 'undefined' ? window : this));
 `;
