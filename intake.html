@@ -65,6 +65,12 @@
   .photo-tile.error .name { color: #991b1b; }
   .photo-tile-remove { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
   .photo-tile-remove:hover { background: var(--red); }
+  .photo-tile.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,65,10,0.15); }
+  .photo-tile-select { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.6); color: #fff; border-radius: 4px; padding: 3px 6px; font-size: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; user-select: none; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1; }
+  .photo-tile-select input { margin: 0; cursor: pointer; accent-color: var(--accent); width: 12px; height: 12px; }
+  .photo-tile-select input:disabled { cursor: not-allowed; opacity: 0.5; }
+  .photo-tile-select:has(input:disabled) { opacity: 0.65; cursor: not-allowed; }
+  .photo-tile.selected .photo-tile-select { background: var(--accent); }
   .btn { padding: 8px 16px; border: none; border-radius: 7px; font-size: 13px; font-weight: 700; font-family: "Barlow", sans-serif; cursor: pointer; transition: 0.15s; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: #c73508; }
@@ -119,7 +125,7 @@
 <div class="topbar">
   <div>
     <h1>Manual AI Intake</h1>
-    <div class="sub">v2 · paste 1-8 photo URLs · review · save as draft</div>
+    <div class="sub">v2 · upload up to 30 photos · select up to 8 for AI analysis · review · save as draft</div>
   </div>
   <a href="/index.html">← Back to Admin</a>
 </div>
@@ -155,7 +161,7 @@
     </div>
 
     <div class="form-row">
-      <label>Photos (1-8) <span class="req">*</span></label>
+      <label>Photos (1-30, select up to 8 for AI analysis) <span class="req">*</span></label>
       <div id="photo-error" class="error-msg" style="display:none;"></div>
       <div id="photo-drop-zone" class="photo-drop-zone"
            ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -175,7 +181,10 @@
       <div id="photo-grid" class="photo-grid"></div>
     </div>
 
-    <button type="button" class="btn btn-primary" id="analyze-btn" style="margin-top:14px" onclick="analyzePhotos()">Analyze Photos</button>
+    <div class="analyze-row" style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-primary" id="analyze-btn" onclick="analyzePhotos()">Analyze Photos</button>
+      <span id="analyze-selection-counter" style="font-size:12px;color:var(--text2)"></span>
+    </div>
   </section>
 
   <!-- VIEW 2: LOADING -->
@@ -331,7 +340,11 @@
   // Downstream (analyze POST, Save Draft) sees only URL strings via
   // getPhotoUrls() — same source-agnostic contract as before.
 
-  let photoTiles = [];   // { id, name, url?, dataUrl?, uploading?, error?, slot? }
+  let photoTiles = [];   // { id, name, url?, dataUrl?, uploading?, error?, slot?, selectedForAnalysis? }
+
+  // Gallery cap (uploaded/pasted total) and analyze-selection cap (subset sent to Anthropic).
+  const MAX_GALLERY = 30;
+  const MAX_ANALYZE = 8;
 
   function newTileId() {
     return Date.now() + '_' + Math.random().toString(36).slice(2, 8);
@@ -339,6 +352,12 @@
 
   function currentPhotoCount() {
     return photoTiles.filter(t => !t.error).length;
+  }
+
+  // How many tiles are currently marked for AI analysis (excludes errored tiles —
+  // they can't be sent anyway, so they don't consume a selection slot).
+  function currentSelectedCount() {
+    return photoTiles.filter(t => t.selectedForAnalysis && !t.error).length;
   }
 
   // Storage slot for the next file upload — max of current tiles' slots + 1,
@@ -370,25 +389,67 @@
   function renderPhotoGrid() {
     const grid = document.getElementById('photo-grid');
     if (!grid) return;
+    const atSelectionMax = currentSelectedCount() >= MAX_ANALYZE;
     grid.innerHTML = photoTiles.map((t, i) => {
       const src = t.url || t.dataUrl || '';
       const img = src
         ? '<img src="' + escapeAttr(src) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
         : '<div style="width:100%;height:74px;background:var(--surface3);border-radius:4px"></div>';
       const nameText = t.error ? (t.name + ' — ' + t.error) : t.name;
-      const cls = 'photo-tile' + (t.uploading ? ' uploading' : '') + (t.error ? ' error' : '');
+      const isSelected = t.selectedForAnalysis === true;
+      const cls = 'photo-tile'
+        + (t.uploading ? ' uploading' : '')
+        + (t.error ? ' error' : '')
+        + (isSelected ? ' selected' : '');
+      // Disable checking a NEW box when at max; unchecking is always allowed.
+      // Errored tiles are unselectable (can't be sent anyway).
+      const disabledAttr = (t.error || (!isSelected && atSelectionMax)) ? 'disabled' : '';
+      const checkedAttr  = isSelected ? 'checked' : '';
       return '<div class="' + cls + '">'
+        + '<label class="photo-tile-select" title="Include in the AI analysis batch (max ' + MAX_ANALYZE + ')">'
+        +   '<input type="checkbox" ' + checkedAttr + ' ' + disabledAttr + ' onchange="togglePhotoSelect(' + i + ')">'
+        +   'Analyze'
+        + '</label>'
         + img
         + '<span class="name" title="' + escapeAttr(nameText) + '">' + escapeText(nameText) + '</span>'
         + '<button class="photo-tile-remove" type="button" title="Remove" onclick="removePhotoTile(' + i + ')">✕</button>'
         + '</div>';
     }).join('');
+    renderSelectionCounter();
+  }
+
+  function renderSelectionCounter() {
+    const el = document.getElementById('analyze-selection-counter');
+    if (!el) return;
+    const n = currentSelectedCount();
+    el.textContent = n + ' of ' + MAX_ANALYZE + ' selected for analysis';
   }
 
   function removePhotoTile(i) {
     photoTiles.splice(i, 1);
     renderPhotoGrid();
     clearPhotoError();
+  }
+
+  // Toggle the AI-analysis selection flag on a single tile. Enforces MAX_ANALYZE
+  // when CHECKING; unchecking is always allowed. Does NOT reorder or splice —
+  // only flips the flag, then re-renders.
+  function togglePhotoSelect(i) {
+    const t = photoTiles[i];
+    if (!t) return;
+    if (t.selectedForAnalysis) {
+      t.selectedForAnalysis = false;
+      clearPhotoError();
+    } else {
+      if (currentSelectedCount() >= MAX_ANALYZE) {
+        setPhotoError('Maximum ' + MAX_ANALYZE + ' photos selected for analysis. Uncheck one first.');
+        renderPhotoGrid();  // re-render to re-sync checkbox visual state
+        return;
+      }
+      t.selectedForAnalysis = true;
+      clearPhotoError();
+    }
+    renderPhotoGrid();
   }
 
   // ── VERBATIM from index.html:3597-3610 (1200px / JPEG 0.82) ─────────────────
@@ -453,8 +514,8 @@
     }
 
     for (const file of files) {
-      if (currentPhotoCount() >= 8) {
-        setPhotoError('Maximum 8 photos.');
+      if (currentPhotoCount() >= MAX_GALLERY) {
+        setPhotoError('Maximum ' + MAX_GALLERY + ' photos.');
         break;
       }
       await addOneUploadedFile(file, dealer, stock);
@@ -464,7 +525,8 @@
 
   async function addOneUploadedFile(file, dealer, stock) {
     const slot = nextUploadSlot();
-    const tile = { id: newTileId(), name: file.name, uploading: true, slot };
+    // Auto-select for analysis if there's room (first MAX_ANALYZE default to selected).
+    const tile = { id: newTileId(), name: file.name, uploading: true, slot, selectedForAnalysis: currentSelectedCount() < MAX_ANALYZE };
     photoTiles.push(tile);
     renderPhotoGrid();
     try {
@@ -494,17 +556,28 @@
     const el = document.getElementById('url-input');
     const url = (el.value || '').trim();
     if (!url) return;
-    if (currentPhotoCount() >= 8) { setPhotoError('Maximum 8 photos.'); return; }
+    if (currentPhotoCount() >= MAX_GALLERY) { setPhotoError('Maximum ' + MAX_GALLERY + ' photos.'); return; }
     if (photoTiles.some(t => t.url === url)) { el.value = ''; return; }
-    photoTiles.push({ id: newTileId(), name: derivePhotoName(url, photoTiles.length + 1), url });
+    // Auto-select for analysis if there's room (first MAX_ANALYZE default to selected).
+    photoTiles.push({ id: newTileId(), name: derivePhotoName(url, photoTiles.length + 1), url, selectedForAnalysis: currentSelectedCount() < MAX_ANALYZE });
     el.value = '';
     renderPhotoGrid();
   }
 
   // Downstream contract UNCHANGED — returns a string array of hosted URLs.
   // Uploading tiles and error tiles are excluded so callers see only valid photos.
+  // Save Draft consumes this — sends the FULL gallery to admin-write.
   function getPhotoUrls() {
     return photoTiles.filter(t => t.url && !t.uploading && !t.error).map(t => t.url);
+  }
+
+  // Analyze consumes THIS — filtered to selectedForAnalysis (max MAX_ANALYZE).
+  // Returns a filtered COPY via Array.filter — never mutates photoTiles, so
+  // Save Draft's subsequent read of getPhotoUrls() still sees every photo.
+  function getSelectedPhotoUrlsForAnalyze() {
+    return photoTiles
+      .filter(t => t.selectedForAnalysis && t.url && !t.uploading && !t.error)
+      .map(t => t.url);
   }
 
   // ============================================================
@@ -557,14 +630,17 @@
     const dealer   = document.getElementById('f-dealer').value;
     const category = document.getElementById('f-category').value;
     const sub      = document.getElementById('f-subcategory').value;
-    const photos   = getPhotoUrls();
+    // Analyze sends only the SELECTED subset (max MAX_ANALYZE). Save Draft below
+    // reads getPhotoUrls() separately and sends the full gallery — the two paths
+    // do NOT share this filtered array.
+    const photos   = getSelectedPhotoUrlsForAnalyze();
 
     if (!stock)         { setErr('premenu-error', 'Stock # is required.'); return; }
     if (!dealer)        { setErr('premenu-error', 'Seller selection is required.'); return; }
     if (!category)      { setErr('premenu-error', 'Category is required.'); return; }
     if (!sub)           { setErr('premenu-error', 'Subcategory is required.'); return; }
-    if (photos.length === 0) { setErr('premenu-error', 'At least one photo is required.'); return; }
-    if (photos.length > 8)   { setErr('premenu-error', 'Maximum 8 photos.'); return; }
+    if (photos.length === 0) { setErr('premenu-error', 'Select at least one photo for analysis (checkbox on each tile).'); return; }
+    if (photos.length > MAX_ANALYZE) { setErr('premenu-error', 'Maximum ' + MAX_ANALYZE + ' photos for analysis.'); return; }
 
     showView('view-loading');
 
