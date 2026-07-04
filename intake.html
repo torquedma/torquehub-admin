@@ -47,9 +47,24 @@
   .edit-input:disabled { background: var(--surface3); color: var(--text3); cursor: not-allowed; }
   select.edit-input { cursor: pointer; }
 
-  .photo-list { display: flex; flex-direction: column; gap: 6px; }
-  .photo-row { display: flex; gap: 6px; align-items: center; }
-  .photo-row .photo-url { flex: 1; }
+  /* Photo upload — drop zone + URL paste + tile grid */
+  .photo-drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 24px 16px; text-align: center; color: var(--text2); font-size: 13px; cursor: pointer; transition: all 0.15s; background: var(--surface2); }
+  .photo-drop-zone:hover { border-color: var(--accent); background: #fff7f0; color: var(--accent); }
+  .photo-drop-zone.drag-over { border-color: var(--accent); background: #fff1ec; color: var(--accent); }
+  .photo-drop-zone .drop-zone-icon { font-size: 22px; margin-bottom: 6px; opacity: 0.7; }
+  .url-paste-row { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+  .url-paste-row input { flex: 1; }
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 12px; }
+  .photo-grid:empty { display: none; }
+  .photo-tile { border: 1px solid var(--border); border-radius: 6px; padding: 6px; font-size: 11px; background: var(--surface); position: relative; }
+  .photo-tile img { width: 100%; height: 74px; object-fit: cover; border-radius: 4px; display: block; background: var(--surface3); }
+  .photo-tile .name { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
+  .photo-tile.uploading { opacity: 0.65; }
+  .photo-tile.uploading::after { content: 'Uploading…'; position: absolute; top: 6px; left: 6px; background: rgba(15,25,35,0.75); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.04em; }
+  .photo-tile.error { border-color: var(--red); background: #fef2f2; }
+  .photo-tile.error .name { color: #991b1b; }
+  .photo-tile-remove { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .photo-tile-remove:hover { background: var(--red); }
   .btn { padding: 8px 16px; border: none; border-radius: 7px; font-size: 13px; font-weight: 700; font-family: "Barlow", sans-serif; cursor: pointer; transition: 0.15s; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: #c73508; }
@@ -140,9 +155,24 @@
     </div>
 
     <div class="form-row">
-      <label>Photo URLs (1-8) <span class="req">*</span></label>
-      <div id="photo-list" class="photo-list"></div>
-      <button type="button" class="btn btn-secondary btn-mini" id="add-photo-btn" style="margin-top:6px" onclick="addPhotoRow()">+ Add another URL</button>
+      <label>Photos (1-8) <span class="req">*</span></label>
+      <div id="photo-error" class="error-msg" style="display:none;"></div>
+      <div id="photo-drop-zone" class="photo-drop-zone"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragenter="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="handleDropZone(event)"
+           onclick="document.getElementById('file-upload-input').click()">
+        <div class="drop-zone-icon">📷</div>
+        <div>Drop photos here or click to choose</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Compressed client-side to 1200px / JPEG 0.82 before upload (~2 MB server cap)</div>
+      </div>
+      <input type="file" id="file-upload-input" accept="image/*" multiple style="display:none" onchange="handleFileUpload(this)">
+      <div class="url-paste-row">
+        <input type="url" class="edit-input" id="url-input" placeholder="or paste an image URL…" onkeydown="if(event.key==='Enter'){event.preventDefault();addPhotoByUrl();}">
+        <button type="button" class="btn btn-secondary btn-mini" onclick="addPhotoByUrl()">Add</button>
+      </div>
+      <div id="photo-grid" class="photo-grid"></div>
     </div>
 
     <button type="button" class="btn btn-primary" id="analyze-btn" style="margin-top:14px" onclick="analyzePhotos()">Analyze Photos</button>
@@ -293,34 +323,188 @@
   }
 
   // ============================================================
-  // PHOTO INPUT ROWS
+  // PHOTO UPLOAD — drag/drop + file picker (primary) or URL paste (secondary)
   // ============================================================
-  function addPhotoRow() {
-    const list = document.getElementById('photo-list');
-    if (list.children.length >= 8) return;
-    const row = document.createElement('div');
-    row.className = 'photo-row';
-    row.innerHTML =
-      '<input type="url" class="photo-url" placeholder="https://...">' +
-      '<button type="button" class="btn btn-secondary btn-mini" onclick="this.parentNode.remove(); refreshAddBtn();">Remove</button>';
-    list.appendChild(row);
-    refreshAddBtn();
+  // Port of index.html's proven upload flow. compressImage is verbatim from
+  // index.html:3597-3610 (1200px / JPEG 0.82 — sized to upload-photo.js's 2 MB
+  // server cap). uploadPhotoViaNetlify is verbatim from index.html:1973-1985.
+  // Downstream (analyze POST, Save Draft) sees only URL strings via
+  // getPhotoUrls() — same source-agnostic contract as before.
+
+  let photoTiles = [];   // { id, name, url?, dataUrl?, uploading?, error?, slot? }
+
+  function newTileId() {
+    return Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   }
-  function refreshAddBtn() {
-    const list = document.getElementById('photo-list');
-    document.getElementById('add-photo-btn').disabled = list.children.length >= 8;
+
+  function currentPhotoCount() {
+    return photoTiles.filter(t => !t.error).length;
   }
-  function getPhotoUrls() {
-    const inputs = document.querySelectorAll('#photo-list .photo-url');
-    const out = [];
-    const seen = new Set();
-    inputs.forEach(i => {
-      const v = (i.value || '').trim();
-      if (!v || seen.has(v)) return;
-      seen.add(v);
-      out.push(v);
+
+  // Storage slot for the next file upload — max of current tiles' slots + 1,
+  // or 0 if none. Prevents /N.jpg collisions when a photo is removed then
+  // another added. (When the array is emptied via removes, slot 0 is reused;
+  // upload-photo.js sets x-upsert:true so that overwrites the stale blob.)
+  function nextUploadSlot() {
+    const slots = photoTiles.map(t => t.slot).filter(s => typeof s === 'number');
+    return slots.length ? Math.max.apply(null, slots) + 1 : 0;
+  }
+
+  function derivePhotoName(url, fallbackIdx) {
+    try {
+      const path = new URL(url).pathname;
+      const seg = path.split('/').filter(Boolean).pop();
+      if (seg && seg.length > 0 && seg.length <= 60) return seg;
+    } catch (e) {}
+    return 'photo-' + fallbackIdx + '.jpg';
+  }
+
+  function setPhotoError(msg) {
+    const el = document.getElementById('photo-error');
+    if (!el) return;
+    if (msg) { el.textContent = msg; el.style.display = ''; }
+    else     { el.textContent = ''; el.style.display = 'none'; }
+  }
+  function clearPhotoError() { setPhotoError(''); }
+
+  function renderPhotoGrid() {
+    const grid = document.getElementById('photo-grid');
+    if (!grid) return;
+    grid.innerHTML = photoTiles.map((t, i) => {
+      const src = t.url || t.dataUrl || '';
+      const img = src
+        ? '<img src="' + escapeAttr(src) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
+        : '<div style="width:100%;height:74px;background:var(--surface3);border-radius:4px"></div>';
+      const nameText = t.error ? (t.name + ' — ' + t.error) : t.name;
+      const cls = 'photo-tile' + (t.uploading ? ' uploading' : '') + (t.error ? ' error' : '');
+      return '<div class="' + cls + '">'
+        + img
+        + '<span class="name" title="' + escapeAttr(nameText) + '">' + escapeText(nameText) + '</span>'
+        + '<button class="photo-tile-remove" type="button" title="Remove" onclick="removePhotoTile(' + i + ')">✕</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  function removePhotoTile(i) {
+    photoTiles.splice(i, 1);
+    renderPhotoGrid();
+    clearPhotoError();
+  }
+
+  // ── VERBATIM from index.html:3597-3610 (1200px / JPEG 0.82) ─────────────────
+  async function compressImage(dataUrl, maxWidth = 1200, quality = 0.82) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = dataUrl;
     });
-    return out;
+  }
+
+  // ── VERBATIM from index.html:1973-1985 ─────────────────────────────────────
+  async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, index) {
+    const resp = await fetch('/.netlify/functions/upload-photo', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (await getValidToken())
+      },
+      body: JSON.stringify({ imageUrl, dealerSlug, stockNum, index })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'Upload failed');
+    return data.url;
+  }
+
+  // ── Drop zone → synthetic file input → shared upload path ──────────────────
+  function handleDropZone(event) {
+    event.preventDefault();
+    const zone = document.getElementById('photo-drop-zone');
+    if (zone) zone.classList.remove('drag-over');
+    const files = Array.from(event.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    const dt = new DataTransfer();
+    files.forEach(f => dt.items.add(f));
+    const fakeInput = document.createElement('input');
+    fakeInput.type = 'file'; fakeInput.multiple = true;
+    Object.defineProperty(fakeInput, 'files', { value: dt.files });
+    handleFileUpload(fakeInput);
+  }
+
+  async function handleFileUpload(input) {
+    clearPhotoError();
+    const files = Array.from(input.files || []).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+    // Gate on dealer + stock — upload path is dealer/stock/index.ext
+    const stock  = document.getElementById('f-stock').value.trim();
+    const dealer = document.getElementById('f-dealer').value;
+    if (!stock || !dealer) {
+      setPhotoError('Enter stock # and select dealer before uploading photos.');
+      input.value = '';
+      return;
+    }
+
+    for (const file of files) {
+      if (currentPhotoCount() >= 8) {
+        setPhotoError('Maximum 8 photos.');
+        break;
+      }
+      await addOneUploadedFile(file, dealer, stock);
+    }
+    input.value = '';
+  }
+
+  async function addOneUploadedFile(file, dealer, stock) {
+    const slot = nextUploadSlot();
+    const tile = { id: newTileId(), name: file.name, uploading: true, slot };
+    photoTiles.push(tile);
+    renderPhotoGrid();
+    try {
+      const rawDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = e  => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('Could not read ' + file.name));
+        reader.readAsDataURL(file);
+      });
+      const dataUrl = await compressImage(rawDataUrl);
+      tile.dataUrl = dataUrl;
+      renderPhotoGrid(); // show thumbnail preview while upload is in flight
+      const returnedUrl = await uploadPhotoViaNetlify(dataUrl, dealer, stock, slot);
+      tile.url = returnedUrl;
+      tile.uploading = false;
+      delete tile.dataUrl;
+      renderPhotoGrid();
+    } catch (err) {
+      tile.uploading = false;
+      tile.error = (err && err.message) ? err.message : 'Upload failed';
+      renderPhotoGrid();
+    }
+  }
+
+  function addPhotoByUrl() {
+    clearPhotoError();
+    const el = document.getElementById('url-input');
+    const url = (el.value || '').trim();
+    if (!url) return;
+    if (currentPhotoCount() >= 8) { setPhotoError('Maximum 8 photos.'); return; }
+    if (photoTiles.some(t => t.url === url)) { el.value = ''; return; }
+    photoTiles.push({ id: newTileId(), name: derivePhotoName(url, photoTiles.length + 1), url });
+    el.value = '';
+    renderPhotoGrid();
+  }
+
+  // Downstream contract UNCHANGED — returns a string array of hosted URLs.
+  // Uploading tiles and error tiles are excluded so callers see only valid photos.
+  function getPhotoUrls() {
+    return photoTiles.filter(t => t.url && !t.uploading && !t.error).map(t => t.url);
   }
 
   // ============================================================
@@ -379,7 +563,7 @@
     if (!dealer)        { setErr('premenu-error', 'Seller selection is required.'); return; }
     if (!category)      { setErr('premenu-error', 'Category is required.'); return; }
     if (!sub)           { setErr('premenu-error', 'Subcategory is required.'); return; }
-    if (photos.length === 0) { setErr('premenu-error', 'At least one photo URL is required.'); return; }
+    if (photos.length === 0) { setErr('premenu-error', 'At least one photo is required.'); return; }
     if (photos.length > 8)   { setErr('premenu-error', 'Maximum 8 photos.'); return; }
 
     showView('view-loading');
@@ -698,9 +882,9 @@
     if (typeof window.IntakeFieldsets === 'undefined') {
       console.error('[intake] window.IntakeFieldsets missing — ensure /js/intake-fieldsets.browser.js loads BEFORE the inline script (order: taxonomy → usage-display → intake-fieldsets).');
     }
-    addPhotoRow();  // start with one photo input
     loadDealers();
     populateCategoryDropdown();
+    renderPhotoGrid();  // start with an empty grid (photos accumulate as uploaded/pasted)
   });
 </script>
 
