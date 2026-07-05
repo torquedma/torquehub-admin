@@ -1,4 +1,4 @@
-const { generateDescription } = require('./lib/generate-description');
+const { generateDescription } = require('./lib/generate-description.generated');
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
