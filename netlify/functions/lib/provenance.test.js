@@ -94,20 +94,16 @@ console.log('\n--- Validation: invalid trust/source/mode rejected ---');
 
 console.log('\n--- No client-forged trust: client cannot smuggle verified (server sets trust arg) ---');
 {
-  // The helper only ever uses opts.trust — which server code sets. A "value" that happens to be an
-  // object with trust:'verified' is still just a string value; it cannot promote itself.
   const r = stampFacts(null, { engine: 'Detroit' }, { source: 'seller', trust: 'attributed' });
   check('seller-sourced engine stays attributed', r.engine.trust === 'attributed');
 }
 
 console.log('\n--- dx-background scenario: verified only on ACTUALLY-FILLED fields (Q3) ---');
 {
-  // Existing feed row: engine attributed, fuel attributed.
   const existing = {
     engine: { value: 'Detroit', source: 'truckpaper_apify', trust: 'attributed', as_of: '2026-07-01' },
     fuel:   { value: 'Diesel',  source: 'truckpaper_apify', trust: 'attributed', as_of: '2026-07-01' },
   };
-  // decodeVin filled ONLY engine this run (fuel was already present, drivetrain not returned).
   const filled = { engine: 'Detroit DD13' };
   const r = stampFacts(existing, filled, { source: 'vin_decode', trust: 'verified', mode: 'fill-empty' });
   check('engine promoted to verified (filled this run)', r.engine.trust === 'verified');
@@ -125,6 +121,37 @@ console.log('\n--- buildClaim: explicit dispute/stated-unknown/estimate (census 
   let threw = false;
   try { buildClaim({ value: 'x', source: 'seller', trust: 'attributed', relation: 'invents' }); } catch { threw = true; }
   check('rejects invalid relation', threw);
+}
+
+console.log('\n--- SYNC-MERGE REGRESSION (T1.1-c): attributed re-sync must NOT downgrade verified ---');
+{
+  const existingProvenance = {
+    engine:  { value: 'Detroit DD13', source: 'vin_decode',     trust: 'verified',   as_of: '2026-07-01' },
+    mileage: { value: '101292',       source: 'truckpaper_apify', trust: 'attributed', as_of: '2026-07-01' },
+  };
+  const provFactSubset = { engine: 'Detroit', mileage: '101292', hours: '9500' };
+  const r = stampFacts(existingProvenance, provFactSubset, {
+    source: 'truckpaper_apify', trust: 'attributed', mode: 'fill-empty',
+  });
+  check('engine stays VERIFIED after attributed re-sync', r.engine.trust === 'verified');
+  check('engine value stays the VIN-decoded Detroit DD13', r.engine.value === 'Detroit DD13');
+  check('engine source stays vin_decode', r.engine.source === 'vin_decode');
+  check('no spurious conflict claim (Detroit ⊂ Detroit DD13)', r.engine.claims === undefined);
+  check('mileage stays attributed', r.mileage.trust === 'attributed' && r.mileage.value === '101292');
+  check('new hours fact gets attributed provenance', r.hours && r.hours.trust === 'attributed' && r.hours.value === '9500');
+  check('new hours source is the feed', r.hours.source === 'truckpaper_apify');
+}
+
+console.log('\n--- SYNC-MERGE: genuine CONFLICT from feed vs verified is preserved, not lost ---');
+{
+  const existingProvenance = {
+    engine: { value: 'Detroit DD13', source: 'vin_decode', trust: 'verified', as_of: '2026-07-01' },
+  };
+  const r = stampFacts(existingProvenance, { engine: 'Cat' }, {
+    source: 'truckpaper_apify', trust: 'attributed', mode: 'fill-empty',
+  });
+  check('verified engine primary held against conflicting feed', r.engine.trust === 'verified' && r.engine.value === 'Detroit DD13');
+  check('conflicting feed claim preserved (not silently dropped)', Array.isArray(r.engine.claims) && r.engine.claims.some(c => c.value === 'Cat'));
 }
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===\n`);
