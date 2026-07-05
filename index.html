@@ -1694,8 +1694,7 @@ document.querySelector('.sidebar').classList.toggle('open');
             <label class="edit-label" style="margin:0">Description</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="dx-btn" onclick="useFeedDX()" style="background:#f8fafc;color:#374151;border:1px solid #d1d5db">&#8617; Restore Feed</button>
-              <button class="dx-btn" onclick="generateTorqueHubDX()" style="background:#f8fafc;color:#374151;border:1px solid #d1d5db">&#9998; Generate DX</button>
-              <button class="dx-btn" onclick="improveDX()" style="background:#334155;color:#fff;border:1px solid #334155">&#9889; Improve DX</button>
+              <button class="dx-btn" onclick="generateDXCanonical()" style="background:#334155;color:#fff;border:1px solid #334155">&#9998; Generate DX</button>
               <button class="dx-btn" id="dx-lock-btn" onclick="lockManualDX()" style="background:#111827;color:#fff;border:1px solid #111827">&#128274; Lock DX</button>
             </div>
           </div>
@@ -2736,12 +2735,12 @@ function formatPriceInput(el) {
 }
 function unformatPriceInput(el) { el.value = el.value.replace(/[^0-9.]/g, ''); }
 
-function improveDX() {
+function generateDXCanonical() {
   var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
   if (!u) return;
   var field = document.getElementById('edit-description');
-  var btn = document.querySelector('[onclick="improveDX()"]');
-  if (btn) { btn.textContent = '⏳ Improving...'; btn.disabled = true; }
+  var btn = document.querySelector('[onclick="generateDXCanonical()"]');
+  if (btn) { btn.textContent = '⏳ Generating...'; btn.disabled = true; }
 
   var dealer = DEALERS.find(function(d){ return d.name === u.dealer; }) || {};
   if (!u.raw_description) u.raw_description = u.description;
@@ -2760,86 +2759,11 @@ function improveDX() {
       document.body.appendChild(t);
       setTimeout(function(){ t.remove(); }, 3000);
     }
-    if (btn) { btn.textContent = '⚡ Improve DX'; btn.disabled = false; }
+    if (btn) { btn.textContent = '✏️ Generate DX'; btn.disabled = false; }
   }).catch(function(err) {
-    console.error('improveDX error:', err);
-    if (btn) { btn.textContent = '⚡ Improve DX'; btn.disabled = false; }
+    console.error('generateDXCanonical error:', err);
+    if (btn) { btn.textContent = '✏️ Generate DX'; btn.disabled = false; }
   });
-}
-
-function generateTorqueHubDX() {
-  var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
-  if (!u) return;
-  var dealer = DEALERS.find(function(d){ return d.name === u.dealer; }) || {};
-  var sub = u.subcategory || '';
-  var cat = u.category || '';
-  var parts = [u.year, u.make, u.model, sub || cat].filter(Boolean);
-  var title = parts.join(' ');
-  var lines = [title, ''];
-
-  var hasSpecs = u.engine || u.horsepower || u.transmission || u.drivetrain || UsageDisplay.showMileage(u) || UsageDisplay.showHours(u) || u.vin || u.stock;
-  if (hasSpecs) {
-    lines.push('Key Specs:');
-    if (u.engine)                    lines.push('Engine: ' + u.engine);
-    if (u.horsepower)                lines.push('Horsepower: ' + u.horsepower);
-    if (u.transmission)              lines.push('Transmission: ' + u.transmission);
-    if (u.drivetrain)                lines.push('Drivetrain: ' + u.drivetrain);
-    if (UsageDisplay.showMileage(u)) lines.push('Mileage: ' + u.mileage);
-    if (UsageDisplay.showHours(u))   lines.push('Hours: Shows ' + u.hours);
-    if (u.vin)          lines.push('VIN: ' + u.vin);
-    if (u.stock)        lines.push('Stock #: ' + u.stock);
-    lines.push('');
-  }
-
-  lines.push('Why Choose This Unit?');
-
-  var CLASSIC_CAR  = ['Classic Car'];
-  var MOTORCYCLE   = ['Motorcycle'];
-  var SUV_SUBS     = ['SUV'];
-  var BOAT_SUBS    = ['Boat'];
-  var SIDE_BY_SIDE = ['Side by Side', 'Utility Vehicle'];
-  var TRAILER_SUBS = ['Enclosed Trailer','Car Hauler Trailer','Utility Trailer','Dump Trailer','Equipment Trailer','Gooseneck Trailer','Conestoga Trailer','Concession Trailer','Race Trailer','Living Quarters Trailer','Deckover Trailer','Tilt Trailer','Dovetail Trailer','Tank Trailer','Tanker Trailer','Dry Van Trailer','Motorcycle Trailer','Landscape Trailer','Frameless Dump','Other Trailer','Reefer Trailer','Pole Trailer','Reel / Cable Trailer','Curtain-Side Trailer','Lowboy Trailer','Flatbed Trailer','Vending / Concession Trailer'];
-  var FARM_SUBS    = ['Tractor','Lawn Tractor','Zero Turn Mower','Walk Behind Mower','Front Mounted Mower','Field Mower','Finish Mower','Rotary Cutter','Boom Mower','Drum Mower','Hay Rake','Baler','Cultivator','Planter','Combine','Log Splitter','Wagon','Harrow','Disk','Box Scraper','Land Leveler','Overseeder','V-Ripper','Turf & Grounds Care'];
-  var CONST_SUBS   = ['Skid Steer','Mini Skid Steer','Compact Track Loader','Loader','Wheel Loader','Boom Lift','Backhoe','Excavator','Mini Excavator','Crawler Dozer','Forklift','Digger Derrick','Trencher','Scissor Lift','Compactor','Scraper','Air Compressor','Motor Grader','Backhoe Attachment','Crawler Loader'];
-
-  var pitch;
-  if (CLASSIC_CAR.indexOf(sub) !== -1) {
-    pitch = ["A collector's opportunity. Inspections welcome — please call ahead to arrange.", "Priced fairly; serious offers considered."];
-  } else if (MOTORCYCLE.indexOf(sub) !== -1) {
-    pitch = ["Ready to ride. Clean, well-maintained, and priced to sell.", "Call to schedule an inspection."];
-  } else if (SUV_SUBS.indexOf(sub) !== -1) {
-    pitch = ["A capable SUV ready for daily driving or weekend adventures.", "Clean title. Inspections welcome."];
-  } else if (BOAT_SUBS.indexOf(sub) !== -1) {
-    pitch = ["Hit the water this season.", "Inspections welcome — call to schedule a showing."];
-  } else if (SIDE_BY_SIDE.indexOf(sub) !== -1) {
-    pitch = ["Built for the trail and the worksite. Ready to ride.", "Call to schedule an inspection."];
-  } else if (TRAILER_SUBS.indexOf(sub) !== -1) {
-    pitch = ["Built to haul. Ready to work.", "Call for availability and delivery options."];
-  } else if (FARM_SUBS.indexOf(sub) !== -1) {
-    pitch = ["Ready for field work. Built to perform season after season.", "Call to schedule an inspection or arrange delivery."];
-  } else if (CONST_SUBS.indexOf(sub) !== -1) {
-    pitch = ["Work-ready equipment for serious jobsites.", "Call to confirm hours and condition — inspections welcome."];
-  } else {
-    pitch = ["Ready for commercial, farm, or jobsite use.", "Built for buyers who need equipment that goes to work."];
-  }
-  pitch.forEach(function(l) { lines.push(l); });
-
-  lines.push('');
-  lines.push(u.price ? 'Priced at ' + u.price : 'Call for Price');
-  if (dealer.name)  lines.push('Location: ' + dealer.name);
-  if (dealer.phone) lines.push('Call: ' + dealer.phone);
-
-  var dx = lines.join('\n');
-  var field = document.getElementById('edit-description');
-  if (field) field.value = dx;
-  if (!u.raw_description) u.raw_description = u.description;
-  u.description = dx;
-
-  var t = document.createElement('div');
-  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f1923;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999';
-  t.textContent = 'DX generated. Review and edit before saving.';
-  document.body.appendChild(t);
-  setTimeout(function(){ t.remove(); }, 3000);
 }
 
 function toggleModelLock() {
