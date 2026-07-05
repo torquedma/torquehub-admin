@@ -2748,7 +2748,7 @@ function improveDX() {
   fetch('https://admin-torquehub.netlify.app/.netlify/functions/improve-dx', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ unit: u, dealer: { name: dealer.name, phone: dealer.phone, location: dealer.location } })
+    body: JSON.stringify({ unit: u, dealer: { name: dealer.name, phone: dealer.phone, location: [dealer.city, dealer.state].filter(Boolean).join(', ') } })
   }).then(function(r) { return r.json(); }).then(function(data) {
     var text = data.description || '';
     if (text) {
@@ -6527,6 +6527,8 @@ async function loadApp() {
       transmission_description: item.transmission_description || '',
       video_url: item.video_url || '',
       mileage: item.mileage || '',
+      horsepower: item.horsepower || '',
+      hours: item.hours || '',
       notes: item.notes || '',
       status: item.status || '',
       color: item.color || '',
