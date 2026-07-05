@@ -103,12 +103,19 @@ Do NOT write a "Key Details" section, bullet list, contact section, prices, or s
 }
 
 async function generateDescription(unit, dealer, apiKey) {
+  // Thousands-separator for odometer/hour values. Strip existing commas/units
+  // first so it is idempotent (some rows already store "369,791"); if the value
+  // is not a positive integer after stripping, return it unchanged (never NaN).
+  const formatNumber = (v) => {
+    const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) && n > 0 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : (v == null ? '' : String(v));
+  };
   const detailLines = [];
   if (unit.year)                   detailLines.push('- Year: ' + unit.year);
   if (unit.make)                   detailLines.push('- Make: ' + unit.make);
   if (unit.model)                  detailLines.push('- Model: ' + unit.model);
-  if (showMileage(unit))           detailLines.push('- Mileage: ' + unit.mileage);
-  if (showHours(unit))             detailLines.push('- Hours: ' + unit.hours);
+  if (showMileage(unit))           detailLines.push('- Mileage: ' + formatNumber(unit.mileage));
+  if (showHours(unit))             detailLines.push('- Hours: ' + formatNumber(unit.hours));
   if (trimSpec(unit.engine))       detailLines.push('- Engine: ' + trimSpec(unit.engine));
   // Horsepower from the inventory column with double-suffix guard — some feeds
   // store it with a unit already attached ("97 HP", "300 hp", "200-300 HP.").
