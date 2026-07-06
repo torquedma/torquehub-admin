@@ -2832,6 +2832,7 @@ async function toggleFeatured(stock, val) {
       if (u) u.featured = val;
       refreshAllViews();
       console.log('Featured updated:', stock, val);
+      if (u && u.dealer) afterInventoryMutation(u.dealer, 'toggle featured');
     } else {
       r.text().then(t => {
         console.warn('Featured update failed:', t);
@@ -4890,6 +4891,7 @@ async function confirmMarkSold() {
     }).then(r => {
       if (r.ok) {
         console.log('Marked sold:', u.stock);
+        if (u.dealer) afterInventoryMutation(u.dealer, 'mark sold');
       } else {
         r.text().then(t => {
           console.warn('Mark sold failed:', u.stock, r.status, t);
@@ -4921,6 +4923,7 @@ async function unmarkSold(key) {
     }).then(r => {
       if (r.ok) {
         console.log('Unmarked sold:', u.stock);
+        if (u.dealer) afterInventoryMutation(u.dealer, 'unmark sold');
       } else {
         r.text().then(t => {
           console.warn('Unmark sold failed:', u.stock, r.status, t);
@@ -4953,6 +4956,7 @@ async function removeListing(key) {
     }).then(r => {
       if (r.ok) {
         console.log('Deleted:', u.stock);
+        if (u.dealer) afterInventoryMutation(u.dealer, 'delete');
       } else {
         r.text().then(t => {
           console.warn('Remove listing failed:', u.stock, r.status, t);
@@ -6253,6 +6257,24 @@ async function publishDealerSites() {
 }
 
 // renderPublishDealerList is called directly inside renderSettings above
+
+// Same source of truth as pushDealerInventoryToBackend — no second dealer list.
+function dealerHasPublishTarget(dealerName) {
+  return !!(dealerName && PUBLISH_DEALERS.find(d => d.dealerKey === dealerName));
+}
+
+// Fire-and-forget auto-publish after any inventory mutation. Safe no-op for dealers
+// with no site; errors are swallowed (logged) so the caller's success path is never
+// blocked by a publish failure.
+async function afterInventoryMutation(dealerName, actionLabel) {
+  if (!dealerName) return;
+  if (!dealerHasPublishTarget(dealerName)) return;
+  try {
+    await pushDealerInventoryToBackend(dealerName);
+  } catch (err) {
+    console.warn('Auto-publish failed after ' + actionLabel, dealerName, err);
+  }
+}
 
 async function pushDealerInventoryToBackend(dealerKey, options = {}) {
   const dealer = PUBLISH_DEALERS.find(d => d.dealerKey === dealerKey);
