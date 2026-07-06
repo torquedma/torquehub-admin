@@ -49,6 +49,21 @@ function cleanTrim(unit) {
   return t;
 }
 
+// T1.2-A: provenance-aware usage line. Returns a formatted line (without the leading "- " / label
+// caller adds that) or null to omit. Precedence: not-applicable > unknown > disputed/qualified >
+// plain > (no provenance) fallback handled by caller via showMileage/showHours.
+// valueStr is the already-formatted plain value (e.g. "18,142") the caller would otherwise print.
+function usageProvenance(unit, factName) {
+  const p = unit && unit.provenance && unit.provenance[factName];
+  if (!p) return { mode: 'fallback' };                    // no provenance for this fact → caller uses existing gate
+  if (p.applicable === false) return { mode: 'omit' };    // not-applicable by equipment type
+  if (p.trust === 'unknown' || p.value === null || p.value === undefined) return { mode: 'unknown' };
+  const claims = Array.isArray(p.claims) ? p.claims : [];
+  const disputed = claims.some(c => c && (c.relation === 'disputes' || c.relation === 'estimates_actual' || c.relation === 'qualifies'));
+  if (disputed) return { mode: 'disputed', value: p.value };
+  return { mode: 'plain', value: p.value };               // clean attributed → plain
+}
+
 function buildPrompt(unit, dealer) {
   const price = unit.price ? '$' + Number(unit.price).toLocaleString() : 'Call for Price';
 
@@ -65,8 +80,22 @@ function buildPrompt(unit, dealer) {
   // generic taxonomy-shaped hook in place of the actual descriptor.
   const ct = cleanTrim(unit); if (ct) lines.push('Trim: ' + ct);
   lines.push('Price: ' + price);
-  if (showMileage(unit))               lines.push('Mileage: ' + unit.mileage);
-  if (showHours(unit))                 lines.push('Hours: ' + unit.hours);
+  {
+    const mp = usageProvenance(unit, 'mileage');
+    if (mp.mode === 'omit') { /* omit */ }
+    else if (mp.mode === 'unknown') { if (showMileage(unit) || unit.provenance?.mileage) lines.push('Mileage: reported unknown by seller'); }
+    else if (mp.mode === 'disputed') { lines.push('Mileage: ' + mp.value + ' (seller-reported; seller disputes accuracy)'); }
+    else if (mp.mode === 'plain') { if (showMileage(unit)) lines.push('Mileage: ' + mp.value); }
+    else { if (showMileage(unit)) lines.push('Mileage: ' + unit.mileage); }
+  }
+  {
+    const hp = usageProvenance(unit, 'hours');
+    if (hp.mode === 'omit') { /* omit */ }
+    else if (hp.mode === 'unknown') { if (showHours(unit) || unit.provenance?.hours) lines.push('Hours: reported unknown by seller'); }
+    else if (hp.mode === 'disputed') { lines.push('Hours: ' + hp.value + ' (seller-reported; seller disputes accuracy)'); }
+    else if (hp.mode === 'plain') { if (showHours(unit)) lines.push('Hours: ' + hp.value); }
+    else { if (showHours(unit)) lines.push('Hours: ' + unit.hours); }
+  }
   if (trimSpec(unit.engine))           lines.push('Engine: ' + trimSpec(unit.engine));
   if (trimSpec(unit.transmission))     lines.push('Transmission: ' + trimSpec(unit.transmission));
   if (unit.drivetrain)                 lines.push('Drivetrain: ' + unit.drivetrain);
@@ -114,8 +143,22 @@ async function generateDescription(unit, dealer, apiKey) {
   if (unit.year)                   detailLines.push('- Year: ' + unit.year);
   if (unit.make)                   detailLines.push('- Make: ' + unit.make);
   if (unit.model)                  detailLines.push('- Model: ' + unit.model);
-  if (showMileage(unit))           detailLines.push('- Mileage: ' + formatNumber(unit.mileage));
-  if (showHours(unit))             detailLines.push('- Hours: ' + formatNumber(unit.hours));
+  {
+    const mp = usageProvenance(unit, 'mileage');
+    if (mp.mode === 'omit') { /* not-applicable: render nothing */ }
+    else if (mp.mode === 'unknown') { if (showMileage(unit) || unit.provenance?.mileage) detailLines.push('- Mileage: reported unknown by seller'); }
+    else if (mp.mode === 'disputed') { detailLines.push('- Mileage: ' + formatNumber(mp.value) + ' (seller-reported; seller disputes accuracy)'); }
+    else if (mp.mode === 'plain') { if (showMileage(unit)) detailLines.push('- Mileage: ' + formatNumber(mp.value)); }
+    else { if (showMileage(unit)) detailLines.push('- Mileage: ' + formatNumber(unit.mileage)); }  // fallback: unchanged
+  }
+  {
+    const hp = usageProvenance(unit, 'hours');
+    if (hp.mode === 'omit') { /* not-applicable: render nothing */ }
+    else if (hp.mode === 'unknown') { if (showHours(unit) || unit.provenance?.hours) detailLines.push('- Hours: reported unknown by seller'); }
+    else if (hp.mode === 'disputed') { detailLines.push('- Hours: ' + formatNumber(hp.value) + ' (seller-reported; seller disputes accuracy)'); }
+    else if (hp.mode === 'plain') { if (showHours(unit)) detailLines.push('- Hours: ' + formatNumber(hp.value)); }
+    else { if (showHours(unit)) detailLines.push('- Hours: ' + formatNumber(unit.hours)); }  // fallback: unchanged
+  }
   if (trimSpec(unit.engine))       detailLines.push('- Engine: ' + trimSpec(unit.engine));
   // Horsepower from the inventory column with double-suffix guard — some feeds
   // store it with a unit already attached ("97 HP", "300 hp", "200-300 HP.").
