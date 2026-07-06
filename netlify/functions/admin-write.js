@@ -1,6 +1,7 @@
 'use strict';
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
+const { stampFacts } = require('./lib/provenance');
 
 // ---------------------------------------------------------------------------
 // FIELD ALLOWLISTS — only these fields may reach Supabase for each operation.
@@ -206,13 +207,24 @@ async function handleToggleFeatured({ data, svcKey }) {
 // OPERATION: create_inventory
 // POST /rest/v1/inventory  Prefer: return=representation (caller needs the id)
 // ---------------------------------------------------------------------------
-async function handleCreateInventory({ data, svcKey }) {
+async function handleCreateInventory({ data, svcKey, userEmail }) {
   let err;
   err = requireString(data, 'stock');  if (err) return { status: 400, body: { error: err } };
   err = requireString(data, 'dealer'); if (err) return { status: 400, body: { error: err } };
 
   const row = pickFields(data, INVENTORY_CREATE_FIELDS);
   if (!('sold' in row)) row.sold = false;
+
+  // Provenance (T1.1-c call site 3): server-side stamp. Client cannot send trust/provenance
+  // (not in allowlist). All admin-write creates are human_admin/attributed for now.
+  const provFactKeys = ['year','make','model','trim','mileage','vin','engine','transmission','drivetrain','hours','fuel','condition'];
+  const provFacts = {};
+  for (const k of provFactKeys) {
+    if (row[k] !== undefined && row[k] !== null && row[k] !== '') provFacts[k] = row[k];
+  }
+  if (Object.keys(provFacts).length > 0) {
+    row.provenance = stampFacts(null, provFacts, { source: 'human_admin', trust: 'attributed', actor: userEmail, mode: 'overwrite' });
+  }
 
   const res = await fetch(`${SUPABASE_URL}/rest/v1/inventory`, {
     method: 'POST',
@@ -240,13 +252,57 @@ async function handleCreateInventory({ data, svcKey }) {
 // filterStock = original stock to match on (stock in body may differ if renamed)
 // dealer guard added here — current browser code filtered stock-only on update
 // ---------------------------------------------------------------------------
-async function handleUpdateInventory({ data, svcKey }) {
+async function handleUpdateInventory({ data, svcKey, userEmail }) {
   let err;
   err = requireString(data, 'filterStock'); if (err) return { status: 400, body: { error: err } };
   err = requireString(data, 'dealer');      if (err) return { status: 400, body: { error: err } };
 
   // filterStock and dealer are URL-filter values only — strip from body payload
   const payload = pickFields(data, INVENTORY_UPDATE_FIELDS);
+
+  // Provenance (T1.1-c call site 3): fetch existing provenance as the MERGE BASE so an edit
+  // only changes provenance for the fields actually submitted; untouched fields keep theirs.
+  const provFactKeys = ['year','make','model','trim','mileage','vin','engine','transmission','drivetrain','hours','fuel','condition'];
+  const provFacts = {};
+  for (const k of provFactKeys) {
+    if (payload[k] !== undefined && payload[k] !== null && payload[k] !== '') provFacts[k] = payload[k];
+  }
+  if (Object.keys(provFacts).length > 0) {
+    // Fetch existing provenance as the MERGE BASE. FAIL-SAFE: if this fetch fails, we must NOT
+    // write provenance at all — writing from a null base on an UPDATE would replace the whole
+    // provenance object with just the edited fields, clobbering untouched (incl. verified) facts.
+    let existingProv = null;
+    let existingProvFetchOk = false;
+    try {
+      const getUrl = `${SUPABASE_URL}/rest/v1/inventory`
+        + `?select=provenance`
+        + `&stock=eq.${encodeURIComponent(data.filterStock.trim())}`
+        + `&dealer=eq.${encodeURIComponent(data.dealer.trim())}`;
+      const getRes = await fetch(getUrl, {
+        headers: {
+          'apikey':        svcKey,
+          'Authorization': 'Bearer ' + svcKey,
+          'Accept':        'application/json',
+        },
+      });
+      if (getRes.ok) {
+        const rows = await getRes.json();
+        existingProv = (Array.isArray(rows) && rows[0] && rows[0].provenance) ? rows[0].provenance : null;
+        existingProvFetchOk = true;
+      }
+    } catch (e) { existingProvFetchOk = false; }
+
+    if (existingProvFetchOk) {
+      // Merge from the real base (existingProv may legitimately be null for a never-stamped row —
+      // that's a genuine first-write, which is correct).
+      payload.provenance = stampFacts(existingProv, provFacts, { source: 'human_admin', trust: 'attributed', actor: userEmail, mode: 'overwrite' });
+    } else {
+      // Fetch failed — leave payload.provenance UNSET so the PATCH does not touch the provenance
+      // column. Values still update; provenance is preserved as-is and re-established on the next
+      // successful edit or dx/sync pass.
+      console.warn(`admin-write update_inventory: existing-provenance fetch failed for stock=${data.filterStock} dealer=${data.dealer} — skipping provenance write to avoid clobber.`);
+    }
+  }
 
   const url = `${SUPABASE_URL}/rest/v1/inventory`
     + `?stock=eq.${encodeURIComponent(data.filterStock.trim())}`
