@@ -351,13 +351,17 @@ exports.handler = async (event) => {
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
-    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked', 'GET');
+    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,sold', 'GET');
     const existingRows = JSON.parse(existing.body);
     const existingStocks = new Set(existingRows.map(r => normalizeHgrStock(r.stock)));
+    // soldStocks is LOAD-BEARING: already-sold rows never reappear in the feed, so without
+    // excluding them from toDelete they get re-PATCHed and sold_date restamped to today on
+    // EVERY run (nightly sold_date corruption). Fixed 2026-07-06. Do not remove this guard.
+    const soldStocks = new Set(existingRows.filter(r => r.sold === true).map(r => normalizeHgrStock(r.stock)));
     const lockedStocks = new Set(existingRows.filter(r => r.subcategory_locked).map(r => normalizeHgrStock(r.stock)));
     const modelLockedStocks = new Set(existingRows.filter(r => r.model_locked).map(r => normalizeHgrStock(r.stock)));
     const feedStocks = new Set(feedItems.map(i => i.stock));
-    const toDelete = [...existingStocks].filter(s => !feedStocks.has(s));
+    const toDelete = [...existingStocks].filter(s => !feedStocks.has(s) && !soldStocks.has(s));
 
     const markSoldSafe = !(feedStocks.size < existingStocks.size * 0.5 && existingStocks.size >= 10);
     if (!markSoldSafe) {
