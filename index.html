@@ -6075,7 +6075,7 @@ async function buildDealerPayload(dealerKey) {
 
   try {
     const photosRes = await fetch(
-      `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=stock,photos&dealer=eq.${encodeURIComponent(dealerKey)}&sold=eq.false&limit=1000`,
+      `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=stock,photos&dealer=eq.${encodeURIComponent(dealerKey)}&limit=1000`,
       { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
     );
     if (photosRes.ok) {
@@ -6089,7 +6089,7 @@ async function buildDealerPayload(dealerKey) {
   }
 
   return INVENTORY
-    .filter(u => u.dealer === dealerKey && !u.sold)
+    .filter(u => u.dealer === dealerKey)
     .map(u => {
       const f = freshByStock[u.stock] || u;
       const key = getListingKey(u);
@@ -6113,6 +6113,7 @@ async function buildDealerPayload(dealerKey) {
         engine_description: f.engine_description || null,
         transmission_description: f.transmission_description || null,
         category: f.category || null, subcategory: f.subcategory || null, siteTag: u.siteTag || null, featured: f.featured || 0, video_url: f.video_url || null,
+        sold: u.sold === true, sold_type: u.sold_type || null,
       };
     });
 }
