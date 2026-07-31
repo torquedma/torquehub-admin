@@ -171,14 +171,8 @@ async function generateDescription(unit, dealer, apiKey) {
   if (trimSpec(unit.transmission)) detailLines.push('- Transmission: ' + trimSpec(unit.transmission));
   if (unit.drivetrain)             detailLines.push('- Drivetrain: ' + unit.drivetrain);
   if (unit.fuel)                   detailLines.push('- Fuel: ' + unit.fuel);
-  // vPIC-enriched fields (verified, code-owned) — only when present.
-  const vp = unit._vpic || {};
-  if (vp.gvwrClass)  detailLines.push('- GVWR: ' + vp.gvwrClass);
-  if (vp.bodyClass)  detailLines.push('- Body Class: ' + vp.bodyClass);
-  // Inventory column wins over vPIC enrichment — emit vPIC horsepower only when
-  // the inventory column is absent, so the buyer sees at most one Horsepower line.
-  if (vp.horsepower && !unit.horsepower) detailLines.push('- Horsepower: ' + vp.horsepower + ' HP');
-  if (vp.torque)     detailLines.push('- Torque: ' + vp.torque + ' lb-ft');
+  if (unit.gvwr_class) detailLines.push('- GVWR: ' + unit.gvwr_class);
+  if (unit.body_class) detailLines.push('- Body Class: ' + unit.body_class);
   const priceNum = Number(String(unit.price).replace(/[^0-9.]/g, ''));
   if (priceNum > 0)                detailLines.push('- Price: $' + priceNum.toLocaleString());
   if (unit.vin)                    detailLines.push('- VIN: ' + unit.vin);
