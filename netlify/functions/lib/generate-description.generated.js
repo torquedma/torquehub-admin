@@ -20,7 +20,7 @@
 
 'use strict';
 
-const { showMileage, showHours } = require('./usage-display.generated.js');
+const { showMileage, showHours, usageClass } = require('./usage-display.generated.js');
 const { canonicalize }           = require('./taxonomy.generated.js');
 
 function trimSpec(val) {
@@ -49,19 +49,98 @@ function cleanTrim(unit) {
   return t;
 }
 
-// T1.2-A: provenance-aware usage line. Returns a formatted line (without the leading "- " / label
-// caller adds that) or null to omit. Precedence: not-applicable > unknown > disputed/qualified >
-// plain > (no provenance) fallback handled by caller via showMileage/showHours.
-// valueStr is the already-formatted plain value (e.g. "18,142") the caller would otherwise print.
+// T1.2-B Slice 1: provenance-aware usage classifier. Returns { mode, value, claim } where
+// claim is the matched SELLER-sourced claim (or null). Only seller claims surface to buyers —
+// internal notes (e.g. stampFacts-emitted 'contextualizes' claims) never do.
+// Precedence: not-applicable > unknown > disputed/estimated/qualified > plain > fallback.
 function usageProvenance(unit, factName) {
   const p = unit && unit.provenance && unit.provenance[factName];
   if (!p) return { mode: 'fallback' };                    // no provenance for this fact → caller uses existing gate
   if (p.applicable === false) return { mode: 'omit' };    // not-applicable by equipment type
-  if (p.trust === 'unknown' || p.value === null || p.value === undefined) return { mode: 'unknown' };
+
   const claims = Array.isArray(p.claims) ? p.claims : [];
-  const disputed = claims.some(c => c && (c.relation === 'disputes' || c.relation === 'estimates_actual' || c.relation === 'qualifies'));
-  if (disputed) return { mode: 'disputed', value: p.value };
-  return { mode: 'plain', value: p.value };               // clean attributed → plain
+  const sellerClaims = claims.filter(c => c && c.source === 'seller');
+  const unknownClaim  = sellerClaims.find(c => c.relation === 'states' && String(c.value == null ? '' : c.value).toLowerCase() === 'unknown') || null;
+  // Explicit precedence: estimates_actual > disputes > qualifies. estimates_actual is
+  // a superset (says inaccurate AND supplies the number) so it must win when both are present.
+  const byRel = (r) => sellerClaims.find(c => c.relation === r) || null;
+  const disputedClaim = byRel('estimates_actual') || byRel('disputes') || byRel('qualifies');
+
+  if (p.trust === 'unknown' || p.value === null || p.value === undefined || unknownClaim) {
+    return { mode: 'unknown', value: p.value, claim: unknownClaim };
+  }
+  if (disputedClaim) return { mode: 'disputed', value: p.value, claim: disputedClaim };
+  return { mode: 'plain', value: p.value, claim: null };  // clean attributed → plain
+}
+
+// Thousands-separator for odometer/hour values. Strip existing commas/units first so it is
+// idempotent; if not a positive integer after stripping, return the input unchanged (never NaN).
+function formatNumber(v) {
+  const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : (v == null ? '' : String(v));
+}
+
+// usageNoun — canonical meter-type vocabulary. Derived from usageClass() (subcategory
+// taxonomy, not a value guess). Returns null for 'neither' so callers can fall back.
+function usageNoun(unit) {
+  const cls = usageClass(unit);
+  if (cls === 'odometer')    return { verb: 'Odometer shows',   unit: 'miles', reading: 'odometer',   kind: 'mileage' };
+  if (cls === 'hours-based') return { verb: 'Hour meter shows', unit: 'hours', reading: 'hour-meter', kind: 'hours'   };
+  return null;
+}
+
+// buildUsageSentence — verbatim Overview sentence, deterministic. The LLM must reproduce
+// this string exactly; that responsibility is enforced by the USAGE DOCTRINE block in the
+// prompt. No branching by category outside usageNoun; no editorializing.
+function buildUsageSentence(unit, factName, value, claim) {
+  const n = usageNoun(unit);
+  const rel = claim && claim.relation;
+  const hasVal = value !== null && value !== undefined && String(value).trim() !== '';
+
+  // Meter type unknown ('neither' subcategory). Use neutral vocabulary but STILL append the
+  // seller attribution — dropping it would silently lose the dispute/estimate/unknown claim.
+  if (!n) {
+    console.warn('[usage-sentence] no meter type for ' + ((unit && unit.stock) || '?'));
+    const observation = hasVal ? ('Displayed usage is ' + formatNumber(value) + '.') : '';
+    let attribution = '';
+    if (rel === 'disputes') {
+      attribution = ' Seller states the reading is not accurate.';
+    } else if (rel === 'states') {
+      attribution = ' Seller states the actual usage is unknown.';
+    } else if (rel === 'estimates_actual') {
+      attribution = ' Seller states the reading is not accurate and reports approximately ' + formatNumber(claim.value) + ' in actual use.';
+    } else if (rel === 'qualifies') {
+      attribution = ' Seller states ' + (claim && (claim.note || claim.value)) + '.';
+    }
+    return (observation + attribution).trim();
+  }
+
+  const observation = hasVal ? (n.verb + ' ' + formatNumber(value) + ' ' + n.unit + '.') : '';
+  let attribution = '';
+  if (rel === 'disputes') {
+    attribution = ' Seller states the ' + n.reading + ' reading is not accurate.';
+  } else if (rel === 'states') {
+    const usageNoun2 = n.unit === 'hours' ? 'hours' : 'mileage';
+    const be = n.unit === 'hours' ? 'are' : 'is';
+    attribution = ' Seller states the actual ' + usageNoun2 + ' ' + be + ' unknown.';
+  } else if (rel === 'estimates_actual') {
+    attribution = ' Seller states the ' + n.reading + ' reading is not accurate and reports approximately ' + formatNumber(claim.value) + ' actual ' + n.unit + '.';
+  } else if (rel === 'qualifies') {
+    attribution = ' Seller states ' + (claim && (claim.note || claim.value)) + '.';
+  }
+  return (observation + attribution).trim();
+}
+
+// usageFlag — short Key Details parenthetical. Points buyers to the Overview for detail.
+function usageFlag(factName, claim, unit) {
+  const n = usageNoun(unit);
+  const word = n ? n.unit : 'usage';
+  const rel = claim && claim.relation;
+  if (rel === 'disputes')         return '(seller-disputed — see description)';
+  if (rel === 'states')           return '(actual ' + word + ' unknown — see description)';
+  if (rel === 'estimates_actual') return '(seller reports different actual ' + word + ' — see description)';
+  if (rel === 'qualifies')        return '(seller-qualified — see description)';
+  return '';
 }
 
 function buildPrompt(unit, dealer) {
@@ -83,16 +162,36 @@ function buildPrompt(unit, dealer) {
   {
     const mp = usageProvenance(unit, 'mileage');
     if (mp.mode === 'omit') { /* omit */ }
-    else if (mp.mode === 'unknown') { if (showMileage(unit) || unit.provenance?.mileage) lines.push('Mileage: reported unknown by seller'); }
-    else if (mp.mode === 'disputed') { lines.push('Mileage: ' + mp.value + ' (seller-reported; seller disputes accuracy)'); }
+    else if (mp.mode === 'unknown') {
+      if (showMileage(unit) || unit.provenance?.mileage) {
+        if (mp.claim) {
+          lines.push('USAGE STATEMENT (reproduce verbatim in the Overview): ' + buildUsageSentence(unit, 'mileage', mp.value, mp.claim));
+        } else {
+          lines.push('Mileage: reported unknown by seller');
+        }
+      }
+    }
+    else if (mp.mode === 'disputed') {
+      lines.push('USAGE STATEMENT (reproduce verbatim in the Overview): ' + buildUsageSentence(unit, 'mileage', mp.value, mp.claim));
+    }
     else if (mp.mode === 'plain') { if (showMileage(unit)) lines.push('Mileage: ' + mp.value); }
     else { if (showMileage(unit)) lines.push('Mileage: ' + unit.mileage); }
   }
   {
     const hp = usageProvenance(unit, 'hours');
     if (hp.mode === 'omit') { /* omit */ }
-    else if (hp.mode === 'unknown') { if (showHours(unit) || unit.provenance?.hours) lines.push('Hours: reported unknown by seller'); }
-    else if (hp.mode === 'disputed') { lines.push('Hours: ' + hp.value + ' (seller-reported; seller disputes accuracy)'); }
+    else if (hp.mode === 'unknown') {
+      if (showHours(unit) || unit.provenance?.hours) {
+        if (hp.claim) {
+          lines.push('USAGE STATEMENT (reproduce verbatim in the Overview): ' + buildUsageSentence(unit, 'hours', hp.value, hp.claim));
+        } else {
+          lines.push('Hours: reported unknown by seller');
+        }
+      }
+    }
+    else if (hp.mode === 'disputed') {
+      lines.push('USAGE STATEMENT (reproduce verbatim in the Overview): ' + buildUsageSentence(unit, 'hours', hp.value, hp.claim));
+    }
     else if (hp.mode === 'plain') { if (showHours(unit)) lines.push('Hours: ' + hp.value); }
     else { if (showHours(unit)) lines.push('Hours: ' + unit.hours); }
   }
@@ -113,6 +212,15 @@ ${lines.join('\n')}
 RAW DESCRIPTION:
 ${unit.raw_description || unit.description || ''}
 
+USAGE DOCTRINE:
+If UNIT INFO contains a line beginning "USAGE STATEMENT", you MUST reproduce that sentence verbatim and in full somewhere in the Overview, placed naturally. Do not rephrase, shorten, split, soften, or add to it. When reporting a disputed, unknown, qualified, or estimated usage reading:
+- report the displayed mileage or hours only as an observation;
+- attribute the seller's statement directly to the seller;
+- include any seller-provided estimated value exactly as given;
+- never resolve the disagreement or say which number is correct;
+- never present either value as verified;
+- never editorialize about the discrepancy or convert between units.
+
 CRITICAL ACCURACY RULE:
 Use ONLY information explicitly present in UNIT INFO or RAW DESCRIPTION above.
 Do not infer, guess, decode, assume, or add any engine manufacturer, horsepower, torque, body style, drivetrain, mileage, condition, or specification that is not explicitly stated in the source.
@@ -132,13 +240,6 @@ Do NOT write a "Key Details" section, bullet list, contact section, prices, or s
 }
 
 async function generateDescription(unit, dealer, apiKey) {
-  // Thousands-separator for odometer/hour values. Strip existing commas/units
-  // first so it is idempotent (some rows already store "369,791"); if the value
-  // is not a positive integer after stripping, return it unchanged (never NaN).
-  const formatNumber = (v) => {
-    const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
-    return Number.isFinite(n) && n > 0 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : (v == null ? '' : String(v));
-  };
   const detailLines = [];
   if (unit.year)                   detailLines.push('- Year: ' + unit.year);
   if (unit.make)                   detailLines.push('- Make: ' + unit.make);
@@ -146,16 +247,42 @@ async function generateDescription(unit, dealer, apiKey) {
   {
     const mp = usageProvenance(unit, 'mileage');
     if (mp.mode === 'omit') { /* not-applicable: render nothing */ }
-    else if (mp.mode === 'unknown') { if (showMileage(unit) || unit.provenance?.mileage) detailLines.push('- Mileage: reported unknown by seller'); }
-    else if (mp.mode === 'disputed') { detailLines.push('- Mileage: ' + formatNumber(mp.value) + ' (seller-reported; seller disputes accuracy)'); }
+    else if (mp.mode === 'unknown') {
+      if (showMileage(unit) || unit.provenance?.mileage) {
+        if (mp.claim) {
+          const hasVal = mp.value !== null && mp.value !== undefined && String(mp.value).trim() !== '';
+          detailLines.push(hasVal
+            ? '- Mileage: ' + formatNumber(mp.value) + ' ' + usageFlag('mileage', mp.claim, unit)
+            : '- Mileage: ' + usageFlag('mileage', mp.claim, unit));
+        } else {
+          detailLines.push('- Mileage: reported unknown by seller');
+        }
+      }
+    }
+    else if (mp.mode === 'disputed') {
+      detailLines.push('- Mileage: ' + formatNumber(mp.value) + ' ' + usageFlag('mileage', mp.claim, unit));
+    }
     else if (mp.mode === 'plain') { if (showMileage(unit)) detailLines.push('- Mileage: ' + formatNumber(mp.value)); }
     else { if (showMileage(unit)) detailLines.push('- Mileage: ' + formatNumber(unit.mileage)); }  // fallback: unchanged
   }
   {
     const hp = usageProvenance(unit, 'hours');
     if (hp.mode === 'omit') { /* not-applicable: render nothing */ }
-    else if (hp.mode === 'unknown') { if (showHours(unit) || unit.provenance?.hours) detailLines.push('- Hours: reported unknown by seller'); }
-    else if (hp.mode === 'disputed') { detailLines.push('- Hours: ' + formatNumber(hp.value) + ' (seller-reported; seller disputes accuracy)'); }
+    else if (hp.mode === 'unknown') {
+      if (showHours(unit) || unit.provenance?.hours) {
+        if (hp.claim) {
+          const hasVal = hp.value !== null && hp.value !== undefined && String(hp.value).trim() !== '';
+          detailLines.push(hasVal
+            ? '- Hours: ' + formatNumber(hp.value) + ' ' + usageFlag('hours', hp.claim, unit)
+            : '- Hours: ' + usageFlag('hours', hp.claim, unit));
+        } else {
+          detailLines.push('- Hours: reported unknown by seller');
+        }
+      }
+    }
+    else if (hp.mode === 'disputed') {
+      detailLines.push('- Hours: ' + formatNumber(hp.value) + ' ' + usageFlag('hours', hp.claim, unit));
+    }
     else if (hp.mode === 'plain') { if (showHours(unit)) detailLines.push('- Hours: ' + formatNumber(hp.value)); }
     else { if (showHours(unit)) detailLines.push('- Hours: ' + formatNumber(unit.hours)); }  // fallback: unchanged
   }
