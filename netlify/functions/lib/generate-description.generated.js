@@ -80,9 +80,15 @@ function formatNumber(v) {
   return Number.isFinite(n) && n > 0 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : (v == null ? '' : String(v));
 }
 
-// usageNoun — canonical meter-type vocabulary. Derived from usageClass() (subcategory
-// taxonomy, not a value guess). Returns null for 'neither' so callers can fall back.
-function usageNoun(unit) {
+// usageNoun — canonical meter-type vocabulary.
+// FACT-SCOPED first: the caller's factName ('mileage'|'hours') wins, because a given
+// sentence/flag is describing one specific fact. usageClass(unit) is only consulted when
+// factName is absent/unrecognized. This prevents rendering an hours claim on an odometer
+// truck as "Odometer shows N miles..." (unit-scoped noun mismatched to fact-scoped attribution).
+// Returns null when neither factName nor usageClass resolves — callers use the neutral path.
+function usageNoun(unit, factName) {
+  if (factName === 'mileage') return { verb: 'Odometer shows',   unit: 'miles', reading: 'odometer',   kind: 'mileage' };
+  if (factName === 'hours')   return { verb: 'Hour meter shows', unit: 'hours', reading: 'hour-meter', kind: 'hours'   };
   const cls = usageClass(unit);
   if (cls === 'odometer')    return { verb: 'Odometer shows',   unit: 'miles', reading: 'odometer',   kind: 'mileage' };
   if (cls === 'hours-based') return { verb: 'Hour meter shows', unit: 'hours', reading: 'hour-meter', kind: 'hours'   };
@@ -93,7 +99,7 @@ function usageNoun(unit) {
 // this string exactly; that responsibility is enforced by the USAGE DOCTRINE block in the
 // prompt. No branching by category outside usageNoun; no editorializing.
 function buildUsageSentence(unit, factName, value, claim) {
-  const n = usageNoun(unit);
+  const n = usageNoun(unit, factName);
   const rel = claim && claim.relation;
   const hasVal = value !== null && value !== undefined && String(value).trim() !== '';
 
@@ -133,7 +139,7 @@ function buildUsageSentence(unit, factName, value, claim) {
 
 // usageFlag — short Key Details parenthetical. Points buyers to the Overview for detail.
 function usageFlag(factName, claim, unit) {
-  const n = usageNoun(unit);
+  const n = usageNoun(unit, factName);
   const word = n ? n.unit : 'usage';
   const rel = claim && claim.relation;
   if (rel === 'disputes')         return '(seller-disputed — see description)';
