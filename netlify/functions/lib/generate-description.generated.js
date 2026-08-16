@@ -208,6 +208,12 @@ function buildPrompt(unit, dealer) {
   if (unit.vin)                        lines.push('VIN: ' + unit.vin);
   if (unit.stock)                      lines.push('Stock #: ' + unit.stock);
 
+  // unit.description is DELIBERATELY NOT a fallback here. It is prior Presentation
+  // output; feeding it back as a source seed makes each regeneration a paraphrase of
+  // the previous paraphrase, laundering provenance and letting the generator treat its
+  // own output as evidence. PRESENTATION OUTPUT IS NEVER A SOURCE INPUT.
+  const rawEvidence = unit.raw_description || '';
+
   return `You are writing inventory descriptions for Torque Hub, a commercial equipment marketplace.
 
 Rewrite the following raw seller description into the Torque Hub standard format:
@@ -216,7 +222,7 @@ UNIT INFO:
 ${lines.join('\n')}
 
 RAW DESCRIPTION:
-${unit.raw_description || unit.description || ''}
+${rawEvidence}
 
 USAGE DOCTRINE:
 If UNIT INFO contains a line beginning "USAGE STATEMENT", you MUST reproduce that sentence verbatim and in full somewhere in the Overview, placed naturally. Do not rephrase, shorten, split, soften, or add to it. When reporting a disputed, unknown, qualified, or estimated usage reading:
@@ -246,6 +252,27 @@ Do NOT write a "Key Details" section, bullet list, contact section, prices, or s
 }
 
 async function generateDescription(unit, dealer, apiKey) {
+  // EVIDENCE/PRESENTATION SEPARATION. Generation requires either genuine raw evidence, or
+  // enough canonical identity to say what the unit IS. `unit.description` is NEVER either:
+  // it is prior Presentation output, and promoting it upstream launders provenance.
+  // An epistemic refusal is NOT an execution failure — hence a typed error, so callers can
+  // distinguish "we declined to speak" from "generation broke".
+  const hasRawEvidence = !!String(unit.raw_description || '').trim();
+  if (!hasRawEvidence) {
+    // Placeholder values represent ABSENCE, not identity. "Unknown" and "Assorted" are truthy
+    // in JS but epistemically mean missing.
+    const rawMake = String(unit.make || '').trim();
+    const meaningfulMake = !!rawMake && !/^(unknown|assorted)$/i.test(rawMake);
+    const model = String(unit.model || '').trim();
+    // cleanTrim carries the taxonomy firewall: it returns '' for bare subcategory leakage,
+    // model fragments, and condition words, so a suppressed trim correctly fails this gate.
+    const hasIdentity = !!((meaningfulMake && model) || cleanTrim(unit));
+    if (!hasIdentity) {
+      const err = new Error('No source evidence and insufficient canonical identity to generate DX.');
+      err.code = 'INSUFFICIENT_EVIDENCE';
+      throw err;
+    }
+  }
   const detailLines = [];
   if (unit.year)                   detailLines.push('- Year: ' + unit.year);
   if (unit.make)                   detailLines.push('- Make: ' + unit.make);
