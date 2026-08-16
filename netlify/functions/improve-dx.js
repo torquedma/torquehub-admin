@@ -55,6 +55,16 @@ exports.handler = async function (event) {
       body: JSON.stringify({ description })
     };
   } catch (err) {
+    if (err.code === 'INSUFFICIENT_EVIDENCE') {
+      // Not a server failure. The request was well-formed; the UNIT lacks the evidence
+      // required to generate honestly. 422 = understood but unprocessable.
+      console.log('improve-dx refused:', unit && unit.stock, err.message);
+      return {
+        statusCode: 422,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refused: 'INSUFFICIENT_EVIDENCE', error: err.message })
+      };
+    }
     console.error('improve-dx error:', err.message);
     const status = err.message.startsWith('Anthropic API') ? 502 : 500;
     return {
