@@ -2,6 +2,7 @@
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 const { stampFacts } = require('./lib/provenance');
+const { publishToDealerAndLog, lookupDealerByStock } = require('./lib/publish-to-dealer');
 
 // ---------------------------------------------------------------------------
 // FIELD ALLOWLISTS — only these fields may reach Supabase for each operation.
@@ -200,7 +201,13 @@ async function handleToggleFeatured({ data, svcKey }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  return { status: 200, body: { ok: true } };
+
+  // Server-side publish: toggle_featured's signature does not carry dealer,
+  // so we resolve dealer by stock via a small SELECT. Documented deliberate
+  // choice; see publish-to-dealer.js lookupDealerByStock().
+  const dealerKey = await lookupDealerByStock(stock, svcKey);
+  const publish   = await publishToDealerAndLog(dealerKey, svcKey);
+  return { status: 200, body: { ok: true, publish } };
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +399,9 @@ async function handleMarkSold({ data, svcKey }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  return { status: 200, body: { ok: true } };
+
+  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
+  return { status: 200, body: { ok: true, publish } };
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +443,9 @@ async function handleUnmarkSold({ data, svcKey }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  return { status: 200, body: { ok: true } };
+
+  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
+  return { status: 200, body: { ok: true, publish } };
 }
 
 // ---------------------------------------------------------------------------
@@ -463,7 +474,9 @@ async function handleRemoveInventory({ data, svcKey }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  return { status: 200, body: { ok: true } };
+
+  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
+  return { status: 200, body: { ok: true, publish } };
 }
 
 // ---------------------------------------------------------------------------

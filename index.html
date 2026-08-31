@@ -2835,6 +2835,23 @@ function setInvFeaturedFilter(el) {
 }
 var invFeaturedOnly = false;
 
+// _notePublishResult — minimal visible failure surface for the server-side
+// publish leg of admin-write ops. Silent on 'success' or 'skipped'; toasts
+// and console-warns on 'failed'. Reads publish info from the admin-write
+// JSON response body's `publish` field.
+function _notePublishResult(publish, opLabel) {
+  if (!publish || publish.status === 'success' || publish.status === 'skipped') return;
+  console.warn('[server publish] ' + (opLabel || '') + ':', publish);
+  try {
+    const msg = document.getElementById('edit-saved-msg');
+    if (msg) {
+      msg.textContent = '⚠ Server publish failed: ' + (publish.dealer_name || 'unknown');
+      msg.classList.add('show');
+      setTimeout(() => { msg.textContent = '✓ Saved'; msg.classList.remove('show'); }, 4000);
+    }
+  } catch (_) {}
+}
+
 async function toggleFeatured(stock, val) {
   fetch('/.netlify/functions/admin-write', {
     method: 'POST',
@@ -2843,8 +2860,9 @@ async function toggleFeatured(stock, val) {
       'Authorization': 'Bearer ' + (await getValidToken())
     },
     body: JSON.stringify({ operation: 'toggle_featured', data: { stock: stock, featured: val } })
-  }).then(r => {
+  }).then(async r => {
     if (r.ok) {
+      const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'toggle_featured');
       const u = INVENTORY.find(u => u.stock === stock);
       if (u) u.featured = val;
       refreshAllViews();
@@ -4905,8 +4923,9 @@ async function confirmMarkSold() {
         sale_price: salePriceNum, sold_date: u.saleDate || null,
         sold_at: soldAtIso, public_sold: !!u.keepPublic
       }})
-    }).then(r => {
+    }).then(async r => {
       if (r.ok) {
+        const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'mark_sold');
         console.log('Marked sold:', u.stock);
         if (u.dealer) afterInventoryMutation(u.dealer, 'mark sold');
       } else {
@@ -4937,8 +4956,9 @@ async function unmarkSold(key) {
         'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'unmark_sold', data: { stock: u.stock, dealer: u.dealer } })
-    }).then(r => {
+    }).then(async r => {
       if (r.ok) {
+        const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'unmark_sold');
         console.log('Unmarked sold:', u.stock);
         if (u.dealer) afterInventoryMutation(u.dealer, 'unmark sold');
       } else {
@@ -4970,8 +4990,9 @@ async function removeListing(key) {
         'Authorization': 'Bearer ' + (await getValidToken())
       },
       body: JSON.stringify({ operation: 'remove_inventory', data: { stock: u.stock, dealer: u.dealer } })
-    }).then(r => {
+    }).then(async r => {
       if (r.ok) {
+        const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'remove_inventory');
         console.log('Deleted:', u.stock);
         if (u.dealer) afterInventoryMutation(u.dealer, 'delete');
       } else {
