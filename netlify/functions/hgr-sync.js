@@ -351,7 +351,7 @@ exports.handler = async (event) => {
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
-    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,sold', 'GET');
+    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,sold,dx_locked', 'GET');
     const existingRows = JSON.parse(existing.body);
     const existingStocks = new Set(existingRows.map(r => normalizeHgrStock(r.stock)));
     // soldStocks is LOAD-BEARING: already-sold rows never reappear in the feed, so without
@@ -360,6 +360,12 @@ exports.handler = async (event) => {
     const soldStocks = new Set(existingRows.filter(r => r.sold === true).map(r => normalizeHgrStock(r.stock)));
     const lockedStocks = new Set(existingRows.filter(r => r.subcategory_locked).map(r => normalizeHgrStock(r.stock)));
     const modelLockedStocks = new Set(existingRows.filter(r => r.model_locked).map(r => normalizeHgrStock(r.stock)));
+    // dxLockedStocks is LOAD-BEARING: this sync writes its own legacy buildTorqueHubDX
+    // output into `description`, the buyer-facing SSOT. ONLY generate-dx-background
+    // guards on dx_locked (documented 2026-06-20), so without this set every nightly
+    // run silently overwrites human-approved Canonical DX on locked rows — which is
+    // exactly what erased 163 reviewed Overviews on 2026-08-31. Do not remove.
+    const dxLockedStocks = new Set(existingRows.filter(r => r.dx_locked).map(r => normalizeHgrStock(r.stock)));
     const feedStocks = new Set(feedItems.map(i => i.stock));
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s) && !soldStocks.has(s));
 
@@ -396,7 +402,7 @@ exports.handler = async (event) => {
       // }
       if (existingStocks.has(item.stock)) {
         let patchPayload = item;
-        if (lockedStocks.has(item.stock) || modelLockedStocks.has(item.stock)) {
+        if (lockedStocks.has(item.stock) || modelLockedStocks.has(item.stock) || dxLockedStocks.has(item.stock)) {
           patchPayload = Object.assign({}, item);
           if (lockedStocks.has(item.stock)) {
             delete patchPayload.subcategory;
@@ -406,6 +412,11 @@ exports.handler = async (event) => {
           if (modelLockedStocks.has(item.stock)) {
             delete patchPayload.make;
             delete patchPayload.model;
+          }
+          if (dxLockedStocks.has(item.stock)) {
+            // raw_description is Evidence Layer and MUST keep flowing.
+            delete patchPayload.description;
+            delete patchPayload.description_source;
           }
         }
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', patchPayload);
