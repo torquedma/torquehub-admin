@@ -5586,8 +5586,7 @@ async function decodeVinAndFill(vin, map) {
   if (!validation.valid) throw new Error(validation.message);
   const cleanVin = (vin || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
-  const modelYear = document.getElementById(map.year)?.value?.trim() || '';
-  const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(cleanVin)}?format=json${modelYear ? `&modelyear=${encodeURIComponent(modelYear)}` : ''}`;
+  const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(cleanVin)}?format=json`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Decoder request failed (${res.status})`);
 
