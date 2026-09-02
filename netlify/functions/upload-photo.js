@@ -97,9 +97,9 @@ exports.handler = async function (event) {
       };
     }
 
-    const { imageUrl, dealerSlug, stockNum, index } = JSON.parse(event.body || "{}");
+    const { imageUrl, dealerSlug, stockNum, index, filename, upsert } = JSON.parse(event.body || "{}");
 
-    console.log("REQUEST — dealerSlug:", dealerSlug, "stockNum:", stockNum, "index:", index);
+    console.log("REQUEST — dealerSlug:", dealerSlug, "stockNum:", stockNum, "index:", index, "filename:", filename, "upsert:", upsert === true);
     console.log("REQUEST — imageUrl starts with:", imageUrl ? imageUrl.substring(0, 60) : "MISSING");
 
     if (!imageUrl || !dealerSlug || !stockNum) {
@@ -112,7 +112,22 @@ exports.handler = async function (event) {
 
     const safeDealer = String(dealerSlug).toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const safeStock = String(stockNum).replace(/[^a-z0-9-]/gi, "-");
+    // Prefer collision-proof client-generated `filename` base (sanitized). Falls back to
+    // legacy numeric `index` slot only for browser tabs open at deploy time — new callers
+    // pass `filename` and never `index`.
+    let safeFilename = "";
+    if (filename !== undefined && filename !== null) {
+      safeFilename = String(filename).replace(/[^a-z0-9-]/gi, "-").slice(0, 40);
+      if (!safeFilename) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ error: "filename empty after sanitization" })
+        };
+      }
+    }
     const safeIndex = Number.isFinite(Number(index)) ? Number(index) : 0;
+    const pathBase = safeFilename || String(safeIndex);
 
     let contentType = "image/jpeg";
     let ext = "jpg";
@@ -183,19 +198,23 @@ exports.handler = async function (event) {
       };
     }
 
-    const path = `${safeDealer}/${safeStock}/${safeIndex}.${ext}`;
+    const path = `${safeDealer}/${safeStock}/${pathBase}.${ext}`;
     const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${path}`;
     console.log("UPLOAD — path:", path);
     console.log("UPLOAD — url:", uploadUrl);
 
+    // x-upsert is opt-in: caller must set body { upsert: true }. Default is fail-fast on
+    // collision so a naming bug can never silently overwrite existing bytes.
+    const uploadHeaders = {
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      "Content-Type": contentType
+    };
+    if (upsert === true) uploadHeaders["x-upsert"] = "true";
+
     const uploadResp = await fetch(uploadUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        "Content-Type": contentType,
-        "x-upsert": "true"
-      },
+      headers: uploadHeaders,
       body: bodyBytes
     });
 

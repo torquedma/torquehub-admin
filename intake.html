@@ -360,13 +360,18 @@
     return photoTiles.filter(t => t.selectedForAnalysis && !t.error).length;
   }
 
-  // Storage slot for the next file upload — max of current tiles' slots + 1,
-  // or 0 if none. Prevents /N.jpg collisions when a photo is removed then
-  // another added. (When the array is emptied via removes, slot 0 is reused;
-  // upload-photo.js sets x-upsert:true so that overwrites the stale blob.)
+  // Internal ordering hint only. Storage object naming is delegated to
+  // newPhotoFilename() (collision-proof: timestamp + short random suffix),
+  // so this no longer controls the storage path.
   function nextUploadSlot() {
     const slots = photoTiles.map(t => t.slot).filter(s => typeof s === 'number');
     return slots.length ? Math.max.apply(null, slots) + 1 : 0;
+  }
+
+  // Collision-proof storage object name base. Server appends `.${ext}` from ContentType.
+  // Kept in sync with index.html's newPhotoFilename().
+  function newPhotoFilename() {
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
   }
 
   function derivePhotoName(url, fallbackIdx) {
@@ -468,15 +473,15 @@
     });
   }
 
-  // ── VERBATIM from index.html:1973-1985 ─────────────────────────────────────
-  async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, index) {
+  // ── Kept in sync with index.html's uploadPhotoViaNetlify (filename-based naming)
+  async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, filename) {
     const resp = await fetch('/.netlify/functions/upload-photo', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + (await getValidToken())
       },
-      body: JSON.stringify({ imageUrl, dealerSlug, stockNum, index })
+      body: JSON.stringify({ imageUrl, dealerSlug, stockNum, filename })
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(data.error || 'Upload failed');
@@ -539,7 +544,7 @@
       const dataUrl = await compressImage(rawDataUrl);
       tile.dataUrl = dataUrl;
       renderPhotoGrid(); // show thumbnail preview while upload is in flight
-      const returnedUrl = await uploadPhotoViaNetlify(dataUrl, dealer, stock, slot);
+      const returnedUrl = await uploadPhotoViaNetlify(dataUrl, dealer, stock, newPhotoFilename());
       tile.url = returnedUrl;
       tile.uploading = false;
       delete tile.dataUrl;

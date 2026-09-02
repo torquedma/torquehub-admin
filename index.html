@@ -1941,7 +1941,12 @@ function getListingCat(u) {
 // Photo storage: persisted to localStorage automatically
 const PHOTO_STORE_KEY = 'torquehub_photos_v1';
 const PHOTO_STORE = {};
-const PHOTO_LOADED = {};
+// PHOTO_STATE: 'UNLOADED' (absent) | 'LOADING' | 'LOADED' | 'FAILED'. Session-only.
+// Every open of a saved-listing modal synchronously sets 'LOADING' before hydration
+// starts, so a stale 'LOADED' from a prior open cannot authorize a mutator during
+// the fresh open's hydration window. LOADED is required to upload, delete, reorder,
+// rotate, import, or save photos for a listing.
+const PHOTO_STATE = {};
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg';
 // Clear any stale photo cache from localStorage (photos now live in Supabase only)
 try { localStorage.removeItem('torquehub_photos_v1'); } catch(e) {}
@@ -1969,14 +1974,32 @@ function getCurrentListingPhotoContext() {
   return { listing, dealerSlug, stockNum };
 }
 
-async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, index) {
+// Collision-proof storage object name base. Server appends `.${ext}` from ContentType.
+// Timestamp (base36) + 6-char random suffix — effectively unique for our upload volume.
+function newPhotoFilename() {
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+// Refuse a mutator when PHOTO_STATE for the key isn't LOADED. Alerts the operator so
+// silent no-ops don't hide the refusal.
+function ensurePhotoOpsAllowed(key) {
+  const s = PHOTO_STATE[key];
+  if (s === 'LOADED') return true;
+  const reason = s === 'LOADING' ? 'Photos are still loading. Please wait a moment and try again.'
+              : s === 'FAILED'  ? 'Photos failed to load for this listing. Close and reopen to retry.'
+              :                   'Photos not loaded for this listing.';
+  alert(reason);
+  return false;
+}
+
+async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, filename) {
   const resp = await fetch('/.netlify/functions/upload-photo', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ' + (await getValidToken())
     },
-    body: JSON.stringify({ imageUrl, dealerSlug, stockNum, index })
+    body: JSON.stringify({ imageUrl, dealerSlug, stockNum, filename })
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(data.error || 'Upload failed');
@@ -1985,6 +2008,7 @@ async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, index) {
 
 async function pushPhotoToCurrentListing(photo) {
   if (!currentListingKey) return;
+  if (!ensurePhotoOpsAllowed(currentListingKey)) return;
   if (!PHOTO_STORE[currentListingKey]) PHOTO_STORE[currentListingKey] = [];
 
   const { dealerSlug, stockNum } = getCurrentListingPhotoContext();
@@ -1999,7 +2023,7 @@ async function pushPhotoToCurrentListing(photo) {
 
   if (!isCreateMode && source && typeof source === 'string' && !isSupabaseStorageUrl(source)) {
     try {
-      finalUrl = await uploadPhotoViaNetlify(source, dealerSlug, stockNum, PHOTO_STORE[currentListingKey].length);
+      finalUrl = await uploadPhotoViaNetlify(source, dealerSlug, stockNum, newPhotoFilename());
       storage = 'supabase';
     } catch (err) {
       console.warn('Supabase upload failed, keeping temporary source:', err.message);
@@ -2651,6 +2675,10 @@ function openPhotoModal(listingKey) {
   currentListingKey = listingKey;
   if (u) u._originalStock = u.stock;
   if (!PHOTO_STORE[listingKey]) PHOTO_STORE[listingKey] = [];
+  // SYNCHRONOUSLY enter LOADING before renderPhotoGrid() and before the async IIFE.
+  // This overrides any stale 'LOADED' from a prior open — per OPEN ATTEMPT, not per key.
+  // Create-mode branch below transitions to 'LOADED' immediately (no hydration needed).
+  PHOTO_STATE[listingKey] = 'LOADING';
 
   document.getElementById("modal-title").textContent = `${u.year} ${u.make} ${u.model}`;
   document.getElementById("modal-sub").textContent = `${u.featured ? "⭐ Featured · " : ""}Stock #${u.stock || "N/A"} · ${u.dealer}`;
@@ -2663,11 +2691,9 @@ function openPhotoModal(listingKey) {
 
   (async function() {
     if (!u.id) {
-      // create mode — keep staged photos, init once
-      if (!PHOTO_LOADED[listingKey]) {
-        PHOTO_STORE[listingKey] = PHOTO_STORE[listingKey] || [];
-        PHOTO_LOADED[listingKey] = true;
-      }
+      // create mode — no server-side photos exist; staged photos are already authoritative
+      PHOTO_STORE[listingKey] = PHOTO_STORE[listingKey] || [];
+      PHOTO_STATE[listingKey] = 'LOADED';
       return;
     }
     try {
@@ -2679,6 +2705,7 @@ function openPhotoModal(listingKey) {
         }}
       );
       if (!r.ok) {
+        PHOTO_STATE[listingKey] = 'FAILED';
         const _pmsg = document.getElementById('edit-saved-msg');
         if (_pmsg) {
           _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
@@ -2699,9 +2726,10 @@ function openPhotoModal(listingKey) {
           type: 'url', fromUrl: true, storage: 'supabase'
         };
       });
-      PHOTO_LOADED[listingKey] = true;
+      PHOTO_STATE[listingKey] = 'LOADED';
       if (currentListingKey === listingKey) renderPhotoGrid();
     } catch(e) {
+      PHOTO_STATE[listingKey] = 'FAILED';
       console.warn('Photo lazy-fetch failed for', listingKey, ':', e);
       const _pmsg = document.getElementById('edit-saved-msg');
       if (_pmsg) {
@@ -2937,13 +2965,13 @@ async function saveListingEdits() {
     const staged = PHOTO_STORE[tempKey] || [];
     const UPLOAD_CONCURRENCY = 6;
 
-    // Build one task-function per staged photo. Staged index i is used as the
-    // storage slot (not uploadedPhotos.length) so positions are deterministic
-    // regardless of which parallel upload resolves first.
+    // Build one task-function per staged photo. Each upload gets a collision-proof
+    // storage filename (timestamp + random suffix); order in the DB `photos` array
+    // comes from the position we push into uploadedPhotos, not the storage key.
     const uploadTasks = staged.map((p, i) => {
       const source = p.url || p.dataUrl;
       if (typeof source === 'string' && source.startsWith('data:')) {
-        return () => uploadPhotoViaNetlify(source, dealerSlug, stockNum, i)
+        return () => uploadPhotoViaNetlify(source, dealerSlug, stockNum, newPhotoFilename())
           .then(storageUrl => ({ ok: true, photo: { ...p, url: storageUrl, dataUrl: storageUrl, type: 'url', fromUrl: false, storage: 'supabase' } }))
           .catch(err => {
             console.warn('saveListingEdits INSERT photo upload failed:', p.name, err.message);
@@ -3022,6 +3050,11 @@ async function saveListingEdits() {
     const realKey = getListingKey(newUnit);
     PHOTO_STORE[realKey] = uploadedPhotos;
     delete PHOTO_STORE[tempKey];
+    // Photos we just uploaded ARE the authoritative set for realKey — mark LOADED
+    // so subsequent saves in the same modal session pass the save-guard. Clear the
+    // TMP- entry to keep PHOTO_STATE from leaking stale keys.
+    PHOTO_STATE[realKey] = 'LOADED';
+    delete PHOTO_STATE[tempKey];
 
     if (stock) LISTING_CAT_OVERRIDES[stock] = category;
     LISTING_CAT_OVERRIDES[realKey] = category;
@@ -3185,6 +3218,13 @@ async function saveListingEdits() {
   if (newKey !== oldKey && PHOTO_STORE[oldKey]) {
     PHOTO_STORE[newKey] = PHOTO_STORE[oldKey];
     delete PHOTO_STORE[oldKey];
+    // Migrate hydration state along with the store, or the immediately-following
+    // save guard (requires PHOTO_STATE[newKey] === 'LOADED') would silently skip
+    // photos:[...] on a legitimate rename-and-save.
+    if (PHOTO_STATE[oldKey] !== undefined) {
+      PHOTO_STATE[newKey] = PHOTO_STATE[oldKey];
+      delete PHOTO_STATE[oldKey];
+    }
     savePhotoStore();
   }
 
@@ -3219,8 +3259,10 @@ async function saveListingEdits() {
       else console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock);
     }).catch(err => console.warn('[saveListingEdits UPDATE] Save error:', err.message));
 
-  // Save photos to Supabase
-  if (u.stock && PHOTO_LOADED[getListingKey(u)]) {
+  // Save photos to Supabase — require explicit LOADED state (not LOADING/FAILED/UNLOADED).
+  // Guards Defect B: a stale-authorized empty-array wipe cannot fire, because a LOADING or
+  // FAILED hydration never transitions to LOADED and this branch is skipped.
+  if (u.stock && PHOTO_STATE[getListingKey(u)] === 'LOADED') {
     const _rawPhotos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
     const _seen = new Set();
     const photos = _rawPhotos.filter(p => { if (!p.url || _seen.has(p.url)) return false; _seen.add(p.url); return true; });
@@ -3471,6 +3513,7 @@ function photoDrop(e, targetIndex) {
   e.preventDefault();
   e.currentTarget.style.outline = '';
   if (dragSrcIndex === null || dragSrcIndex === targetIndex) return;
+  if (!ensurePhotoOpsAllowed(currentListingKey)) { dragSrcIndex = null; return; }
   const photos = PHOTO_STORE[currentListingKey];
   const moved = photos.splice(dragSrcIndex, 1)[0];
   photos.splice(targetIndex, 0, moved);
@@ -3637,6 +3680,7 @@ async function handleDrop(e) {
 
 // ---- Remove photo ----
 function removePhoto(index) {
+  if (!ensurePhotoOpsAllowed(currentListingKey)) return;
   PHOTO_STORE[currentListingKey].splice(index, 1);
   savePhotoStore();
   renderPhotoGrid();
@@ -3699,6 +3743,7 @@ function zoomPhoto(i) {
 
 // ---- Rotate photo 90° clockwise ----
 async function rotatePhoto(i) {
+  if (!ensurePhotoOpsAllowed(currentListingKey)) return;
   const photos = PHOTO_STORE[currentListingKey];
   if (!photos || !photos[i]) return;
   const p = photos[i];
@@ -4129,6 +4174,7 @@ function updateScrapeImportBtn() {
 }
 
 function importSelectedScrapePhotos() {
+  if (!ensurePhotoOpsAllowed(currentListingKey)) return;
   const selected = scrapeResults.filter(r => r.selected);
   selected.forEach(r => {
     const name = r.src.split("/").pop().split("?")[0] || "scraped-image.jpg";
@@ -4555,6 +4601,7 @@ let pendingBookmarkletPhotos = null;
 
 function injectBookmarkletPhotos(photos) {
   if (!currentListingKey) return;
+  if (!ensurePhotoOpsAllowed(currentListingKey)) return;
   if (!PHOTO_STORE[currentListingKey]) PHOTO_STORE[currentListingKey] = [];
   photos.forEach(function(url) {
     let name = url.split('?')[0].split('/').pop() || 'photo.jpg';
@@ -4707,7 +4754,7 @@ async function downloadListingPhotos(key, triggerBtn = null) {
                    url: photoUrl, dataUrl: photoUrl, type: 'url', fromUrl: true, storage: 'supabase' };
         });
         PHOTO_STORE[key] = photos;
-        PHOTO_LOADED[key] = true;
+        PHOTO_STATE[key] = 'LOADED';
       } else {
         photos = PHOTO_STORE[key] || [];
       }
@@ -5246,7 +5293,13 @@ async function settingsRemoveDealer(i) {
 function settingsClearPhotos() {
   const count = Object.keys(PHOTO_STORE).length;
   if (!confirm(`Clear all photos for ${count} listing${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
-  Object.keys(PHOTO_STORE).forEach(k => delete PHOTO_STORE[k]);
+  // Invalidate hydration state alongside the store. Without this, PHOTO_STATE[k] would
+  // remain 'LOADED' after the store was wiped, and Defect B (save guard passing on a
+  // stale-true flag over an empty array) would fire on the next Save for those keys.
+  Object.keys(PHOTO_STORE).forEach(k => {
+    delete PHOTO_STORE[k];
+    delete PHOTO_STATE[k];
+  });
   savePhotoStore();
   renderSettings();
   renderInventory();
@@ -5493,7 +5546,7 @@ function openCreateListingModal(prefillSource) {
   currentListingKey = tempKey;
   CREATE_MODE_CONTEXT = { tempKey, dealer: u.dealer, category: u.category };
   PHOTO_STORE[tempKey] = [];
-  PHOTO_LOADED[tempKey] = true;
+  PHOTO_STATE[tempKey] = 'LOADED';
 
   // Modal header — title reflects decoded values if present, else generic
   const headerYMM = [u.year, u.make, u.model].filter(Boolean).join(' ').trim();
