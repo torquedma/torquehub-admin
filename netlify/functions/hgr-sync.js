@@ -373,8 +373,17 @@ exports.handler = async (event) => {
     if (!markSoldSafe) {
       console.error('ABORT mark-sold: feed has ' + feedStocks.size + ' stocks vs ' + existingStocks.size + ' existing (<50%, existing>=10). Skipping ' + toDelete.length + ' deletes to protect against partial-scrape failure.');
     }
+    // 2026-09-04 INVENTORY AUTHORITY FREEZE. HGR is in the freeze set: the XML
+    // feed at unitinventory_univ.xml is the correct MECHANISM (dealer-hosted) but
+    // its COMPLETENESS versus the dealer website has not been authenticated.
+    // Do not let feed absence set sold_type='feed_removed' until the XML has been
+    // shown to contain every unit the dealer website advertises. Remove this
+    // constant only after that authentication is on file.
+    const FREEZE_MARK_SOLD = true;
     let markedSoldCount = 0, errors = 0;
-    if (markSoldSafe) {
+    if (FREEZE_MARK_SOLD) {
+      console.warn('FREEZE ' + DEALER + ': mark-sold loop skipped entirely (0 units mark-sold this run). ' + toDelete.length + ' rows would have been mark-sold.');
+    } else if (markSoldSafe) {
       for (const stock of toDelete) {
         const r = await supabaseFetch(
           '/rest/v1/inventory?stock=eq.' + encodeURIComponent(stock) + '&dealer=eq.' + encodeURIComponent(DEALER),
