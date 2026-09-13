@@ -276,12 +276,6 @@ If a Trim value is provided in UNIT INFO, use the full "[Year] [Make] [Model] [T
 Do NOT write a "Key Details" section, bullet list, contact section, prices, or specs lists. ONLY the headline line, then "===", then the Overview prose.`;
 }
 
-// Deterministic identity headline. Extracted verbatim from the expression previously inline
-// at the response-parsing step, so the LLM path and a future no-LLM path cannot drift apart.
-function buildDefaultHeadline(unit) {
-  return [unit.year, unit.make, unit.model, cleanTrim(unit)].filter(Boolean).join(' ') || 'Unit Available';
-}
-
 // Contact block. Extracted verbatim from the former assembly block.
 // ★ NOTE the contactBits join: when phone is absent but location is present, location is
 // promoted into the colon slot ("Call Dealer: Sanford, FL"). That is EXISTING behavior and
@@ -409,8 +403,12 @@ async function generateDescription(unit, dealer, apiKey) {
   // ★ There is deliberately NO 'Overview' heading here. Emitting the heading with nothing
   // under it would be silent rather than empty-but-named.
   if (normalized && normalized.handling === 'normalized' && normalized.leadProse.length === 0) {
-    const headline = buildDefaultHeadline(unit);
-    const text = headline + '\n\nKey Details\n' + detailLines.join('\n');
+    // PRESENTATION CONFORMANCE (2026-09-13). Canonical DX has no standalone
+    // headline. Established from the Lane A conformed population: 113 of 113
+    // adjudicated live-unsold rows across the three CLOSED dealers — Auto
+    // Connection 210 (30), Davenport (39) and Allied's conformed 44 — begin
+    // at "Key Details". Every exception was an unconformed fresh insert.
+    const text = 'Key Details\n' + detailLines.join('\n');
     return appendContact(text, dealer);
   }
 
@@ -442,13 +440,15 @@ async function generateDescription(unit, dealer, apiKey) {
   // Identity is deterministic. Only the Overview prose is model-authored.
   // The === split is retained because the model still emits a headline
   // segment; that segment is now discarded rather than published.
+  // The model still emits a headline segment under the current OUTPUT
+  // FORMAT; it is split off and discarded. The output contract is
+  // deliberately NOT changed in this patch.
   const parts = raw.split(/\n?===\n?/);
-  const headline = buildDefaultHeadline(unit);
   let overview = (parts.length >= 2 ? parts.slice(1).join('\n') : raw)
     .replace(/^Overview\s*/i, '').trim();
   overview = overview.replace(/^#+\s*/gm, '').trim();
 
-  let text = headline + '\n\nKey Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
+  let text = 'Key Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
   text = appendContact(text, dealer);
   return text;
 }
