@@ -423,11 +423,31 @@ exports.handler = async (event) => {
             delete patchPayload.model;
           }
           if (dxLockedStocks.has(item.stock)) {
-            // raw_description is Evidence Layer and MUST keep flowing.
+            // REDUNDANT since 2026-09-13: the unconditional DX ownership strip below
+            // removes these fields for EVERY existing row, locked or not.
+            // Kept only as defence in depth. dx_locked is NOT the governing
+            // protection for DX and must not be treated as the ownership boundary.
             delete patchPayload.description;
             delete patchPayload.description_source;
           }
         }
+        // 2026-09-13 DX FIELD OWNERSHIP. The feed owns evidence and facts;
+        // the Canonical DX pipeline owns the buyer-facing description.
+        // buildTorqueHubDX legacy output is written into description and
+        // torque_hub_dx at parse (~221). On the measured 2026-09-13 locked
+        // buyer-live population, all 174 rows had longer Canonical
+        // descriptions (~1405 chars) while torque_hub_dx held shorter legacy
+        // output (~571 chars). dx_locked previously guarded only the first
+        // two fields and only on locked rows, which is why torque_hub_dx had
+        // degraded on 174/174 and why the 2026-08-31 event erased 163
+        // reviewed Overviews. Ownership is now structural, not per-row.
+        // raw_description is Evidence Layer and MUST keep flowing.
+        // The INSERT path below is deliberately unaffected: a brand-new row
+        // has no Canonical DX to protect, so legacy DX is its initial value.
+        patchPayload = Object.assign({}, patchPayload);
+        delete patchPayload.description;
+        delete patchPayload.description_source;
+        delete patchPayload.torque_hub_dx;
         // 2026-09-13 FREEZE SYMMETRY (RC-1c). While FREEZE_MARK_SOLD is
         // active the mark-sold loop cannot BURY a row — but this PATCH path
         // could still RESURRECT one. existingStocks (~356) is built with no
