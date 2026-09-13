@@ -283,6 +283,10 @@ THE OVERVIEW (locked contract):
 - Third person. No model-authored judgment, estimate, conversion, or
   qualification. Seller estimates or qualifications may appear only when
   explicitly supported by the source and attributed to the seller.
+- Do not repeat mileage, hours, horsepower, fuel, drivetrain, VIN, Stock #, or
+  any other fact already rendered in Key Details unless that fact is necessary
+  to preserve a seller-attributed qualification or disclosure that cannot be
+  expressed accurately without it.
 - Do not re-list the Key Details as prose.
 
 Examples of the required form:
