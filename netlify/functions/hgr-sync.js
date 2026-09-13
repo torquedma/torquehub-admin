@@ -428,6 +428,20 @@ exports.handler = async (event) => {
             delete patchPayload.description_source;
           }
         }
+        // 2026-09-13 FREEZE SYMMETRY (RC-1c). While FREEZE_MARK_SOLD is
+        // active the mark-sold loop cannot BURY a row — but this PATCH path
+        // could still RESURRECT one. existingStocks (~356) is built with no
+        // sold filter, and every feed item carries sold:false (~207), so a
+        // sold row whose stock reappeared in the XML was flipped live here
+        // with sold_type and sold_date left intact. 67 buyer-live rows carry
+        // that signature. Lifecycle is ONE UNIT: under the freeze this writer
+        // touches none of it. Content fields are unaffected.
+        if (FREEZE_MARK_SOLD) {
+          patchPayload = Object.assign({}, patchPayload);
+          delete patchPayload.sold;
+          delete patchPayload.sold_type;
+          delete patchPayload.sold_date;
+        }
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', patchPayload);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
       } else {
