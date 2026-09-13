@@ -166,6 +166,16 @@ function buildPrompt(unit, dealer, normalized) {
   // bare subcategory leakage (e.g. "Dump Truck") so the LLM can't invent a
   // generic taxonomy-shaped hook in place of the actual descriptor.
   const ct = cleanTrim(unit); if (ct) lines.push('Trim: ' + ct);
+  // ESTABLISHED CLASS (2026-09-13). The row's canonical subcategory is a
+  // FACT the system already established — for dealer-direct units it comes
+  // from the dealer's own URL taxonomy. Withholding it made the model infer
+  // a class instead: ATT-188323, subcategory 'Forklift' derived from the
+  // dealer's truck-mounted-forklifts-lifts slug, was described as a
+  // "Four-Way Telehandler". Supplied as evidence, NOT as identity — it is
+  // deliberately NOT passed through cleanTrim() and must never reach the
+  // Trim slot, because cleanTrim's firewall exists to keep taxonomy labels
+  // out of the unit's name.
+  if (unit.subcategory) lines.push('Established Class: ' + unit.subcategory);
   // DX PRICE DECOUPLING - price is deliberately NOT supplied to the model.
   // Structured inventory.price is the single authoritative buyer-facing price.
   // Feeding it here is how a price reaches the Overview prose despite the
@@ -251,6 +261,8 @@ Use ONLY information explicitly present in UNIT INFO or RAW DESCRIPTION above.
 Do not infer, guess, decode, assume, or add any engine manufacturer, horsepower, torque, body style, drivetrain, mileage, condition, or specification that is not explicitly stated in the source.
 If the source does not state it, omit it.
 Accuracy over completeness.
+
+ESTABLISHED CLASS: if UNIT INFO includes an "Established Class" value, that classification is authoritative. Do NOT contradict it and do NOT substitute a different machine class you infer from the description. If you are unsure what kind of machine this is, use the Established Class.
 
 TERMINOLOGY: Always refer to the inventory source as the "seller" — never "dealer" or "dealership" — in all output text, even if the raw description uses those words.
 
@@ -423,19 +435,17 @@ async function generateDescription(unit, dealer, apiKey) {
 
   const data = await res.json();
   const raw = (data.content?.[0]?.text || '').trim();
+  // HEADLINE AUTHORITY (2026-09-13). The model does not name the unit.
+  // It previously owned this line and used it to assert a machine class
+  // that contradicted the row: ATT-188323 (subcategory 'Forklift') was
+  // headlined "2015 Moffett M8 55.4 - Four-Way Telehandler with 12ft Mast".
+  // Identity is deterministic. Only the Overview prose is model-authored.
+  // The === split is retained because the model still emits a headline
+  // segment; that segment is now discarded rather than published.
   const parts = raw.split(/\n?===\n?/);
-  const defaultHeadline = buildDefaultHeadline(unit);
-  let headline = '';
-  let overview = '';
-  if (parts.length >= 2) {
-    headline = (parts[0] || '').trim();
-    overview = (parts.slice(1).join('\n').trim() || '').replace(/^Overview\s*/i, '').trim();
-  } else {
-    headline = defaultHeadline;
-    overview = raw.replace(/^Overview\s*/i, '').trim();
-  }
-  if (!headline) headline = defaultHeadline;
-  headline = headline.replace(/^#+\s*/, '').trim();
+  const headline = buildDefaultHeadline(unit);
+  let overview = (parts.length >= 2 ? parts.slice(1).join('\n') : raw)
+    .replace(/^Overview\s*/i, '').trim();
   overview = overview.replace(/^#+\s*/gm, '').trim();
 
   let text = headline + '\n\nKey Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
