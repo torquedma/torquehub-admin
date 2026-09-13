@@ -1,4 +1,6 @@
 // GENERATED FROM generate-description.source.js — DO NOT EDIT. Run node scripts/generate-description-lib.js
+// GENERATED PROFILE: admin
+const STAGE1B_ENABLED = false;
 // The description generator is factual, deterministic, and category-aware. It may reorganize and improve
 // wording, but it never invents specifications, capabilities, or marketing claims that are not present
 // in the canonical packet.
@@ -22,6 +24,7 @@
 
 const { showMileage, showHours, usageClass } = require('./usage-display.generated.js');
 const { canonicalize }           = require('./taxonomy.generated.js');
+const { normalizeTrailerSpecs }  = require('./trailer-spec-normalizer');
 
 function trimSpec(val) {
   if (!val) return val;
@@ -149,8 +152,7 @@ function usageFlag(factName, claim, unit) {
   return '';
 }
 
-function buildPrompt(unit, dealer) {
-  const price = unit.price ? '$' + Number(unit.price).toLocaleString() : 'Call for Price';
+function buildPrompt(unit, dealer, normalized) {
 
   // Build UNIT INFO from non-empty fields only — sparse units get no blank labels.
   // Mileage/hours are gated by lib/usage-display's subcategory-level rule (single
@@ -164,7 +166,10 @@ function buildPrompt(unit, dealer) {
   // bare subcategory leakage (e.g. "Dump Truck") so the LLM can't invent a
   // generic taxonomy-shaped hook in place of the actual descriptor.
   const ct = cleanTrim(unit); if (ct) lines.push('Trim: ' + ct);
-  lines.push('Price: ' + price);
+  // DX PRICE DECOUPLING - price is deliberately NOT supplied to the model.
+  // Structured inventory.price is the single authoritative buyer-facing price.
+  // Feeding it here is how a price reaches the Overview prose despite the
+  // explicit no-prices instruction below, and prose cannot be kept in sync.
   {
     const mp = usageProvenance(unit, 'mileage');
     if (mp.mode === 'omit') { /* omit */ }
@@ -212,7 +217,15 @@ function buildPrompt(unit, dealer) {
   // output; feeding it back as a source seed makes each regeneration a paraphrase of
   // the previous paraphrase, laundering provenance and letting the generator treat its
   // own output as evidence. PRESENTATION OUTPUT IS NEVER A SOURCE INPUT.
-  const rawEvidence = unit.raw_description || '';
+  //
+  // Stage 1b: on the normalized trailer path the LLM receives leadProse ONLY. The
+  // structured spec list is withheld because it is now preserved deterministically in Key
+  // Details - handing the model 21 bullets and asking for 2-3 sentences is what produced
+  // the melt. Tightening the instruction was already tried and does not work; withholding
+  // the list does. Every other path is unchanged: raw evidence in full.
+  const rawEvidence = (normalized && normalized.handling === 'normalized')
+    ? normalized.leadProse.map(p => p.text).join('\n')
+    : (unit.raw_description || '');
 
   return `You are writing inventory descriptions for Torque Hub, a commercial equipment marketplace.
 
@@ -251,6 +264,25 @@ If a Trim value is provided in UNIT INFO, use the full "[Year] [Make] [Model] [T
 Do NOT write a "Key Details" section, bullet list, contact section, prices, or specs lists. ONLY the headline line, then "===", then the Overview prose.`;
 }
 
+// Deterministic identity headline. Extracted verbatim from the expression previously inline
+// at the response-parsing step, so the LLM path and a future no-LLM path cannot drift apart.
+function buildDefaultHeadline(unit) {
+  return [unit.year, unit.make, unit.model, cleanTrim(unit)].filter(Boolean).join(' ') || 'Unit Available';
+}
+
+// Contact block. Extracted verbatim from the former assembly block.
+// ★ NOTE the contactBits join: when phone is absent but location is present, location is
+// promoted into the colon slot ("Call Dealer: Sanford, FL"). That is EXISTING behavior and
+// must be preserved exactly - do NOT restructure into separate phone/location clauses.
+function appendContact(text, dealer) {
+  const d = dealer || {};
+  if (d.name || d.phone || d.location) {
+    const contactBits = [d.phone, d.location].filter(Boolean).join(' | ');
+    text += '\n\nInterested In This Unit?\nCall ' + (d.name || 'the seller') + (contactBits ? ': ' + contactBits : '');
+  }
+  return text;
+}
+
 async function generateDescription(unit, dealer, apiKey) {
   // EVIDENCE/PRESENTATION SEPARATION. Generation requires either genuine raw evidence, or
   // enough canonical identity to say what the unit IS. `unit.description` is NEVER either:
@@ -273,6 +305,15 @@ async function generateDescription(unit, dealer, apiKey) {
       throw err;
     }
   }
+  // Stage 1b: normalize ONCE here. The same result is later passed to buildPrompt - never
+  // normalize in both places, since two interpreters of one input is the U1 defect by another
+  // name. Gated on hasRawEvidence (computed at the top of this function): a unit that passed
+  // the identity gate on canonical fields alone has no raw text to normalize.
+  // normalizeTrailerSpecs returns null when category !== 'Trailers'; that gate is its own.
+  const normalized = STAGE1B_ENABLED && hasRawEvidence
+    ? normalizeTrailerSpecs(unit.raw_description, unit.category)
+    : null;
+
   const detailLines = [];
   if (unit.year)                   detailLines.push('- Year: ' + unit.year);
   if (unit.make)                   detailLines.push('- Make: ' + unit.make);
@@ -333,11 +374,33 @@ async function generateDescription(unit, dealer, apiKey) {
   if (unit.fuel)                   detailLines.push('- Fuel: ' + unit.fuel);
   if (unit.gvwr_class) detailLines.push('- GVWR: ' + unit.gvwr_class);
   if (unit.body_class) detailLines.push('- Body Class: ' + unit.body_class);
-  const priceNum = Number(String(unit.price).replace(/[^0-9.]/g, ''));
-  if (priceNum > 0)                detailLines.push('- Price: $' + priceNum.toLocaleString());
+  // DX PRICE DECOUPLING - no '- Price:' line in Key Details. A stored price is a
+  // second copy of a mutable fact: inventory.price updates, the description does
+  // not, and the buyer sees two different numbers. Price is rendered from the
+  // structured field wherever the product intends to show it.
   if (unit.vin)                    detailLines.push('- VIN: ' + unit.vin);
   if (unit.stock)                  detailLines.push('- Stock #: ' + unit.stock);
+  // Stage 1b render contract - DELIBERATELY BORING. Preservation, not presentation.
+  if (normalized && normalized.handling === 'normalized') {
+    for (const k of normalized.keyDetails) {
+      if (k.confidence !== 'high') continue;
+      if (k.presentation === 'suppressed_due_to_conflict') continue;
+      detailLines.push('- ' + k.normalizedLine);
+    }
+  }
   if (detailLines.length === 0 && unit.stock) detailLines.push('- Stock #: ' + unit.stock);
+
+  // Stage 1b ruling: a normalized trailer with NO factual lead prose gets NO Overview, and we
+  // do NOT call the model to manufacture one from identity fields. An absent Overview is more
+  // honest than generic prose. These units become FULLY DETERMINISTIC - no API call, no cost,
+  // no latency, no run-to-run variance, byte-identical for the same inputs.
+  // ★ There is deliberately NO 'Overview' heading here. Emitting the heading with nothing
+  // under it would be silent rather than empty-but-named.
+  if (normalized && normalized.handling === 'normalized' && normalized.leadProse.length === 0) {
+    const headline = buildDefaultHeadline(unit);
+    const text = headline + '\n\nKey Details\n' + detailLines.join('\n');
+    return appendContact(text, dealer);
+  }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -349,7 +412,7 @@ async function generateDescription(unit, dealer, apiKey) {
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1536,
-      messages: [{ role: 'user', content: buildPrompt(unit, dealer) }]
+      messages: [{ role: 'user', content: buildPrompt(unit, dealer, normalized) }]
     })
   });
 
@@ -361,7 +424,7 @@ async function generateDescription(unit, dealer, apiKey) {
   const data = await res.json();
   const raw = (data.content?.[0]?.text || '').trim();
   const parts = raw.split(/\n?===\n?/);
-  const defaultHeadline = [unit.year, unit.make, unit.model, cleanTrim(unit)].filter(Boolean).join(' ') || 'Unit Available';
+  const defaultHeadline = buildDefaultHeadline(unit);
   let headline = '';
   let overview = '';
   if (parts.length >= 2) {
@@ -375,12 +438,8 @@ async function generateDescription(unit, dealer, apiKey) {
   headline = headline.replace(/^#+\s*/, '').trim();
   overview = overview.replace(/^#+\s*/gm, '').trim();
 
-  const d = dealer || {};
   let text = headline + '\n\nKey Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
-  if (d.name || d.phone || d.location) {
-    const contactBits = [d.phone, d.location].filter(Boolean).join(' | ');
-    text += '\n\nInterested In This Unit?\nCall ' + (d.name || 'the seller') + (contactBits ? ': ' + contactBits : '');
-  }
+  text = appendContact(text, dealer);
   return text;
 }
 
