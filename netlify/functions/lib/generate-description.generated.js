@@ -80,7 +80,9 @@ function usageProvenance(unit, factName) {
 // idempotent; if not a positive integer after stripping, return the input unchanged (never NaN).
 function formatNumber(v) {
   const n = Number(String(v == null ? '' : v).replace(/[^0-9.]/g, ''));
-  return Number.isFinite(n) && n > 0 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : (v == null ? '' : String(v));
+  // TRUNCATE, never round (Ryan, 2026-09-05). A meter reading 6633.9 publishes
+  // as 6,633 — rounding to 6,634 would advance the meter past what it displays.
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n).toLocaleString('en-US') : (v == null ? '' : String(v));
 }
 
 // usageNoun — canonical meter-type vocabulary.
@@ -266,27 +268,28 @@ ESTABLISHED CLASS: if UNIT INFO includes an "Established Class" value, that clas
 
 TERMINOLOGY: Always refer to the inventory source as the "seller" — never "dealer" or "dealership" — in all output text, even if the raw description uses those words.
 
-OUTPUT FORMAT — return EXACTLY two parts separated by a line containing only "===":
-[Year] [Make] [Model] – [Short Buyer Hook]
-===
-[2-3 sentence Overview: what it is, condition, best use case. Professional, direct, blue-collar tone. No fluff. Only use the word "fleet" if the raw description explicitly mentions it.]
+OUTPUT FORMAT — return ONLY the Overview prose. No headline. No "===" separator.
+No "Key Details" section, bullet list, contact block, prices, or specs list.
 
-If a Trim value is provided in UNIT INFO, use the full "[Year] [Make] [Model] [Trim]" as the unit's name in the Overview's opening sentence (e.g. "This 1998 International 4700 Flatbed Dump Truck is powered by..."), not a generic class descriptor.
+THE OVERVIEW (locked contract):
+- Open with the CONFIGURATION. Do NOT begin "This [Year] [Make] [Model]" and do
+  NOT repeat Year, Make, Model, VIN or Stock # — they are already in Key Details.
+- Name the most decision-relevant ESTABLISHED equipment or configuration.
+- Use a second sentence only when it carries seller-attributed condition, recent
+  work, disclosure or qualification. Do not force one sentence if doing so drops
+  meaningful seller evidence, and do not pad to reach two.
+- No inferred use cases. No buyer-benefit language. No "ready to work",
+  "ideal for", "suited for", "perfect for", "great for".
+- Third person. No model-authored judgment, estimate, conversion, or
+  qualification. Seller estimates or qualifications may appear only when
+  explicitly supported by the source and attributed to the seller.
+- Do not re-list the Key Details as prose.
 
-Do NOT write a "Key Details" section, bullet list, contact section, prices, or specs lists. ONLY the headline line, then "===", then the Overview prose.`;
-}
-
-// Contact block. Extracted verbatim from the former assembly block.
-// ★ NOTE the contactBits join: when phone is absent but location is present, location is
-// promoted into the colon slot ("Call Dealer: Sanford, FL"). That is EXISTING behavior and
-// must be preserved exactly - do NOT restructure into separate phone/location clauses.
-function appendContact(text, dealer) {
-  const d = dealer || {};
-  if (d.name || d.phone || d.location) {
-    const contactBits = [d.phone, d.location].filter(Boolean).join(' | ');
-    text += '\n\nInterested In This Unit?\nCall ' + (d.name || 'the seller') + (contactBits ? ': ' + contactBits : '');
-  }
-  return text;
+Examples of the required form:
+Flatbed with an integrated Moffett forklift package.
+Four-wheel-drive crew cab with an enclosed service body.
+Motor grader with a self-contained TopCon grade-control system. The seller reports recent tires and describes the unit as in nice condition.
+Truck-mounted crane on a double-frame chassis. The seller notes some cosmetic issues visible in the photos and describes it as a southern truck with no rust.`;
 }
 
 async function generateDescription(unit, dealer, apiKey) {
@@ -345,6 +348,9 @@ async function generateDescription(unit, dealer, apiKey) {
     else if (mp.mode === 'plain') { if (showMileage(unit)) detailLines.push('- Mileage: ' + formatNumber(mp.value)); }
     else { if (showMileage(unit)) detailLines.push('- Mileage: ' + formatNumber(unit.mileage)); }  // fallback: unchanged
   }
+  // "Hours Shown:" is the locked buyer-facing label for equipment runtime
+  // (Ryan) — never bare "Hours:". It is what the meter shows, not a verified
+  // lifetime figure.
   {
     const hp = usageProvenance(unit, 'hours');
     if (hp.mode === 'omit') { /* not-applicable: render nothing */ }
@@ -353,18 +359,18 @@ async function generateDescription(unit, dealer, apiKey) {
         if (hp.claim) {
           const hasVal = hp.value !== null && hp.value !== undefined && String(hp.value).trim() !== '';
           detailLines.push(hasVal
-            ? '- Hours: ' + formatNumber(hp.value) + ' ' + usageFlag('hours', hp.claim, unit)
-            : '- Hours: ' + usageFlag('hours', hp.claim, unit));
+            ? '- Hours Shown: ' + formatNumber(hp.value) + ' ' + usageFlag('hours', hp.claim, unit)
+            : '- Hours Shown: ' + usageFlag('hours', hp.claim, unit));
         } else {
-          detailLines.push('- Hours: reported unknown by seller');
+          detailLines.push('- Hours Shown: reported unknown by seller');
         }
       }
     }
     else if (hp.mode === 'disputed') {
-      detailLines.push('- Hours: ' + formatNumber(hp.value) + ' ' + usageFlag('hours', hp.claim, unit));
+      detailLines.push('- Hours Shown: ' + formatNumber(hp.value) + ' ' + usageFlag('hours', hp.claim, unit));
     }
-    else if (hp.mode === 'plain') { if (showHours(unit)) detailLines.push('- Hours: ' + formatNumber(hp.value)); }
-    else { if (showHours(unit)) detailLines.push('- Hours: ' + formatNumber(unit.hours)); }  // fallback: unchanged
+    else if (hp.mode === 'plain') { if (showHours(unit)) detailLines.push('- Hours Shown: ' + formatNumber(hp.value)); }
+    else { if (showHours(unit)) detailLines.push('- Hours Shown: ' + formatNumber(unit.hours)); }  // fallback: unchanged
   }
   if (trimSpec(unit.engine))       detailLines.push('- Engine: ' + trimSpec(unit.engine));
   // Horsepower from the inventory column with double-suffix guard — some feeds
@@ -396,20 +402,22 @@ async function generateDescription(unit, dealer, apiKey) {
   }
   if (detailLines.length === 0 && unit.stock) detailLines.push('- Stock #: ' + unit.stock);
 
-  // Stage 1b ruling: a normalized trailer with NO factual lead prose gets NO Overview, and we
-  // do NOT call the model to manufacture one from identity fields. An absent Overview is more
-  // honest than generic prose. These units become FULLY DETERMINISTIC - no API call, no cost,
-  // no latency, no run-to-run variance, byte-identical for the same inputs.
-  // ★ There is deliberately NO 'Overview' heading here. Emitting the heading with nothing
-  // under it would be silent rather than empty-but-named.
+  // Stage 1b: a normalized trailer with NO factual lead prose cannot support a
+  // Canonical Overview, and we do NOT call the model to manufacture one from
+  // identity fields. The locked contract is Key Details -> Overview -> END; a
+  // unit that cannot fill it is NOT canonical-ready. Emitting Key Details alone
+  // would publish a partial envelope, and emitting an empty Overview heading
+  // would be silent rather than empty-but-named. Both are worse than refusing.
+  //
+  // Same semantic class as the no-evidence refusal above — generation declined
+  // because canonical evidence is insufficient — with its own truthful message.
+  // Measured 2026-09-13 against the caller's real eligibility boundary
+  // (sold=false, dx_locked=false, category='Trailers', raw present): 52 rows,
+  // 47 safe_fallback, 5 normalized, of which 4 carry lead prose and 1 does not.
   if (normalized && normalized.handling === 'normalized' && normalized.leadProse.length === 0) {
-    // PRESENTATION CONFORMANCE (2026-09-13). Canonical DX has no standalone
-    // headline. Established from the Lane A conformed population: 113 of 113
-    // adjudicated live-unsold rows across the three CLOSED dealers — Auto
-    // Connection 210 (30), Davenport (39) and Allied's conformed 44 — begin
-    // at "Key Details". Every exception was an unconformed fresh insert.
-    const text = 'Key Details\n' + detailLines.join('\n');
-    return appendContact(text, dealer);
+    const err = new Error('Normalized trailer evidence contains no factual lead prose; cannot author a Canonical Overview.');
+    err.code = 'INSUFFICIENT_EVIDENCE';
+    throw err;
   }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -433,23 +441,22 @@ async function generateDescription(unit, dealer, apiKey) {
 
   const data = await res.json();
   const raw = (data.content?.[0]?.text || '').trim();
-  // HEADLINE AUTHORITY (2026-09-13). The model does not name the unit.
-  // It previously owned this line and used it to assert a machine class
-  // that contradicted the row: ATT-188323 (subcategory 'Forklift') was
-  // headlined "2015 Moffett M8 55.4 - Four-Way Telehandler with 12ft Mast".
-  // Identity is deterministic. Only the Overview prose is model-authored.
-  // The === split is retained because the model still emits a headline
-  // segment; that segment is now discarded rather than published.
-  // The model still emits a headline segment under the current OUTPUT
-  // FORMAT; it is split off and discarded. The output contract is
-  // deliberately NOT changed in this patch.
+  // The model now returns Overview prose ONLY — no headline, no "===".
+  // The split is retained defensively: if a model still emits a headline
+  // segment out of habit, the trailing segment is used and the leading one
+  // discarded, so a stray separator cannot publish an identity line.
   const parts = raw.split(/\n?===\n?/);
   let overview = (parts.length >= 2 ? parts.slice(1).join('\n') : raw)
     .replace(/^Overview\s*/i, '').trim();
   overview = overview.replace(/^#+\s*/gm, '').trim();
 
+  // CANONICAL ENVELOPE (2026-09-13): Key Details -> Overview -> END.
+  // The dealer contact panel, rendered from dealer registration, OWNS
+  // presentation of the phone number; the description must not duplicate it.
+  // "Interested In This Unit? / Call ..." is the closing block of SSOT §7
+  // VN.NET DX — a different channel. This generator serves Torque Hub only.
+  // Corroborated 2026-09-13: 0 of 113 Lane A conformed rows carry it.
   let text = 'Key Details\n' + detailLines.join('\n') + '\n\nOverview\n' + overview;
-  text = appendContact(text, dealer);
   return text;
 }
 
