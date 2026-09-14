@@ -398,6 +398,14 @@ async function generateDescription(unit, apiKey) {
   // second copy of a mutable fact: inventory.price updates, the description does
   // not, and the buyer sees two different numbers. Price is rendered from the
   // structured field wherever the product intends to show it.
+  // CONDITION (2026-09-13). Only "New" earns a Key Details line. Ryan's 3A
+  // ruling: "Condition: Used" on a used-equipment marketplace is technically
+  // true and editorially worthless — it earns a line only when it carries
+  // information. New does; Used and null do not. Deterministic: the model is
+  // not consulted and no condition value is interpreted. Qualified seller
+  // language ("like new", "never used") is deliberately NOT mapped to New at
+  // Gate 0, so it cannot arrive here.
+  if (unit.condition === 'New')        detailLines.push('- Condition: New');
   if (unit.vin)                    detailLines.push('- VIN: ' + unit.vin);
   if (unit.stock)                  detailLines.push('- Stock #: ' + unit.stock);
   // Stage 1b render contract - DELIBERATELY BORING. Preservation, not presentation.
