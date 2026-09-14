@@ -154,7 +154,7 @@ function usageFlag(factName, claim, unit) {
   return '';
 }
 
-function buildPrompt(unit, dealer, normalized) {
+function buildPrompt(unit, normalized) {
 
   // Build UNIT INFO from non-empty fields only — sparse units get no blank labels.
   // Mileage/hours are gated by lib/usage-display's subcategory-level rule (single
@@ -296,7 +296,11 @@ Motor grader with a self-contained TopCon grade-control system. The seller repor
 Truck-mounted crane on a double-frame chassis. The seller notes some cosmetic issues visible in the photos and describes it as a southern truck with no rust.`;
 }
 
-async function generateDescription(unit, dealer, apiKey) {
+// The `dealer` parameter was removed 2026-09-13. It became dead when
+// appendContact() was deleted in baa2bbd: the canonical envelope is
+// Key Details -> Overview -> END, and the dealer contact panel owns
+// phone presentation. Nothing in this library read it.
+async function generateDescription(unit, apiKey) {
   // EVIDENCE/PRESENTATION SEPARATION. Generation requires either genuine raw evidence, or
   // enough canonical identity to say what the unit IS. `unit.description` is NEVER either:
   // it is prior Presentation output, and promoting it upstream launders provenance.
@@ -434,7 +438,7 @@ async function generateDescription(unit, dealer, apiKey) {
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1536,
-      messages: [{ role: 'user', content: buildPrompt(unit, dealer, normalized) }]
+      messages: [{ role: 'user', content: buildPrompt(unit, normalized) }]
     })
   });
 

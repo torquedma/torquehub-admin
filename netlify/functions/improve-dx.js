@@ -48,7 +48,7 @@ exports.handler = async function (event) {
   }
 
   try {
-    const description = await generateDescription(unit, dealer, apiKey);
+    const description = await generateDescription(unit, apiKey);
     return {
       statusCode: 200,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
