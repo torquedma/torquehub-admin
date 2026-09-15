@@ -196,9 +196,12 @@ function parseXml(xml) {
       condition,
       vin: get('vin') || null,
       raw_description: rawDesc,
-      description: null, // set below
-      torque_hub_dx: null, // set below
-      description_source: 'raw_description',
+      // DX-owned fields land NULL for HGR intake. The chained
+      // generate-dx-background invocation after the loop populates
+      // description and description_source and promotes status.
+      description: null,
+      torque_hub_dx: null,
+      description_source: null,
       category,
       trim: canonicalSubcategory || '',
       subcategory: canonicalSubcategory,
@@ -208,135 +211,13 @@ function parseXml(xml) {
       featured: 0,
       photos
     });
-    // Generate Torque Hub DX after item is built
-    const lastItem = items[items.length - 1];
-    const itemAttrs = {
-      width: getAttr('Width'),
-      length: getAttr('Length'),
-      height: getAttr('Height'),
-      gvwr: getAttr('GVWR'),
-      axles: getAttr('Number of Axles')
-    };
-    const thDX = buildTorqueHubDX(lastItem, rawDesc, itemAttrs);
-    lastItem.torque_hub_dx = thDX;
-    lastItem.description = thDX;
+    // DX generation is retired from this parser. Fresh rows land as drafts
+    // (see INSERT branch) and are canonicalized by generate-dx-background
+    // via a post-loop chained trigger. buildTorqueHubDX was the legacy
+    // VN.NET-shaped envelope with a stale hard-coded phone number; it has
+    // no cross-file callers and its definition is deleted below.
   }
   return items;
-}
-
-function buildTorqueHubDX(item, rawDesc, attrs) {
-  attrs = attrs || {};
-  const lines = [];
-  const title = [item.year, item.make, item.model].filter(Boolean).join(' ');
-  if (title) lines.push(title);
-  lines.push('');
-
-  if (item.price && item.price !== 'Call') lines.push('Price: ' + item.price);
-  lines.push('');
-
-  // Parse raw description for specs not in XML fields
-  function parseSpec(pattern) {
-    if (!rawDesc) return '';
-    const m = rawDesc.match(pattern);
-    return m ? m[1].trim() : '';
-  }
-
-  const specs = [];
-  // Use XML attributes first (most accurate)
-  let length = attrs.length ? attrs.length + 'ft' : '';
-  let width = attrs.width ? attrs.width + 'ft' : '';
-  // Fall back to model field size
-  if (!length || !width) {
-    const modelStr = item.model || '';
-    const nxmMatch = modelStr.match(/(\d+(?:\.\d+)?)(?:ft)?\s*x\s*(\d+(?:\.\d+)?)/i);
-    const ftMatch = modelStr.match(/^(\d+(?:\.\d+)?)(?:ft|')/i);
-    if (nxmMatch && !length && !width) {
-      const a = parseFloat(nxmMatch[1]), b = parseFloat(nxmMatch[2]);
-      if (b >= 60) { length = length || nxmMatch[1] + 'ft'; width = width || nxmMatch[2] + 'in'; }
-      else if (a > 53) { width = width || nxmMatch[1] + 'in'; length = length || nxmMatch[2] + 'ft'; }
-      else { width = width || nxmMatch[1] + 'ft'; length = length || nxmMatch[2] + 'ft'; }
-    } else if (ftMatch) {
-      length = length || ftMatch[1] + 'ft';
-    }
-  }
-  const height = attrs.height ? attrs.height + 'ft' : parseSpec(/(?:interior\s*height|inside\s*height)[:\s-]*([0-9."]+)/i) || '';
-  const gvwr = attrs.gvwr || parseSpec(/gvwr[:\s-]*([0-9,]+\s*(?:lb|lbs|#)?)/i) || '';
-  const axles = attrs.axles || parseSpec(/([0-9]+)\s*axle/i) || '';
-  const axleWeight = parseSpec(/([0-9,]+)\s*(?:lb|lbs|#)\s*axle/i);
-  const ramp = parseSpec(/((?:rear\s*)?(?:ramp|gate|door)[^.,]{0,60})/i);
-  const electrical = parseSpec(/((?:[0-9]+)\s*amp[^.,]{0,60})/i);
-
-  if (length) specs.push('Length: ' + length);
-  if (width) specs.push('Width: ' + width);
-  if (axles) specs.push('Axles: ' + axles + (axleWeight ? ' x ' + axleWeight + ' lb' : ''));
-  if (gvwr) specs.push('GVWR: ' + gvwr);
-  if (height) specs.push('Interior Height: ' + height);
-  if (ramp) specs.push('Door/Ramp: ' + ramp.replace(/\s+/g,' ').trim());
-  if (electrical) specs.push('Electrical: ' + electrical.replace(/\s+/g,' ').trim());
-  if (item.vin) specs.push('VIN: ' + item.vin);
-  specs.push('Stock #: ' + item.stock);
-
-  if (specs.length) {
-    lines.push('Key Specs:');
-    specs.forEach(s => lines.push(s));
-    lines.push('');
-  }
-
-  // Highlights — parse bullet points from raw description
-  const highlights = [];
-  if (rawDesc) {
-    const bullets = rawDesc.split(/\n/).filter(l => l.match(/^[-*]|^-[A-Z]/)).slice(0, 5);
-    bullets.forEach(b => {
-      const clean = b.replace(/^[-*\s]+/,'').replace(/<[^>]+>/g,'').trim();
-      if (clean.length > 10 && clean.length < 120) highlights.push(clean);
-    });
-  }
-  if (highlights.length) {
-    lines.push('Highlights:');
-    highlights.forEach(h => lines.push(h));
-    lines.push('');
-  }
-
-  // Best For — infer from trailer type
-  const modelType = (item.subcategory || '').toLowerCase();
-  const bestFor = [];
-  if (modelType.includes('car') || modelType.includes('racing') || modelType.includes('enclosed')) {
-    bestFor.push('Race teams and motorsports hauling');
-    bestFor.push('Show cars and high-end enclosed transport');
-    bestFor.push('Car dealers and auction transport');
-  } else if (modelType.includes('dump')) {
-    bestFor.push('Contractors and landscapers');
-    bestFor.push('Debris removal and material hauling');
-    bestFor.push('Farm and property cleanup');
-  } else if (modelType.includes('equipment') || modelType.includes('utility')) {
-    bestFor.push('Contractors and equipment haulers');
-    bestFor.push('Landscapers and farm use');
-    bestFor.push('Heavy equipment transport');
-  } else if (modelType.includes('cargo')) {
-    bestFor.push('Mobile businesses and contractors');
-    bestFor.push('Tool and equipment storage');
-    bestFor.push('Enclosed commercial hauling');
-  } else if (modelType.includes('vending') || modelType.includes('concession')) {
-    bestFor.push('Food vendors and mobile businesses');
-    bestFor.push('Event concessions and markets');
-    bestFor.push('Mobile retail and service units');
-  } else {
-    bestFor.push('Commercial and farm use');
-    bestFor.push('General hauling and transport');
-  }
-  if (bestFor.length) {
-    lines.push('Best For:');
-    bestFor.forEach(b => lines.push(b));
-    lines.push('');
-  }
-
-  lines.push('Location:');
-  lines.push("HGR's Truck & Trailer Sales");
-  lines.push('4519 Marracco Dr, Hope Mills, NC 28348');
-  lines.push('');
-  lines.push('Call: 910-425-6104');
-
-  return lines.join('\n');
 }
 
 exports.handler = async (event) => {
@@ -396,6 +277,7 @@ exports.handler = async (event) => {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     let inserted = 0, updated = 0;
+    const insertedStocks = [];
     for (const item of feedItems) {
       // Description generation skipped — too slow for 60s scheduled timeout (140 items × ~1s/call)
       // if (apiKey) {
@@ -442,8 +324,12 @@ exports.handler = async (event) => {
         // degraded on 174/174 and why the 2026-08-31 event erased 163
         // reviewed Overviews. Ownership is now structural, not per-row.
         // raw_description is Evidence Layer and MUST keep flowing.
-        // The INSERT path below is deliberately unaffected: a brand-new row
-        // has no Canonical DX to protect, so legacy DX is its initial value.
+        // The INSERT path below is separately draft-then-canonicalize
+        // (2026-09-14). New rows land as status='draft' with description
+        // and description_source NULL; a post-loop chained invocation of
+        // site generate-dx-background canonicalizes them and promotes
+        // status to 'published' on success. Legacy buildTorqueHubDX is
+        // retired for HGR.
         patchPayload = Object.assign({}, patchPayload);
         delete patchPayload.description;
         delete patchPayload.description_source;
@@ -465,12 +351,46 @@ exports.handler = async (event) => {
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', patchPayload);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
       } else {
-        const r = await supabaseFetch('/rest/v1/inventory', 'POST', [item]);
-        if (r.status >= 400) { console.error('POST error', r.status, r.body.slice(0,200)); errors++; } else inserted++;
+        // Fresh HGR rows land as drafts. status='draft' set on INSERT only
+        // (not on UPDATE — a copy is made so the shared item object is not
+        // mutated for any subsequent code that reads it).
+        const draftItem = Object.assign({}, item, { status: 'draft' });
+        const r = await supabaseFetch('/rest/v1/inventory', 'POST', [draftItem]);
+        if (r.status >= 400) {
+          console.error('POST error', r.status, r.body.slice(0,200));
+          errors++;
+        } else {
+          inserted++;
+          insertedStocks.push(item.stock);
+        }
       }
     }
 
-    const result = { success: true, inserted, updated, deleted: markedSoldCount, errors, total: feedItems.length };
+    // 2026-09-14 CANONICALIZATION TRIGGER. Chain to the site's canonical
+    // DX generator for newly-inserted HGR drafts. generate-dx-background is
+    // a Netlify BACKGROUND function (filename ends -background): the fetch
+    // returns 202 empty and the work runs asynchronously — do NOT try to
+    // read a response body.
+    //
+    // ★ BANKED CONSTRAINT — ?stocks= bypasses the D6 VIN bounded-wait
+    //   (generate-dx-background.js:80, by design per its comment at 76-77).
+    //   Safe HERE only because HGR carries no VINs: 174/174 live HGR rows
+    //   have no VIN column value and VIN enrichment is not part of HGR's
+    //   intake contract. This ?stocks= trigger pattern must NOT be copied
+    //   for VIN-bearing dealers without a different D6 story.
+    if (insertedStocks.length > 0) {
+      const stocksParam = insertedStocks.map(encodeURIComponent).join(',');
+      const url = 'https://hub.torquedma.com/.netlify/functions/generate-dx-background?stocks=' + stocksParam;
+      console.log('[HGR-DX-TRIGGER] chaining canonicalization for ' + insertedStocks.length + ' fresh draft(s): ' + insertedStocks.join(', '));
+      try {
+        const trigRes = await fetch(url);
+        console.log('[HGR-DX-TRIGGER] response status: ' + trigRes.status + ' (background function; body is empty by design)');
+      } catch (err) {
+        console.error('[HGR-DX-TRIGGER] fetch failed: ' + err.message + ' — drafts persist for the recovery sweep to pick up');
+      }
+    }
+
+    const result = { success: true, inserted, updated, deleted: markedSoldCount, errors, total: feedItems.length, dx_triggered_for: insertedStocks };
     console.log('Done:', result);
     return { statusCode: 200, body: JSON.stringify(result) };
   } catch (err) {
