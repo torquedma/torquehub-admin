@@ -2308,6 +2308,19 @@ function renderDealersView() {
 let invCatFilter = "All", invCondFilter = "All", invDealerFilter = "";
 let invPage = 1;
 let invSort = { key: "days", dir: 1 };
+
+// 2026-09-15 SOLD RECENCY — single shared rule for every sold list in the
+// admin (Sold Inventory view and All Listings under the Sold chip).
+// sold_marked_at is the trigger-owned sold-state transition timestamp; rows
+// that predate the column fall through to the documented legacy evidence:
+// sold_at -> sold_date normalized to noon UTC -> updated_at. Epoch ms so the
+// +00:00 / Z suffix difference is moot; rows with nothing sort last.
+function soldRecency(u) {
+  const v = u.sold_marked_at || u.sold_at
+    || (u.sold_date ? u.sold_date + 'T12:00:00Z' : null) || u.updated_at;
+  const t = v ? Date.parse(v) : NaN;
+  return Number.isFinite(t) ? t : -Infinity;
+}
 let INV_PAGE_SIZE = 25;
 var invViewMode = 'table'; // 'table' | 'list'
 
@@ -2358,6 +2371,9 @@ function getFilteredInventory() {
     return matchesCat && matchesDealer && matchesQ &&
            (invCondFilter === "All" || u.condition === invCondFilter);
   }).sort((a, b) => {
+    // 2026-09-15: under the Sold chip, order exactly as Sold Inventory does —
+    // newest sold-state transition first — regardless of column sort.
+    if (invCondFilter === "Sold") return soldRecency(b) - soldRecency(a);
     // Sort sold listings to the bottom
     if (a.sold && !b.sold) return 1;
     if (!a.sold && b.sold) return -1;
@@ -6742,12 +6758,6 @@ function renderSoldView() {
   // the same way -> updated_at (trigger stamp of the last material change,
   // which for feed-sold rows is the mark-sold moment). Compared as epoch ms so
   // the +00:00 / Z suffix difference between PostgREST and the cast is moot.
-  const soldRecency = u => {
-    const v = u.sold_marked_at || u.sold_at
-      || (u.sold_date ? u.sold_date + 'T12:00:00Z' : null) || u.updated_at;
-    const t = v ? Date.parse(v) : NaN;
-    return Number.isFinite(t) ? t : -Infinity;
-  };
   filtered.sort((a, b) => soldRecency(b) - soldRecency(a));
 
   tbody.innerHTML = filtered.map(u => `
