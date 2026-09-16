@@ -22,6 +22,9 @@ const INVENTORY_ADMIN_SELECT = [
   'id','year','make','model','trim','condition','price','dealer','stock','created_at',
   'fuel','description','category','subcategory','vin','featured','sold','sold_price',
   'sold_date','sold_type','public_sold','engine','transmission','drivetrain',
+  // 2026-09-15 sold recency: sold_marked_at is the trigger-owned sold-state
+  // transition timestamp; sold_at/updated_at are the documented legacy fallback.
+  'sold_at','sold_marked_at','updated_at',
   'engine_description','transmission_description','video_url','mileage','notes','status',
   'prod_status','dx_locked','model_locked','subcategory_locked','raw_description',
   'description_source','photo_count','first_photo','hours','horsepower',

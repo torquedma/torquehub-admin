@@ -1298,7 +1298,7 @@ document.querySelector('.sidebar').classList.toggle('open');
       <table class="leads-table" id="sold-table">
         <thead><tr>
           <th>Vehicle</th><th>Dealer</th><th>Stock #</th>
-          <th>Sale Price</th><th>Sold To</th><th>Sold Date</th><th>Days on Market</th>
+          <th>Sale Price</th><th>Sold To</th><th>Sold Date</th><th title="Torque Hub sold-state transition timestamp — drives the order of this list">Marked Sold</th><th>Days on Market</th>
         </tr></thead>
         <tbody id="sold-tbody"></tbody>
       </table>
@@ -6560,6 +6560,9 @@ async function loadApp() {
       sold_date: item.sold_date,
       sold_type: item.sold_type,
       public_sold: item.public_sold,
+      sold_at: item.sold_at || null,
+      sold_marked_at: item.sold_marked_at || null,
+      updated_at: item.updated_at || null,
 
       engine: item.engine || '',
       transmission: item.transmission || '',
@@ -6732,6 +6735,21 @@ function renderSoldView() {
   }
   if (empty) empty.style.display = 'none';
 
+  // 2026-09-15 SOLD RECENCY. A unit marked sold now must appear at the top.
+  // sold_marked_at is the trigger-owned sold-state transition timestamp; rows
+  // that predate the column fall through to the documented legacy evidence:
+  // sold_at (retail, noon-UTC cast of the entered date) -> sold_date normalized
+  // the same way -> updated_at (trigger stamp of the last material change,
+  // which for feed-sold rows is the mark-sold moment). Compared as epoch ms so
+  // the +00:00 / Z suffix difference between PostgREST and the cast is moot.
+  const soldRecency = u => {
+    const v = u.sold_marked_at || u.sold_at
+      || (u.sold_date ? u.sold_date + 'T12:00:00Z' : null) || u.updated_at;
+    const t = v ? Date.parse(v) : NaN;
+    return Number.isFinite(t) ? t : -Infinity;
+  };
+  filtered.sort((a, b) => soldRecency(b) - soldRecency(a));
+
   tbody.innerHTML = filtered.map(u => `
     <tr>
       <td style="font-weight:500">${u.year||''} ${u.make||''} ${u.model||''}</td>
@@ -6740,6 +6758,7 @@ function renderSoldView() {
       <td>${u.sale_price ? '$'+Number(u.sale_price).toLocaleString() : '—'}</td>
       <td>${u.sold_to||'—'}</td>
       <td style="color:var(--text2);font-size:12px">${u.sold_at ? new Date(u.sold_at).toLocaleDateString() : (u.sold_date||'—')}</td>
+      <td style="color:var(--text2);font-size:12px" title="When Torque Hub changed this row to sold. Not the sale date.">${u.sold_marked_at ? new Date(u.sold_marked_at).toLocaleString() : '—'}</td>
       <td class="${parseInt(u.days)>180?'aging-alert':parseInt(u.days)>90?'aging-warn':'aging-ok'}">${u.days||'—'}d</td>
     </tr>`).join('');
 }
