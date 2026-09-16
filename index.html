@@ -255,8 +255,8 @@
   /* PHOTO BADGE in table */
   .photo-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; background: #eff6ff; color: #1d4ed8; }
   .photo-badge.none { background: var(--surface2); color: var(--text3); }
-  .sold-row td { opacity: 0.4; text-decoration: line-through; }
-  .sold-row td.action-cell { opacity: 1 !important; text-decoration: none !important; }
+  /* 2026-09-15: sold rows are no longer faded/struck through in All Listings —
+     the SOLD badge is the indicator; the row stays readable. */
   .action-cell { white-space: nowrap; }
   .sold-btn { padding: 4px 9px; border-radius: 5px; border: 1px solid #16a34a; background: #f0fdf4; color: #16a34a; font-size: 11px; font-weight: 700; cursor: pointer; font-family: "Barlow", sans-serif; transition: all 0.15s; }
   .sold-btn:hover { background: #dcfce7; }
