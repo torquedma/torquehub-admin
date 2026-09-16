@@ -1298,7 +1298,7 @@ document.querySelector('.sidebar').classList.toggle('open');
       <table class="leads-table" id="sold-table">
         <thead><tr>
           <th>Vehicle</th><th>Dealer</th><th>Stock #</th>
-          <th>Sale Price</th><th>Sold To</th><th>Sold Date</th><th title="Torque Hub sold-state transition timestamp — drives the order of this list">Marked Sold</th><th>Days on Market</th>
+          <th>Last Listed Price</th><th>Sold Date</th><th>Days on Market</th>
         </tr></thead>
         <tbody id="sold-tbody"></tbody>
       </table>
@@ -6765,10 +6765,8 @@ function renderSoldView() {
       <td style="font-weight:500">${u.year||''} ${u.make||''} ${u.model||''}</td>
       <td style="color:var(--text2)">${u.dealer||''}</td>
       <td style="font-size:12px;color:var(--text3)">${u.stock||'—'}</td>
-      <td>${u.sale_price ? '$'+Number(u.sale_price).toLocaleString() : '—'}</td>
-      <td>${u.sold_to||'—'}</td>
+      <td>${(u.price && !isNaN(parseFloat(String(u.price).replace(/[^0-9.]/g,'')))) ? '$'+Number(String(u.price).replace(/[^0-9.]/g,'')).toLocaleString() : '—'}</td>
       <td style="color:var(--text2);font-size:12px">${u.sold_at ? new Date(u.sold_at).toLocaleDateString() : (u.sold_date||'—')}</td>
-      <td style="color:var(--text2);font-size:12px" title="When Torque Hub changed this row to sold. Not the sale date.">${u.sold_marked_at ? new Date(u.sold_marked_at).toLocaleString() : '—'}</td>
       <td class="${parseInt(u.days)>180?'aging-alert':parseInt(u.days)>90?'aging-warn':'aging-ok'}">${u.days||'—'}d</td>
     </tr>`).join('');
 }
