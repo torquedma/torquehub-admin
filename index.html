@@ -2315,6 +2315,16 @@ let invSort = { key: "days", dir: 1 };
 // that predate the column fall through to the documented legacy evidence:
 // sold_at -> sold_date normalized to noon UTC -> updated_at. Epoch ms so the
 // +00:00 / Z suffix difference is moot; rows with nothing sort last.
+// 2026-09-15: one display format for the sale date whichever field carries it.
+// sold_at (retail: entered date, noon UTC) or sold_date (YYYY-MM-DD) normalized
+// to noon UTC so the calendar day cannot shift across time zones. Rows with no
+// recorded sale date show a dash — the transition timestamp is not a sale date.
+function soldDateDisplay(u) {
+  const v = u.sold_at || (u.sold_date ? u.sold_date + 'T12:00:00Z' : null);
+  const t = v ? Date.parse(v) : NaN;
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString() : '—';
+}
+
 function soldRecency(u) {
   const v = u.sold_marked_at || u.sold_at
     || (u.sold_date ? u.sold_date + 'T12:00:00Z' : null) || u.updated_at;
@@ -6766,7 +6776,7 @@ function renderSoldView() {
       <td style="color:var(--text2)">${u.dealer||''}</td>
       <td style="font-size:12px;color:var(--text3)">${u.stock||'—'}</td>
       <td>${(u.price && !isNaN(parseFloat(String(u.price).replace(/[^0-9.]/g,'')))) ? '$'+Number(String(u.price).replace(/[^0-9.]/g,'')).toLocaleString() : '—'}</td>
-      <td style="color:var(--text2);font-size:12px">${u.sold_at ? new Date(u.sold_at).toLocaleDateString() : (u.sold_date||'—')}</td>
+      <td style="color:var(--text2);font-size:12px">${soldDateDisplay(u)}</td>
       <td class="${parseInt(u.days)>180?'aging-alert':parseInt(u.days)>90?'aging-warn':'aging-ok'}">${u.days||'—'}d</td>
     </tr>`).join('');
 }
