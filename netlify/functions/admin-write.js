@@ -1052,9 +1052,18 @@ async function handleUnpublishWalkaround({ data, svcKey }) {
 }
 
 // validateWalkaroundPayload — returns an array of error strings; empty = OK.
-// Same shape contract as the site-repo standalone version: rejects abstain,
-// requires title/meet_title/meet/torque_take/decision_factors.{makes_it_a_yes,
-// makes_it_a_yes_footer}.
+// v1.4 contract (Foreman rulings 2026-09-18) — the stored object is EXACTLY what
+// the live Walkaround cards consume:
+//   torque_take[]           1..3 non-empty paragraph strings, display order, NO placeholder slot
+//   decision_factors{}      makes_it_a_yes: exactly 4 non-empty strings; makes_it_a_yes_footer: non-empty string
+//   uncertainty_type        optional: term|config|business|system|condition|ownership (or null)
+//   buyer_question          optional non-empty string
+//   version                 optional; when present must be "1.4"
+//   title                   optional non-empty string (renderer default is "Torque Take")
+// Rejected: abstain objects; obsolete v1.2/v1.3 keys (meet, meet_title, identity,
+// buyer_checklist) — Card 1 is the governed DX and Buyer Intelligence does not
+// recreate identity; a legacy-shaped payload must be re-generated, not republished.
+const WALKAROUND_UNCERTAINTY_TYPES = new Set(['term', 'config', 'business', 'system', 'condition', 'ownership']);
 function validateWalkaroundPayload(payload) {
   const errs = [];
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -1062,20 +1071,36 @@ function validateWalkaroundPayload(payload) {
     return errs;
   }
   if (payload.abstain === true) errs.push('cannot publish an abstain object');
-  if (typeof payload.title !== 'string' || !payload.title.trim())             errs.push('missing or empty title');
-  if (typeof payload.meet_title !== 'string' || !payload.meet_title.trim())   errs.push('missing or empty meet_title');
-  if (typeof payload.meet !== 'string' || !payload.meet.trim())               errs.push('missing or empty meet');
-  if (!Array.isArray(payload.torque_take))                                    errs.push('torque_take is not an array');
+  for (const k of ['meet', 'meet_title', 'identity', 'buyer_checklist']) {
+    if (Object.prototype.hasOwnProperty.call(payload, k)) errs.push(`obsolete key "${k}" — not a v1.4 payload; regenerate under walkaround-v1.4-text`);
+  }
+  if (payload.version != null && payload.version !== '1.4') errs.push(`version "${payload.version}" is not "1.4"`);
+  if (payload.title != null && (typeof payload.title !== 'string' || !payload.title.trim())) errs.push('title, when present, must be a non-empty string');
+
+  const tt = payload.torque_take;
+  if (!Array.isArray(tt)) {
+    errs.push('torque_take is not an array');
+  } else {
+    if (tt.length < 1 || tt.length > 3) errs.push(`torque_take must hold 1 to 3 paragraphs (got ${tt.length})`);
+    tt.forEach((s, i) => { if (typeof s !== 'string' || !s.trim() || /^\(unused/i.test(s.trim())) errs.push(`torque_take[${i}] is not a real paragraph`); });
+  }
+
   const df = payload.decision_factors;
   if (!df || typeof df !== 'object' || Array.isArray(df)) {
     errs.push('missing decision_factors object');
   } else {
-    if (!Array.isArray(df.makes_it_a_yes)) errs.push('decision_factors.makes_it_a_yes is not an array');
-    const footer = df.makes_it_a_yes_footer;
-    if (footer == null || (typeof footer === 'string' && !footer.trim())) {
-      errs.push('missing or empty decision_factors.makes_it_a_yes_footer');
+    const yes = df.makes_it_a_yes;
+    if (!Array.isArray(yes)) errs.push('decision_factors.makes_it_a_yes is not an array');
+    else {
+      if (yes.length !== 4) errs.push(`decision_factors.makes_it_a_yes must hold exactly 4 items (got ${yes.length})`);
+      yes.forEach((s, i) => { if (typeof s !== 'string' || !s.trim()) errs.push(`decision_factors.makes_it_a_yes[${i}] is empty`); });
     }
+    const footer = df.makes_it_a_yes_footer;
+    if (typeof footer !== 'string' || !footer.trim()) errs.push('missing or empty decision_factors.makes_it_a_yes_footer');
   }
+
+  if (payload.uncertainty_type != null && !WALKAROUND_UNCERTAINTY_TYPES.has(payload.uncertainty_type)) errs.push(`uncertainty_type "${payload.uncertainty_type}" is not an allowed value`);
+  if (payload.buyer_question != null && (typeof payload.buyer_question !== 'string' || !payload.buyer_question.trim())) errs.push('buyer_question, when present, must be a non-empty string');
   return errs;
 }
 
