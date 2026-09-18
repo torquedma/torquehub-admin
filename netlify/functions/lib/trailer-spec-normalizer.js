@@ -1,5 +1,7 @@
 'use strict';
 
+const { presentCase } = require('./present-case');
+
 // trailer-spec-normalizer.js — Stage 0 SKELETON.
 // Public entry: normalizeTrailerSpecs(rawDescription, category).
 // CommonJS, zero external deps. No handlers yet: HGR/Impex/Allied/free-form all
@@ -252,6 +254,11 @@ function classifyHgr(lines) {
       sourceLineId,
       originalLine: text,
       normalizedLine,
+      // HGR DX 6A (2026-09-18): presentation casing ONLY. normalizedLine is the
+      // evidence-normalized line and is never modified; displayLine is what the
+      // generator renders. presentCase enforces displayLine.toLowerCase() ===
+      // normalizedLine.toLowerCase() at runtime (fail closed).
+      displayLine: presentCase(normalizedLine),
       group: assignGroup(normalizedLine),
       confidence,
       presentation: 'default',

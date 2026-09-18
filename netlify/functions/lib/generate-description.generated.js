@@ -413,7 +413,8 @@ async function generateDescription(unit, apiKey) {
     for (const k of normalized.keyDetails) {
       if (k.confidence !== 'high') continue;
       if (k.presentation === 'suppressed_due_to_conflict') continue;
-      detailLines.push('- ' + k.normalizedLine);
+      // HGR DX 6A (2026-09-18): render the presentation form; evidence form untouched.
+      detailLines.push('- ' + (k.displayLine || k.normalizedLine));
     }
   }
   if (detailLines.length === 0 && unit.stock) detailLines.push('- Stock #: ' + unit.stock);
