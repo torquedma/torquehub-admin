@@ -1511,8 +1511,22 @@ document.querySelector('.sidebar').classList.toggle('open');
           <input class="edit-input" id="dem-name" type="text" placeholder="Legal business name">
         </div>
         <div class="edit-field">
-          <label class="edit-label">Phone</label>
+          <label class="edit-label">Buyer-facing phone</label>
           <input class="edit-input" id="dem-phone" type="tel" placeholder="555-555-5555">
+        </div>
+        <div class="edit-field" style="grid-column:1/-1;border:1px solid #2a3441;border-radius:8px;padding:10px">
+          <label class="edit-label">Call tracking (Retreaver) — <span id="dem-tracking-state">off</span></label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+            <input class="edit-input" id="dem-tracking-key" type="text" placeholder="Key (stock prefix, e.g. HGR)" style="flex:1;min-width:120px;text-transform:uppercase">
+            <input class="edit-input" id="dem-tracking-dest" type="tel" placeholder="Destination (dealer's real line — sent to Retreaver, never stored)" style="flex:2;min-width:220px">
+            <input class="edit-input" id="dem-tracking-area" type="text" placeholder="Area" maxlength="3" style="width:64px">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button type="button" class="btn-secondary" onclick="trackingProvision()">Turn ON — provision</button>
+            <button type="button" class="btn-secondary" onclick="trackingVerify()">Verify</button>
+            <button type="button" class="btn-secondary" onclick="trackingOptOut()">Turn OFF — opt out</button>
+          </div>
+          <div id="dem-tracking-msg" style="font-size:12px;color:#9ca3af;margin-top:6px"></div>
         </div>
         <div class="edit-field">
           <label class="edit-label">Website</label>
@@ -1873,17 +1887,11 @@ let savingListing = false;
 
 const CAT_ICONS = { Trucks: "🚚", Construction: "🏗️", Farm: "🌾", Trailers: "🚛", Landscape: "🌳" };
 const DEALER_CAT_MAP = {};
-const DEALER_CONTACT = {
-  'Davenport Inc.':                 { name: 'Davenport Motors',                phone: '252-809-2172' },
-  "Fat Daddy's Truck Sales":        { name: "Fat Daddy's Truck Sales",         phone: '919-759-5434' },
-  'Auto Connection 210 LLC':        { name: 'Auto Connection 210 LLC',         phone: '910-490-2596' },
-  "HGR's Truck and Trailer":        { name: "HGR's Truck and Trailer",         phone: '910-661-0868' },
-  'Wilson Trailer Sales & Service': { name: 'Wilson Trailer Sales & Service',  phone: '252-429-8805' },
-  'Dick Smith Equipment':           { name: 'Dick Smith Equipment',            phone: '919-734-1191' },
-  'Suttontown Repair Service':      { name: 'Suttontown Repair Service',       phone: '910-530-1732' },
-  'Mid-Atlantic Power & Equipment': { name: 'Mid-Atlantic Power & Equipment',  phone: '910-889-9201' },
-  'JFS Power Equipment':            { name: 'JFS Power Equipment',             phone: '252-585-5343' },
-};
+// Dealer contact comes from the governed dealers rows loaded from Supabase (buyer-facing phone = dealers.phone).
+function dealerContact(name) {
+  const d = DEALERS.find(x => x.name === name);
+  return { name: name || 'the dealership', phone: d && d.phone ? d.phone : '' };
+}
 const DEALERS_SESSION_KEY = 'torquehub_dealers_session_v1';
 const INVENTORY_SESSION_KEY = 'torquehub_inventory_session_v1';
 
@@ -4436,177 +4444,6 @@ async function pastePhotosFromClipboard() {
   if (text) doInject(text);
 }
 
-// ===================== SEND TO SAM =====================
-function sendToSam() {
-  const u = INVENTORY.find(u => getListingKey(u) === currentListingKey);
-  if (!u) { alert('No listing selected.'); return; }
-
-  const key = getListingKey(u);
-  const photos = (PHOTO_STORE[key] || []);
-  const photoLine = photos.length > 0
-    ? photos.slice(0, 3).map((p, i) => `Photo ${i+1}: ${p.url}`).join('\n')
-    : 'No photos imported yet — add photos first in Torque Hub';
-
-  const price = u.price
-    ? '$' + Number(String(u.price).replace(/[^0-9.]/g,'')).toLocaleString()
-    : 'Call for Price';
-
-  const condition = u.condition || '';
-  const mileage = u.mileage ? u.mileage + ' Miles' : '';
-  const color = u.color || '';
-  const specs = [condition, mileage, color].filter(Boolean).join(' • ');
-
-  // Dealer info lookup
-  const dealerInfo = {
-    'Auto Connection 210 LLC':    { addr: '13596 NC-210 B, Angier, NC 27501', phone: '910-490-2596' },
-    "Fat Daddy's Truck Sales":    { addr: '4337 Hwy 13 N, Goldsboro, NC 27534', phone: '919-759-5434' },
-    'Davenport Inc.':             { addr: '3711 Mackeys Rd, Plymouth, NC 27962', phone: '252-809-2172' },
-    "HGR's Truck and Trailer":    { addr: '4519 Marracco Dr, Hope Mills, NC 28348', phone: '910-425-6104' },
-    'Wilson Trailer Sales & Service': { addr: 'Wilson Trailer Sales, NC', phone: '' },
-  };
-  const d = dealerInfo[u.dealer] || { addr: '', phone: '' };
-
-  const title = `${u.year || ''} ${u.make || ''} ${u.model || ''}`.trim();
-  const stockNum = u.stock || 'N/A';
-  const vin = u.vin || '';
-  const description = u.description || '';
-  const daysOn = u.days ? `${u.days} days on market` : '';
-
-  const prompt = `NEW GRAPHIC REQUEST — TORQUE DMA
-${'='.repeat(50)}
-
-DEALER HEADER
-─────────────────────────────
-Name:    ${u.dealer}
-Address: ${d.addr}
-Phone:   ${d.phone}
-
-UNIT DETAILS
-─────────────────────────────
-Title:   ${title}
-Price:   ${price}
-Stock #: ${stockNum}
-VIN:     ${vin}
-Specs:   ${specs || 'See description'}
-Days:    ${daysOn}
-
-DESCRIPTION / NOTES
-─────────────────────────────
-${description || 'No description yet — use unit title and specs above'}
-
-PHOTOS
-─────────────────────────────
-${photoLine}
-
-GRAPHIC SPEC
-─────────────────────────────
-Format:    Dark card, 4:5 ratio (Facebook/Instagram)
-Header:    Dealer name largest, address + phone below
-           Dark steel background, Torque DMA brand style
-Center:    Unit photo — full bleed
-Footer:    1) HEADLINE — ${title} (largest)
-           2) PRICE — ${price} (bold, prominent)
-           3) SPECS — ${specs || 'See description'}
-           4) Stock # — ${stockNum} (small)
-           5) Bottom strip — "Torque DMA — Money-Making Trucks & Equipment"
-Style:     Dark background, white text, blue accents
-           NO neon, NO sci-fi, NO AI slop
-           Clean hierarchy, scroll-stopping, restrained
-Watermark: Torque DMA logo bottom right
-
-${'='.repeat(50)}
-Ready to execute? Reply with your design plan before building.`;
-
-  // Open Sam's graphic design chat with the prompt pre-filled
-  // We use the specific chat URL and append the prompt via URL
-  const samChatUrl = 'https://chatgpt.com/c/69a0a9a8-21a4-832c-9a42-3227f6daceae';
-
-  // Copy to clipboard first, then open the chat
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(prompt).then(() => {
-      // Show confirmation modal
-      showSamModal(prompt, samChatUrl, title);
-    }).catch(() => {
-      showSamModal(prompt, samChatUrl, title);
-    });
-  } else {
-    showSamModal(prompt, samChatUrl, title);
-  }
-}
-
-function showSamModal(prompt, chatUrl, title) {
-  // Remove existing if any
-  const existing = document.getElementById('sam-modal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'sam-modal';
-  modal.style.cssText = `
-    position:fixed;inset:0;z-index:9999;
-    background:rgba(0,0,0,0.85);
-    display:flex;align-items:center;justify-content:center;
-    padding:20px;
-  `;
-
-  modal.innerHTML = `
-    <div style="
-      background:#1a1d23;border:1px solid #2a2d35;
-      border-radius:12px;max-width:600px;width:100%;
-      max-height:85vh;display:flex;flex-direction:column;
-      box-shadow:0 24px 80px rgba(0,0,0,0.8);
-    ">
-      <!-- Header -->
-      <div style="padding:20px 24px;border-bottom:1px solid #2a2d35;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-        <div>
-          <div style="font-weight:700;font-size:16px;color:#f1f3f6;">🤖 Send to Sam</div>
-          <div style="font-size:12px;color:#6b7280;margin-top:2px;">${title}</div>
-        </div>
-        <button onclick="document.getElementById('sam-modal').remove()" style="background:none;border:none;color:#6b7280;font-size:20px;cursor:pointer;padding:4px;">✕</button>
-      </div>
-
-      <!-- Prompt preview -->
-      <div style="flex:1;overflow-y:auto;padding:20px 24px;">
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#3b82f6;margin-bottom:10px;">Prompt ready to send:</div>
-        <pre style="
-          background:#0f1114;border:1px solid #2a2d35;border-radius:6px;
-          padding:16px;font-size:12px;line-height:1.6;color:#9ca3af;
-          white-space:pre-wrap;word-break:break-word;font-family:monospace;
-          max-height:320px;overflow-y:auto;
-        ">${prompt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
-      </div>
-
-      <!-- Actions -->
-      <div style="padding:16px 24px;border-top:1px solid #2a2d35;display:flex;gap:10px;flex-shrink:0;">
-        <button onclick="
-          navigator.clipboard.writeText(document.getElementById('sam-prompt-text').innerText || \`${prompt.replace(/`/g,'\`')}\`);
-          this.textContent='✓ Copied!';
-          this.style.background='#16a34a';
-          setTimeout(()=>{this.textContent='📋 Copy Prompt';this.style.background='#374151';},2000);
-        " style="
-          flex:1;background:#374151;color:#f1f3f6;border:1px solid #4b5563;
-          padding:10px;border-radius:6px;font-weight:600;font-size:13px;
-          cursor:pointer;
-        ">📋 Copy Prompt</button>
-        <button onclick="
-          window.open('${chatUrl}', '_blank');
-          document.getElementById('sam-modal').remove();
-        " style="
-          flex:1;background:linear-gradient(135deg,#16a34a,#15803d);
-          color:#fff;border:1px solid #22c55e;
-          padding:10px;border-radius:6px;font-weight:700;font-size:13px;
-          cursor:pointer;
-        ">🚀 Open Sam's Chat →</button>
-      </div>
-      <div style="padding:0 24px 16px;font-size:11px;color:#4b5563;text-align:center;">
-        Copy the prompt first, then open Sam's chat and paste it in
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
-}
-// ===================== END SEND TO SAM =====================
 
 
 window.addEventListener('message', function(event) {
@@ -5141,6 +4978,11 @@ function openDealerEditModal(i) {
   document.getElementById('dem-sub').textContent   = isAdd ? '' : d.name || '';
   document.getElementById('dem-name').value     = d.name    || '';
   document.getElementById('dem-phone').value    = d.phone   || '';
+  document.getElementById('dem-tracking-state').textContent = d.tracking_identity_id ? 'ON' : 'off';
+  document.getElementById('dem-tracking-key').value  = '';
+  document.getElementById('dem-tracking-dest').value = '';
+  document.getElementById('dem-tracking-area').value = '';
+  document.getElementById('dem-tracking-msg').textContent = d.tracking_identity_id ? 'Tracked: phone must equal the Retreaver Number. Use Opt out to switch to a direct line.' : 'Not tracked: phone is the dealer\'s direct line.';
   document.getElementById('dem-website').value  = d.website || '';
   document.getElementById('dem-city').value     = d.city    || '';
   document.getElementById('dem-state').value    = (d.state  || '').toUpperCase();
@@ -5153,6 +4995,76 @@ function openDealerEditModal(i) {
 function closeDealerEditModal() {
   document.getElementById('dealer-edit-modal').classList.remove('open');
   _demDealerIdx = -1;
+}
+
+
+// ── Call-tracking governance (Retreaver) — all decisions are server-side in retreaver.js ──
+async function trackingCall(operation, data) {
+  const r = await fetch('/.netlify/functions/admin-write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+    body: JSON.stringify({ operation, data }),
+  });
+  const t = await r.text(); let j = {}; try { j = JSON.parse(t); } catch (e) { j = { error: t }; }
+  if (!r.ok) throw new Error(j.error || (j.code ? j.code : t));
+  return j;
+}
+function _demDealer() { return _demDealerIdx === -1 ? null : (DEALERS[_demDealerIdx] || null); }
+async function trackingProvision() {
+  const d = _demDealer(); const msg = document.getElementById('dem-tracking-msg');
+  if (!d || !d.id) { msg.textContent = 'Save the dealer first, then provision.'; return; }
+  const key = document.getElementById('dem-tracking-key').value.trim().toUpperCase();
+  const dest = document.getElementById('dem-tracking-dest').value.trim();
+  const area = document.getElementById('dem-tracking-area').value.trim();
+  if (!key || !dest) { msg.textContent = 'Key and destination are required.'; return; }
+  if (!confirm(`Provision Retreaver tracking for ${d.name}?\nKey ${key} · calls route to ${dest}${area ? ' · area ' + area : ''}`)) return;
+  msg.textContent = 'Provisioning…';
+  try {
+    const res = await trackingCall('tracking_provision', { scope: 'dealer', key, dealer_id: d.id, display_name: d.name, destination_number: dest, area_code: area || undefined });
+    if (!res.ok) { msg.textContent = 'Refused: ' + res.code + (res.error ? ' — ' + res.error : ''); return; }
+    d.phone = res.public_number; d.tracking_identity_id = true;
+    document.getElementById('dem-phone').value = res.public_number;
+    document.getElementById('dem-tracking-state').textContent = 'ON';
+    document.getElementById('dem-tracking-dest').value = '';
+    msg.textContent = `Tracking ON. Buyer-facing number ${res.public_number}` + (res.bound ? '' : ' — NOT BOUND via API: bind system_target_id in Retreaver, then Verify.') + (res.area_ok ? '' : ' — area code differs from request.');
+    saveAppSession(); renderDealerTable();
+  } catch (e) { msg.textContent = 'Error: ' + e.message; }
+}
+async function trackingVerify() {
+  const d = _demDealer(); const msg = document.getElementById('dem-tracking-msg');
+  const key = document.getElementById('dem-tracking-key').value.trim().toUpperCase();
+  if (!key) { msg.textContent = 'Enter the key to verify.'; return; }
+  msg.textContent = 'Verifying…';
+  try { const res = await trackingCall('tracking_verify', { key }); msg.textContent = (res.ok ? 'PASS ' : 'MISMATCH ') + JSON.stringify(res.checks || res); }
+  catch (e) { msg.textContent = 'Error: ' + e.message; }
+}
+async function trackingOptOut() {
+  const d = _demDealer(); const msg = document.getElementById('dem-tracking-msg');
+  if (!d || !d.id || !d.tracking_identity_id) { msg.textContent = 'This dealer is not tracked.'; return; }
+  const direct = prompt(`Direct line to publish for ${d.name} (buyers will call this number directly):`, '');
+  if (!direct) return;
+  if (!confirm(`Turn tracking OFF for ${d.name}? The VDP will show ${direct} immediately; the Retreaver Buyer is paused, not deleted.`)) return;
+  msg.textContent = 'Opting out…';
+  try {
+    const res = await trackingCall('tracking_optout', { dealer_id: d.id, direct_phone: direct });
+    if (!res.ok) { msg.textContent = 'Refused: ' + res.code; return; }
+    d.phone = direct; d.tracking_identity_id = null;
+    document.getElementById('dem-phone').value = direct;
+    document.getElementById('dem-tracking-state').textContent = 'off';
+    msg.textContent = 'Tracking OFF. Direct line is now buyer-facing.';
+    saveAppSession(); renderDealerTable();
+  } catch (e) { msg.textContent = 'Error: ' + e.message; }
+}
+// Private-party unit: provision a seller/unit-scoped identity for the current listing (stock) — same server path.
+async function provisionPrivateTracking(stock, sellerKeyOrBlank) {
+  const key = (sellerKeyOrBlank || stock).trim().toUpperCase();
+  const dest = prompt(`Seller's real phone for ${stock} (sent to Retreaver, never stored):`, '');
+  if (!dest) return;
+  const area = prompt('Preferred area code (blank = any):', '') || '';
+  const scope = key === stock.toUpperCase() ? 'unit' : 'seller';
+  const res = await trackingCall('tracking_provision', { scope, key, display_name: stock, destination_number: dest, area_code: area || undefined, unit_stocks: [stock] });
+  alert(res.ok ? `Tracking number ${res.public_number} assigned to ${stock}` + (res.bound ? '' : ' — NOT BOUND via API: bind in Retreaver, then verify.') : `Refused: ${res.code} ${res.error || ''}`);
+  return res;
 }
 
 async function saveDealerEdit() {
@@ -5785,7 +5697,7 @@ function autoFormatDXText(text, u) {
   lines.push('');
   lines.push(`Price: ${price ? (String(price).startsWith('$') ? price : '$' + price.replace(/[^\d,.-]/g,'')) : 'Call for Price'}`);
   lines.push('');
-  const dc = DEALER_CONTACT[u && u.dealer] || { name: u && u.dealer || 'the dealership', phone: '' };
+  const dc = dealerContact(u && u.dealer);
   lines.push(`Contact ${dc.name} Today:`);
   if (dc.phone) lines.push(`Call ${dc.phone} for more details or to schedule a viewing.`);
   else lines.push('Contact us for more details or to schedule a viewing.');
@@ -5816,7 +5728,7 @@ function generateCurrentBullets() {
   const el = document.getElementById('edit-description');
   if (!el) return;
   const title = parseTitleParts(u);
-  const dc = DEALER_CONTACT[u.dealer] || { name: u.dealer || 'the dealership', phone: '' };
+  const dc = dealerContact(u.dealer);
   const contactBlock = [`Contact ${dc.name} Today:`];
   if (dc.phone) contactBlock.push(`Call ${dc.phone} for more details or to schedule a viewing.`);
   const lines = [
@@ -5861,7 +5773,7 @@ function generatePackageText(u, channel) {
   const dealer = u.dealer || '';
   const template = dealerTemplateName(dealer);
   const specs = [hp, fuel, stock ? `Stock # ${stock}` : ''].filter(Boolean).join(' • ');
-  const dc = DEALER_CONTACT[dealer] || { name: dealer || 'the dealership', phone: '' };
+  const dc = dealerContact(dealer);
 
   if (channel === 'VN') {
     const contactLine = dc.phone ? `\nCall ${dc.phone} for more details or to schedule a viewing.` : '';
@@ -5968,7 +5880,7 @@ function smartFormatDX(input, u) {
   const normalizedKey = key.map(line => line.startsWith('•') ? line : `• ${cleanBullet(line)}`);
   const normalizedAdditional = additional.map(line => line.startsWith('•') ? line : `• ${cleanBullet(line)}`);
   const priceLine = price ? `Price: ${price}` : 'Price: Call for Price';
-  const dc = DEALER_CONTACT[u && u.dealer] || { name: (u && u.dealer) || 'the dealership', phone: '' };
+  const dc = dealerContact(u && u.dealer);
   const contactLines = contact.length
     ? contact
     : dc.phone ? [`Call ${dc.phone} for more details or to schedule a viewing.`] : [];
@@ -6507,10 +6419,12 @@ async function loadApp() {
 
   try {
     // Load dealers
-    const dRes = await fetch(`${SUPABASE_URL}/rest/v1/dealers?select=name,category,status,phone,city,state,website,site_url&order=name`, { headers });
+    const dRes = await fetch(`${SUPABASE_URL}/rest/v1/dealers?select=id,name,category,status,phone,city,state,website,site_url,tracking_identity_id&order=name`, { headers });
     if (dRes.ok) {
       const dData = await dRes.json();
       DEALERS = dData.map(d => ({
+        id:      d.id,
+        tracking_identity_id: d.tracking_identity_id || null,
         name:    d.name,
         cats:    d.category ? [d.category] : [],
         status:  d.status   || 'Active',

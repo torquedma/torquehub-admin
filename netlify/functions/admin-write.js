@@ -3,6 +3,7 @@
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 const { stampFacts } = require('./lib/provenance');
 const { publishToDealerAndLog, lookupDealerByStock } = require('./lib/publish-to-dealer');
+const retreaver = require('./lib/retreaver');
 
 // ---------------------------------------------------------------------------
 // FIELD ALLOWLISTS — only these fields may reach Supabase for each operation.
@@ -74,6 +75,13 @@ const OPERATIONS = {
   review_walkaround:      handleReviewWalkaround,
   publish_walkaround:     handlePublishWalkaround,
   unpublish_walkaround:   handleUnpublishWalkaround,
+  // Call-tracking governance — every decision lives in lib/retreaver.js (server-side gates; UI is not authority)
+  tracking_verify:        ({ data, svcKey })            => retreaver.verify(svcKey, String(data.key || '')).then(r => ({ status: 200, body: r })),
+  tracking_provision:     ({ data, svcKey, userEmail }) => retreaver.provision(svcKey, data || {}, userEmail).then(r => ({ status: r.ok ? 200 : 409, body: r })),
+  tracking_optout:        ({ data, svcKey, userEmail }) => retreaver.optOut(svcKey, String(data.dealer_id || ''), String(data.direct_phone || ''), userEmail).then(r => ({ status: r.ok ? 200 : 409, body: r })),
+  tracking_pause_private: ({ data, svcKey, userEmail }) => retreaver.pausePrivate(svcKey, String(data.key || ''), userEmail).then(r => ({ status: r.ok ? 200 : 409, body: r })),
+  tracking_release:       ({ data, svcKey, userEmail }) => retreaver.release(svcKey, String(data.key || ''), userEmail).then(r => ({ status: r.ok ? 200 : 409, body: r })),
+  tracking_reconcile:     ({ data, svcKey, userEmail }) => retreaver.reconcile(svcKey, String(data.key || ''), userEmail).then(r => ({ status: r.ok ? 200 : 409, body: r })),
 };
 
 // ---------------------------------------------------------------------------
@@ -573,6 +581,11 @@ async function handleUpdateDealer({ data, svcKey }) {
   const row = pickFields(data, DEALER_UPDATE_FIELDS);
   if (Object.keys(row).length === 0) {
     return { status: 400, body: { error: 'No updatable fields provided' } };
+  }
+  // A tracked dealer's buyer-facing phone may only be its Retreaver Number (governed invariant, checked live).
+  if (Object.prototype.hasOwnProperty.call(row, 'phone')) {
+    const chk = await retreaver.assertDealerPhoneAllowed(svcKey, data.name.trim(), row.phone);
+    if (!chk.ok) return { status: 409, body: { error: chk.code, expected: chk.expected || null } };
   }
 
   const res = await fetch(

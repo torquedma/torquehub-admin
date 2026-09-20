@@ -6,11 +6,6 @@ const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DEALER = "HGR's Truck and Trailer";
 const FEED_URL = 'https://www.hgrstrailer.com/unitinventory_univ.xml';
-const DEALER_INFO = {
-  name: "HGR's Truck and Trailer",
-  location: '4519 Marracco Dr, Hope Mills, NC 28348',
-  phone: '910-425-6104'
-};
 
 function fetchUrl(url) {
   return new Promise((resolve, reject) => {
@@ -282,7 +277,6 @@ exports.handler = async (event) => {
       // Description generation skipped — too slow for 60s scheduled timeout (140 items × ~1s/call)
       // if (apiKey) {
       //   try {
-      //     const desc = await generateDescription(item, DEALER_INFO, apiKey);
       //     if (desc) {
       //       item.description = desc;
       //       item.torque_hub_dx = desc;
