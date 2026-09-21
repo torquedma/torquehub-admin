@@ -1652,6 +1652,9 @@ document.querySelector('.sidebar').classList.toggle('open');
         <div class="edit-field"><label class="edit-label">Engine Notes</label><input class="edit-input" id="edit-engine-desc" type="text" placeholder="Additional engine details…"></div>
         <div class="edit-field"><label class="edit-label">Transmission Notes</label><input class="edit-input" id="edit-trans-desc" type="text" placeholder="Additional transmission details…"></div>
         <div class="edit-field full"><label class="edit-label">Video URL</label><input class="edit-input" id="edit-video-url" type="url" placeholder="e.g. https://youtube.com/watch?v=…"></div>
+        <div class="edit-field full"><label class="edit-label">Unit Location — only when the unit is NOT at the dealer's location (e.g. Private Party)</label>
+          <div style="display:flex;gap:6px"><input class="edit-input" id="edit-loc-city" type="text" placeholder="City" style="flex:2"><input class="edit-input" id="edit-loc-state" type="text" placeholder="ST" maxlength="2" style="width:64px;text-transform:uppercase"><input class="edit-input" id="edit-loc-zip" type="text" placeholder="ZIP" maxlength="5" inputmode="numeric" style="width:96px"></div>
+          <div class="decode-note">Buyers see City, ST (and ZIP if given) on the listing, with directions to that town. Never enter a street address. Leave blank for dealer inventory.</div></div>
         <div class="edit-field full">
           <div class="inline-field-row">
             <div class="edit-field">
@@ -2633,6 +2636,9 @@ function populateEditForm(u) {
   populateSubcategorySuggestions(document.getElementById("edit-site-tag").value || u.category || "");
   document.getElementById("edit-description").value = u.description || "";
   document.getElementById("edit-notes").value = u.notes || "";
+  document.getElementById("edit-loc-city").value  = u.location_city  || "";
+  document.getElementById("edit-loc-state").value = u.location_state || "";
+  document.getElementById("edit-loc-zip").value   = u.location_zip   || "";
   document.getElementById("edit-prod-status").value = u.prod_status || "";
   var mlInd = document.getElementById("model-lock-indicator");
   var mlBtn = document.getElementById("model-lock-btn");
@@ -2970,6 +2976,20 @@ async function saveAndClose() {
   }
 }
 
+// GIP (PPS public location): read + validate the unit-locality inputs. Returns the three
+// canonical fields, or false after telling the operator what to fix. The database CHECK
+// constraints are the real guard; this only turns their rules into readable messages.
+function readUnitLocation() {
+  const city  = document.getElementById('edit-loc-city').value.trim().replace(/\s+/g, ' ');
+  const state = document.getElementById('edit-loc-state').value.trim().toUpperCase();
+  const zip   = document.getElementById('edit-loc-zip').value.trim();
+  if (!city && !state && !zip) return { location_city: null, location_state: null, location_zip: null };
+  if (!city || !state) { alert('Unit Location needs both City and State (or leave all three blank).'); return false; }
+  if (!/^[A-Z]{2}$/.test(state)) { alert('Unit Location State must be the two-letter abbreviation, e.g. NC.'); return false; }
+  if (zip && !/^[0-9]{5}$/.test(zip)) { alert('Unit Location ZIP must be 5 digits, or blank.'); return false; }
+  return { location_city: city, location_state: state, location_zip: zip || null };
+}
+
 async function saveListingEdits() {
   if (savingListing) return false;
   savingListing = true;
@@ -3049,7 +3069,11 @@ async function saveListingEdits() {
     const _insertSeen = new Set();
     const _dedupePhotos = uploadedPhotos.map(p => ({ url: p.url || p.dataUrl, name: p.name })).filter(p => { if (!p.url || _insertSeen.has(p.url)) return false; _insertSeen.add(p.url); return true; });
 
+    const _newLoc = readUnitLocation();
+    if (_newLoc === false) return false;
+
     const newUnit = {
+      ..._newLoc,
       dealer,
       stock,
       year:                    document.getElementById('edit-year').value.trim(),
@@ -3140,6 +3164,9 @@ async function saveListingEdits() {
         prod_status:              newUnit.prod_status,
         status:                   newUnit.status,
         photos:                   newUnit.photos,
+        location_city:            newUnit.location_city,
+        location_state:           newUnit.location_state,
+        location_zip:             newUnit.location_zip,
         sold:                     false
       }})
     }).then(async r => {
@@ -3214,6 +3241,13 @@ async function saveListingEdits() {
   u.engine_description = document.getElementById("edit-engine-desc").value.trim();
   u.transmission_description = document.getElementById("edit-trans-desc").value.trim();
   u.video_url = document.getElementById("edit-video-url").value.trim();
+  // GIP: send locality only if this record LOADED it (admin-read selects it) or the operator
+  // typed one. A stale cached record without the keys must never overwrite a stored locality.
+  const _locLoaded = Object.prototype.hasOwnProperty.call(u, 'location_city');
+  const _locRead = readUnitLocation();
+  if (_locRead === false) return false;
+  const _sendLoc = _locLoaded || _locRead.location_city !== null;
+  if (_sendLoc) Object.assign(u, _locRead);
   u.vin       = document.getElementById("edit-vin").value.trim();
   u.category  = document.getElementById("edit-site-tag").value;
   u.featured  = document.getElementById("edit-featured").checked ? 1 : 0;
@@ -3286,7 +3320,8 @@ async function saveListingEdits() {
         subcategory: u.subcategory, description: u.description,
         notes: u.notes, status: u.status, prod_status: u.prod_status || null,
         model_locked: u.model_locked || false, dx_locked: u.dx_locked || false,
-        subcategory_locked: u.subcategory_locked || false, raw_description: u.raw_description || null
+        subcategory_locked: u.subcategory_locked || false, raw_description: u.raw_description || null,
+        ...(_sendLoc ? { location_city: u.location_city, location_state: u.location_state, location_zip: u.location_zip } : {})
       }})
     }).then(r => {
       if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits UPDATE] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });

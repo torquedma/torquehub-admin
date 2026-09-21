@@ -14,6 +14,9 @@ const INVENTORY_CREATE_FIELDS = [
   'transmission', 'transmission_description', 'drivetrain', 'video_url',
   'vin', 'category', 'subcategory', 'featured', 'description', 'notes',
   'prod_status', 'status', 'photos', 'sold',
+  // GIP (PPS public location): structured unit locality — City/ST/ZIP only, never a street.
+  // Shape is enforced by CHECK constraints on inventory; public only via inventory_public_detail.
+  'location_city', 'location_state', 'location_zip',
 ];
 
 const INVENTORY_UPDATE_FIELDS = [
@@ -25,6 +28,7 @@ const INVENTORY_UPDATE_FIELDS = [
   'category', 'featured', 'subcategory', 'description', 'notes', 'status',
   'prod_status', 'model_locked', 'dx_locked', 'subcategory_locked',
   'raw_description',
+  'location_city', 'location_state', 'location_zip',
 ];
 
 const MARK_SOLD_FIELDS = [
