@@ -325,7 +325,17 @@ Truck-mounted crane on a double-frame chassis. The seller notes some cosmetic is
 // appendContact() was deleted in baa2bbd: the canonical envelope is
 // Key Details -> Overview -> END, and the dealer contact panel owns
 // phone presentation. Nothing in this library read it.
-async function generateDescription(unit, apiKey) {
+//
+// D1 caller-gate (2026-09-21, Chief Sam ruling): the spec-configuration
+// (C1) dispatch is OFF by default. Only a caller that explicitly opts in
+// via options.specConfiguration === true (strict boolean equality —
+// truthy values do NOT count) reaches C1. Without the opt-in the C1 site
+// is the base-2e5dde2 refusal, byte-identical: no model call, no
+// NO_EVIDENCE split, no validator. The only authorised opt-in caller is
+// generate-dx-background.js, and only for rows with completion_state
+// IS NOT NULL. The receiver (sync-truckpaper-background.js) and
+// improve-dx.js do not pass it.
+async function generateDescription(unit, apiKey, options) {
   // EVIDENCE/PRESENTATION SEPARATION. Generation requires either genuine raw evidence, or
   // enough canonical identity to say what the unit IS. `unit.description` is NEVER either:
   // it is prior Presentation output, and promoting it upstream launders provenance.
@@ -457,6 +467,14 @@ async function generateDescription(unit, apiKey) {
   // (sold=false, dx_locked=false, category='Trailers', raw present): 52 rows,
   // 47 safe_fallback, 5 normalized, of which 4 carry lead prose and 1 does not.
   if (normalized && normalized.handling === 'normalized' && normalized.leadProse.length === 0) {
+    // D1 gate — without the explicit specConfiguration opt-in, refuse exactly as
+    // base 2e5dde2. Same message, same code, no err.reason, no model call, no
+    // validator. Truthy-but-not-true values do NOT count (strict === true).
+    if (!options || options.specConfiguration !== true) {
+      const err = new Error('Normalized trailer evidence contains no factual lead prose; cannot author a Canonical Overview.');
+      err.code = 'INSUFFICIENT_EVIDENCE';
+      throw err;
+    }
     // 2026-09-21 Chief Sam ruling: bullet/spec-only trailer evidence is
     // grounded configuration. The dispatch is:
     //   - rendered high-confidence, non-suppressed keyDetails empty → NO_EVIDENCE
