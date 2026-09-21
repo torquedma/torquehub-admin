@@ -675,11 +675,21 @@ function validateConfigurationOverview(overview, evidence, unit) {
 
   // IDENTIFIER — any token mixing letters and digits, or containing a slash,
   // must appear in evidence (case- and punctuation-insensitive).
+  //
+  // Amendment #3 (2026-09-21): hyphenated dimension tokens of the form
+  // "<number>-<unit>" (e.g. 18-foot, 14-inch, 60-inch) are NOT identifiers
+  // for the purpose of this check. They are prose dimensions whose numeric
+  // portion is still enforced by the NUMBER check below. The exemption is
+  // narrow, anchored, and case-insensitive; the unit list is closed. Every
+  // other letter+digit token and every slash token remains subject to
+  // IDENTIFIER exactly as before.
+  const DIMENSION_UNIT_RE = /^\d+(\.\d+)?-(foot|feet|ft|inch|inches|in|lb|lbs|pound|pounds|ton|tons|gallon|gallons|mile|miles|hour|hours)$/i;
   const evNorm = evJoined.replace(/[^a-z0-9]/gi, '').toLowerCase();
   const tokens = text.split(/\s+/);
   for (const raw of tokens) {
     const t = raw.replace(/^[("'\[]+|[)"'\]\.,;:!?]+$/g, '');
     if (!t) continue;
+    if (DIMENSION_UNIT_RE.test(t)) continue;
     const hasLet = /[A-Za-z]/.test(t);
     const hasDig = /\d/.test(t);
     const hasSlash = t.includes('/');
