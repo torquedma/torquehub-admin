@@ -760,6 +760,28 @@ function validateConfigurationOverview(overview, evidence, unit) {
     if (fam) ovQuantities.push({ numKey: _numKey(n), family: fam });
   }
 
+  // Am#5 §1 — overview-side symbol-form unit recognition. A number (digits;
+  // commas/decimals allowed; not preceded by a digit or decimal point)
+  // IMMEDIATELY followed — NO SPACE — by one of six symbols is a UNIT
+  // quantity. Feet family: ' ’ ′  |  Inches family: " ” ″. Compound forms
+  // like 6′6″ yield one quantity per number under the global regex.
+  // Spelled numbers are NOT extended to symbols. These quantities feed the
+  // SAME ovQuantities collection and go through the SAME evidence check and
+  // SAME OVERVIEW_GROUNDING_FAILED:UNIT reason code as the word forms.
+  const symbolRe = /(?<![\d.])(\d[\d,]*(?:\.\d+)?)(['’′"”″])/g;
+  let ym;
+  while ((ym = symbolRe.exec(text))) {
+    const n = parseFloat(ym[1].replace(/,/g, ''));
+    if (!isFinite(n)) continue;
+    const mk = ym[2];
+    let famName = null;
+    if (mk === "'" || mk === '’' || mk === '′') famName = 'feet';
+    else if (mk === '"' || mk === '”' || mk === '″') famName = 'inches';
+    if (!famName) continue;
+    const fam = UNIT_FAMILIES.find(f => f.name === famName);
+    if (fam) ovQuantities.push({ numKey: _numKey(n), family: fam });
+  }
+
   // Per-line evidence quantity+family extraction. A number is only considered
   // when NOT preceded by a digit or decimal (so "1" in "12" cannot match).
   function _evPairsForLine(line) {
@@ -767,7 +789,7 @@ function validateConfigurationOverview(overview, evidence, unit) {
     if (!line) return out;
     const s = String(line);
     // digits + optional single space + family marker
-    const re = /(?<![\d.])(\d[\d,]*(?:\.\d+)?)( ?)(['’"”]|[A-Za-z]+)/g;
+    const re = /(?<![\d.])(\d[\d,]*(?:\.\d+)?)( ?)(['’′"”″]|[A-Za-z]+)/g; // Am#5 §2 — include ′ ″
     let m;
     while ((m = re.exec(s))) {
       const numStr = m[1];
@@ -777,7 +799,9 @@ function validateConfigurationOverview(overview, evidence, unit) {
       if (gap !== '' && gap !== ' ') continue;
       // classify marker into a family
       let fam = null;
-      if (marker === "'" || marker === '’') fam = 'feet';
+      if (marker === '′') fam = 'feet';       // Am#5 §2 — prime routes to feet
+      else if (marker === '″') fam = 'inches'; // Am#5 §2 — double prime routes to inches
+      else if (marker === "'" || marker === '’') fam = 'feet';
       else if (marker === '"' || marker === '”') fam = 'inches';
       else {
         const low = marker.toLowerCase();
