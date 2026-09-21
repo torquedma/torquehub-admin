@@ -705,6 +705,116 @@ function validateConfigurationOverview(overview, evidence, unit) {
   const evNums = _extractNumbers(evJoined);
   const ovNums = _extractNumbers(text);
   for (const n of ovNums) if (!evNums.has(n)) fail('NUMBER');
+
+  // UNIT — Amendment #4 (2026-09-21). A number written together with a unit
+  // word in the Overview (digits or a spelled number from SPELLED_NUMBERS,
+  // separated by one space or a hyphen from a unit word in {feet, inches,
+  // pounds, tons}) must appear in at least ONE single evidence line as the
+  // same numeric value immediately followed — optionally after one space —
+  // by a marker of the SAME family. Runs LAST, after NUMBER, so any sentence
+  // that already fails an existing check keeps its existing reason code.
+  //
+  // LIMIT (deliberate): UNIT binds a number to a unit family, NOT to an
+  // attribute. An overview that says "16-foot sides" on a unit whose 16′ is
+  // the deck length still passes here; invented nouns are not detected by
+  // this check.
+  const UNIT_FAMILIES = [
+    { name: 'feet',   ovWords: ['foot','feet','ft'],
+      evMarker: /(?:'|’|ft|foot|feet)/i,
+      evEndsWord: (nextChar) => !/[A-Za-z]/.test(nextChar || '') },
+    { name: 'inches', ovWords: ['inch','inches','in'],
+      evMarker: /(?:"|”|in|inch|inches)/i,
+      evEndsWord: (nextChar) => !/[A-Za-z]/.test(nextChar || '') },
+    { name: 'pounds', ovWords: ['lb','lbs','pound','pounds'],
+      evMarker: /(?:lb|lbs|pound|pounds)/i,
+      evEndsWord: (nextChar) => !/[A-Za-z]/.test(nextChar || '') },
+    { name: 'tons',   ovWords: ['ton','tons'],
+      evMarker: /(?:ton|tons)/i,
+      evEndsWord: (nextChar) => !/[A-Za-z]/.test(nextChar || '') },
+  ];
+  const OV_WORD_TO_FAMILY = {};
+  for (const f of UNIT_FAMILIES) for (const w of f.ovWords) OV_WORD_TO_FAMILY[w.toLowerCase()] = f;
+
+  // Build alternation of overview-side unit words (longest first).
+  const _ovAllWords = Object.keys(OV_WORD_TO_FAMILY).sort((a, b) => b.length - a.length);
+  const _ovWordAlt  = _ovAllWords.map(_escapeRe).join('|');
+
+  // Overview quantity scan — digits (commas/decimals allowed) or spelled number,
+  // then a single space OR a hyphen, then a unit word (word-bounded).
+  const ovQuantities = []; // { numKey, family }
+  const digitRe = new RegExp('(?<![\\d.])(\\d[\\d,]*(?:\\.\\d+)?)[\\s\\-](' + _ovWordAlt + ')\\b', 'gi');
+  let dm;
+  while ((dm = digitRe.exec(text))) {
+    const n = parseFloat(dm[1].replace(/,/g, ''));
+    if (!isFinite(n)) continue;
+    const fam = OV_WORD_TO_FAMILY[dm[2].toLowerCase()];
+    if (fam) ovQuantities.push({ numKey: _numKey(n), family: fam });
+  }
+  const _spelledAlt = Object.keys(SPELLED_NUMBERS).sort((a, b) => b.length - a.length).map(_escapeRe).join('|');
+  const spelledRe = new RegExp('\\b(' + _spelledAlt + ')[\\s\\-](' + _ovWordAlt + ')\\b', 'gi');
+  let sm;
+  while ((sm = spelledRe.exec(text))) {
+    const n = SPELLED_NUMBERS[sm[1].toLowerCase()];
+    if (n === undefined) continue;
+    const fam = OV_WORD_TO_FAMILY[sm[2].toLowerCase()];
+    if (fam) ovQuantities.push({ numKey: _numKey(n), family: fam });
+  }
+
+  // Per-line evidence quantity+family extraction. A number is only considered
+  // when NOT preceded by a digit or decimal (so "1" in "12" cannot match).
+  function _evPairsForLine(line) {
+    const out = new Set();
+    if (!line) return out;
+    const s = String(line);
+    // digits + optional single space + family marker
+    const re = /(?<![\d.])(\d[\d,]*(?:\.\d+)?)( ?)(['’"”]|[A-Za-z]+)/g;
+    let m;
+    while ((m = re.exec(s))) {
+      const numStr = m[1];
+      const gap    = m[2];
+      const marker = m[3];
+      // gap must be empty or a single space (regex already restricts, but keep it explicit)
+      if (gap !== '' && gap !== ' ') continue;
+      // classify marker into a family
+      let fam = null;
+      if (marker === "'" || marker === '’') fam = 'feet';
+      else if (marker === '"' || marker === '”') fam = 'inches';
+      else {
+        const low = marker.toLowerCase();
+        // For alphabetic markers, allow the family word even when the word extends further
+        // than the minimum (e.g. "lb" inside "lbs" or "LB." — the family regex enforces prefix match
+        // and evEndsWord below limits what counts as a legitimate boundary).
+        if (/^(ft|foot|feet)/i.test(low) && !/^(feet|foot|ft)[a-z]/i.test(low)) fam = 'feet';
+        else if (/^(inches|inch|in)/i.test(low)) {
+          // "in" alone is fine; "inch"/"inches" fine; but must not be a longer non-family word
+          if (/^inches$/i.test(low) || /^inch$/i.test(low) || /^in$/i.test(low)) fam = 'inches';
+        }
+        else if (/^(lbs|lb|pounds|pound)/i.test(low)) {
+          if (/^(lbs|lb|pounds|pound)$/i.test(low)) fam = 'pounds';
+        }
+        else if (/^(tons|ton)/i.test(low)) {
+          if (/^(tons|ton)$/i.test(low)) fam = 'tons';
+        }
+      }
+      if (!fam) continue;
+      const n = parseFloat(numStr.replace(/,/g, ''));
+      if (!isFinite(n)) continue;
+      out.add(_numKey(n) + '' + fam);
+    }
+    return out;
+  }
+
+  if (ovQuantities.length) {
+    // Union of per-line evidence pairs is fine: the requirement is that AT LEAST
+    // ONE single line contains the number+family, and each line is scanned atomically.
+    const evPairs = new Set();
+    for (const line of evLines) {
+      for (const p of _evPairsForLine(line)) evPairs.add(p);
+    }
+    for (const q of ovQuantities) {
+      if (!evPairs.has(q.numKey + '' + q.family.name)) fail('UNIT');
+    }
+  }
 }
 
 module.exports = { buildPrompt, generateDescription, validateConfigurationOverview };
