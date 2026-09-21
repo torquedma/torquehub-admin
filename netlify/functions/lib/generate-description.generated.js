@@ -23,7 +23,7 @@ const STAGE1B_ENABLED = false;
 'use strict';
 
 const { showMileage, showHours, usageClass } = require('./usage-display.generated.js');
-const { canonicalize }           = require('./taxonomy.generated.js');
+const { canonicalize, CANONICAL_SUBCATEGORIES } = require('./taxonomy.generated.js');
 const { normalizeTrailerSpecs }  = require('./trailer-spec-normalizer');
 
 function trimSpec(val) {
@@ -154,7 +154,32 @@ function usageFlag(factName, claim, unit) {
   return '';
 }
 
-function buildPrompt(unit, normalized) {
+// SPEC-CONFIGURATION prompt mode (2026-09-21, Chief Sam GO). Bullet/spec-only
+// trailer evidence is valid grounding under Chief Sam's ruling; the rendered
+// spec set is the ONLY evidence and must appear verbatim. Every non-'spec'
+// call to buildPrompt falls through to the byte-identical original body.
+function buildPrompt(unit, normalized, mode) {
+  if (mode === 'spec') {
+    const renderedKD = (normalized && Array.isArray(normalized.keyDetails))
+      ? normalized.keyDetails.filter(k => k.confidence === 'high' && k.presentation !== 'suppressed_due_to_conflict')
+      : [];
+    const specLines = renderedKD.map(k => k.displayLine || k.normalizedLine);
+    const evidence = [];
+    if (unit && unit.subcategory) evidence.push('Established Class: ' + unit.subcategory);
+    for (const line of specLines) evidence.push(line);
+    return `You are writing an inventory Overview for Torque Hub, a commercial equipment marketplace.
+
+EVIDENCE (use ONLY these facts; do not add, invent, or infer anything else):
+${evidence.join('\n')}
+
+CONTRACT — write ONE OR TWO SENTENCES of plain prose. Return the prose ONLY: no headline, no "===" separator, no "Key Details", no bullet list, no markdown, no headings.
+- Open with the CONFIGURATION.
+- Use ONLY facts in the supplied EVIDENCE. Restating selected spec facts is permitted.
+- NEVER state a quantity, count, rating, or dimension the EVIDENCE does not state.
+- Do NOT include Year, Make, Model, VIN, or Stock #.
+- No sales language, use cases, or buyer benefits. No "ready to work", "ideal for", "suited for", "perfect for", "great for".
+- Third person. No editorial judgment.`;
+  }
 
   // Build UNIT INFO from non-empty fields only — sparse units get no blank labels.
   // Mileage/hours are gated by lib/usage-display's subcategory-level rule (single
@@ -432,9 +457,52 @@ async function generateDescription(unit, apiKey) {
   // (sold=false, dx_locked=false, category='Trailers', raw present): 52 rows,
   // 47 safe_fallback, 5 normalized, of which 4 carry lead prose and 1 does not.
   if (normalized && normalized.handling === 'normalized' && normalized.leadProse.length === 0) {
-    const err = new Error('Normalized trailer evidence contains no factual lead prose; cannot author a Canonical Overview.');
-    err.code = 'INSUFFICIENT_EVIDENCE';
-    throw err;
+    // 2026-09-21 Chief Sam ruling: bullet/spec-only trailer evidence is
+    // grounded configuration. The dispatch is:
+    //   - rendered high-confidence, non-suppressed keyDetails empty → NO_EVIDENCE
+    //   - else → SPEC-CONFIGURATION prompt path (temperature 0) + validator
+    // Rule 6B and "Overview must not restate Key Details" are superseded for
+    // this path only; every other generation path is byte-identical.
+    const renderedKD = normalized.keyDetails.filter(
+      k => k.confidence === 'high' && k.presentation !== 'suppressed_due_to_conflict'
+    );
+    if (renderedKD.length === 0) {
+      const err = new Error('Normalized trailer evidence contains no factual lead prose and no renderable spec lines; cannot author a Canonical Overview.');
+      err.code = 'INSUFFICIENT_EVIDENCE';
+      err.reason = 'NO_EVIDENCE';
+      throw err;
+    }
+    const specLines = renderedKD.map(k => k.displayLine || k.normalizedLine);
+    const specRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1536,
+        temperature: 0,
+        messages: [{ role: 'user', content: buildPrompt(unit, normalized, 'spec') }]
+      })
+    });
+    if (!specRes.ok) {
+      const errText = await specRes.text();
+      throw new Error(`Anthropic API ${specRes.status}: ${errText}`);
+    }
+    const specData = await specRes.json();
+    const specRaw = (specData.content?.[0]?.text || '').trim();
+    const specParts = specRaw.split(/\n?===\n?/);
+    let specOverview = (specParts.length >= 2 ? specParts.slice(1).join('\n') : specRaw)
+      .replace(/^Overview\s*/i, '').trim();
+    specOverview = specOverview.replace(/^#+\s*/gm, '').trim();
+    validateConfigurationOverview(
+      specOverview,
+      { established_class: unit.subcategory || '', spec_lines: specLines },
+      unit
+    );
+    return 'Key Details\n' + detailLines.join('\n') + '\n\nOverview\n' + specOverview;
   }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -477,4 +545,138 @@ async function generateDescription(unit, apiKey) {
   return text;
 }
 
-module.exports = { buildPrompt, generateDescription };
+// ─── validateConfigurationOverview ─────────────────────────────────────────
+// Defense-in-depth grounding checks over the spec-configuration Overview.
+// Evidence-only prompting is the primary control; these checks are the second
+// gate. Any failure throws with err.code = 'OVERVIEW_GROUNDING_FAILED' and
+// err.reason = 'OVERVIEW_GROUNDING_FAILED:<CHECK>' so the caller HOLDs the row.
+const OVERVIEW_BANNED_PHRASES = ['ready to work', 'ideal for', 'suited for', 'perfect for', 'great for'];
+const QUANTITY_WORDS = { single: 1, tandem: 2, dual: 2, triple: 3, two: 2, three: 3 };
+const SPELLED_NUMBERS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
+  ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+  sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  hundred: 100, thousand: 1000
+};
+
+function _numKey(n) {
+  return String(Math.round(n * 1e6));
+}
+
+function _extractNumbers(text) {
+  const set = new Set();
+  if (!text) return set;
+  const s = String(text);
+  // decimals with optional K/M suffix, including leading-dot decimals (.030)
+  const re = /(?:\d[\d,]*(?:\.\d+)?|\.\d+)(?:\s*(k|m)\b)?/gi;
+  let m;
+  while ((m = re.exec(s))) {
+    const raw = m[0].replace(/\s*[km]$/i, '');
+    let n = parseFloat(raw.replace(/,/g, ''));
+    if (!isFinite(n)) continue;
+    const suf = m[1] && m[1].toLowerCase();
+    if (suf === 'k') n *= 1000;
+    else if (suf === 'm') n *= 1000000;
+    set.add(_numKey(n));
+  }
+  // fractions like 5/16
+  const fre = /\b(\d+)\/(\d+)\b/g;
+  let f;
+  while ((f = fre.exec(s))) {
+    const num = parseInt(f[1], 10);
+    const den = parseInt(f[2], 10);
+    if (den > 0) set.add(_numKey(num / den));
+  }
+  // spelled numbers (single word)
+  const wl = s.toLowerCase();
+  for (const w of Object.keys(SPELLED_NUMBERS)) {
+    if (new RegExp('\\b' + w + '\\b').test(wl)) set.add(_numKey(SPELLED_NUMBERS[w]));
+  }
+  return set;
+}
+
+function _escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function validateConfigurationOverview(overview, evidence, unit) {
+  const fail = (check) => {
+    const err = new Error('OVERVIEW_GROUNDING_FAILED:' + check);
+    err.code = 'OVERVIEW_GROUNDING_FAILED';
+    err.reason = 'OVERVIEW_GROUNDING_FAILED:' + check;
+    throw err;
+  };
+
+  const text = String(overview == null ? '' : overview).trim();
+  const evLines = [
+    (evidence && evidence.established_class) || '',
+    ...((evidence && evidence.spec_lines) || [])
+  ].map(s => String(s == null ? '' : s));
+  const evJoined = evLines.join('\n');
+
+  // SHAPE — plain text, 1..2 sentences, <= 400 chars, no bullets/headings/markdown.
+  if (!text) fail('SHAPE');
+  if (text.length > 400) fail('SHAPE');
+  if (/^\s*[-*•]\s/m.test(text)) fail('SHAPE');
+  if (/^\s*#/m.test(text)) fail('SHAPE');
+  if (/\*\*|__/.test(text)) fail('SHAPE');
+  // Split on sentence terminator followed by whitespace + capitalized start,
+  // which avoids false splits on decimals (".030") or embedded punctuation.
+  const sentences = text.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z])/).filter(s => s.trim().length);
+  if (sentences.length === 0 || sentences.length > 2) fail('SHAPE');
+
+  // IDENTITY — must not open with "This"; year and stock absent.
+  if (/^\s*This\b/i.test(text)) fail('IDENTITY');
+  const yr = String((unit && unit.year) || '').trim();
+  if (yr && new RegExp('\\b' + _escapeRe(yr) + '\\b').test(text)) fail('IDENTITY');
+  const stk = String((unit && unit.stock) || '').trim();
+  if (stk && text.toLowerCase().includes(stk.toLowerCase())) fail('IDENTITY');
+
+  // PHRASE — no banned marketing phrase.
+  const lowered = text.toLowerCase();
+  for (const p of OVERVIEW_BANNED_PHRASES) if (lowered.includes(p)) fail('PHRASE');
+
+  // CLASS — no canonical taxonomy label except the unit's own subcategory.
+  const ownSub = String((unit && unit.subcategory) || '').toLowerCase().trim();
+  for (const cat of CANONICAL_SUBCATEGORIES) {
+    if (cat.toLowerCase() === ownSub) continue;
+    const re = new RegExp('\\b' + _escapeRe(cat).replace(/\\ /g, '\\s+') + '\\b', 'i');
+    if (re.test(text)) fail('CLASS');
+  }
+
+  // QUANTITY_WORD — single/tandem/dual/triple/two/three only if same word or
+  // numeric equivalent appears in evidence lines or unit.model/trim.
+  const evPlusModel = (evJoined + '\n' + ((unit && unit.model) || '') + '\n' + ((unit && unit.trim) || '')).toLowerCase();
+  for (const w of Object.keys(QUANTITY_WORDS)) {
+    if (new RegExp('\\b' + w + '\\b', 'i').test(text)) {
+      const literal = new RegExp('\\b' + w + '\\b', 'i').test(evPlusModel);
+      const num = QUANTITY_WORDS[w];
+      const numeric = new RegExp('\\b' + num + '\\b').test(evPlusModel);
+      if (!literal && !numeric) fail('QUANTITY_WORD');
+    }
+  }
+
+  // IDENTIFIER — any token mixing letters and digits, or containing a slash,
+  // must appear in evidence (case- and punctuation-insensitive).
+  const evNorm = evJoined.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const tokens = text.split(/\s+/);
+  for (const raw of tokens) {
+    const t = raw.replace(/^[("'\[]+|[)"'\]\.,;:!?]+$/g, '');
+    if (!t) continue;
+    const hasLet = /[A-Za-z]/.test(t);
+    const hasDig = /\d/.test(t);
+    const hasSlash = t.includes('/');
+    if ((hasLet && hasDig) || hasSlash) {
+      const norm = t.replace(/[^a-z0-9]/gi, '').toLowerCase();
+      if (!norm) continue;
+      if (!evNorm.includes(norm)) fail('IDENTIFIER');
+    }
+  }
+
+  // NUMBER — every quantity in the overview must equal a number stated in the
+  // evidence, after normalizing commas, units, K/M suffixes, and fractions.
+  const evNums = _extractNumbers(evJoined);
+  const ovNums = _extractNumbers(text);
+  for (const n of ovNums) if (!evNums.has(n)) fail('NUMBER');
+}
+
+module.exports = { buildPrompt, generateDescription, validateConfigurationOverview };

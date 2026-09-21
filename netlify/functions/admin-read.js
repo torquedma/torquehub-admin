@@ -30,7 +30,9 @@ const INVENTORY_ADMIN_SELECT = [
   'engine_description','transmission_description','video_url','mileage','notes','status',
   'prod_status','dx_locked','model_locked','subcategory_locked','raw_description',
   'description_source','photo_count','first_photo','hours','horsepower',
-  'gvwr_class','body_class','provenance','vin_decoded_at'
+  'gvwr_class','body_class','provenance','vin_decoded_at',
+  // HGR-COMPLETION (2026-09-21): completion lifecycle indicator.
+  'completion_state','completion_reason','completion_attempts','completion_attempted_at'
 ].join(',');
 
 // Walkaround Review queue columns the admin UI consumes.

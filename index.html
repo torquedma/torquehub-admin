@@ -2466,6 +2466,20 @@ function renderInventory() {
     if (listSortEl) listSortEl.style.display = 'none';
   }
 
+  // HGR-COMPLETION (2026-09-21): completion-lifecycle badge for draft rows in
+  // pending/hold/retryable. One badge per rendered row, in whichever view mode
+  // is active. Renders nothing for legacy (completion_state NULL) or non-draft.
+  const completionBadge = function(u) {
+    if (u.status !== 'draft') return '';
+    const s = u.completion_state;
+    if (s !== 'pending' && s !== 'hold' && s !== 'retryable') return '';
+    const reason = u.completion_reason || '';
+    const color = s === 'hold' ? '#ef4444' : s === 'retryable' ? '#f59e0b' : '#0ea5e9';
+    const label = s + (reason ? ' · ' + reason : '');
+    const esc = label.replace(/[&<>"']/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
+    return '<span class="completion-badge" style="display:inline-block;padding:1px 6px;border-radius:3px;background:' + color + ';color:#fff;font-size:10px;margin-left:4px" title="Completion state">' + esc + '</span>';
+  };
+
   const tbody = document.getElementById("inv-tbody");
   if (invViewMode === 'table') {
   tbody.innerHTML = slice.map((u, i) => {
@@ -2495,7 +2509,7 @@ function renderInventory() {
       <td><span class="cond-badge ${condClass}">${u.condition}</span></td>
       <td style="font-weight:600">${priceDisplay}</td>
       <td style="font-size:12px;color:var(--text2)">${u.dealer}</td>
-      <td style="font-size:12px;color:var(--text3)">${u.stock}</td>
+      <td style="font-size:12px;color:var(--text3)">${u.stock}${completionBadge(u)}</td>
       <td style="font-size:12px;color:var(--text3)">${u.days}d</td>
       <td style="font-size:12px;color:var(--text3)">${u.fuel||"—"}</td>
       <td>${photoBadge}</td>
@@ -2539,7 +2553,7 @@ function renderInventory() {
             <div class="inv-card-body">
               <div class="inv-card-title">${u.featured ? '⭐ ' : ''}${u.year} ${u.make} ${u.model}${u.trim ? ' ' + u.trim : ''}</div>
               <div class="inv-card-price">${priceDisplay}</div>
-              <div class="inv-card-meta">Stock #${u.stock} · ${u.dealer}</div>
+              <div class="inv-card-meta">Stock #${u.stock} · ${u.dealer}${completionBadge(u)}</div>
               <div class="inv-card-stats"><span class="cond-badge ${condClass}" style="font-size:10px">${u.condition}</span><span style="color:var(--text3);font-size:12px"> ${u.days}d listed</span>${u.fuel ? ` <span style="color:var(--text3);font-size:12px">· ${u.fuel}</span>` : ''}${u.mileage ? ` <span style="color:var(--text3);font-size:12px">· ${u.mileage}</span>` : ''}</div>
             </div>
             <div class="inv-card-actions">

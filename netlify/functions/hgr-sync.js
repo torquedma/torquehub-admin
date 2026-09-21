@@ -43,6 +43,28 @@ function supabaseFetch(path, method, body) {
   });
 }
 
+// HGR-COMPLETION (2026-09-21) — pure helper: retry set for the chained
+// generate-dx-background call. Rows must be draft, not sold, not dx_locked,
+// completion_state in ('pending','retryable'), and completion_attempts < 3.
+// 'hold' is never retried; completion_state NULL (legacy) is never selected.
+// Result is stock-sorted and capped. Callers pass rows already dealer-scoped
+// by the existingRows GET.
+function selectRetryStocks(rows, cap) {
+  const c = typeof cap === 'number' ? cap : 25;
+  return (rows || [])
+    .filter(r =>
+      r.sold === false &&
+      r.status === 'draft' &&
+      r.dx_locked === false &&
+      (r.completion_state === 'pending' || r.completion_state === 'retryable') &&
+      (Number(r.completion_attempts) || 0) < 3
+    )
+    .map(r => normalizeHgrStock(r.stock))
+    .filter(Boolean)
+    .sort()
+    .slice(0, c);
+}
+
 function normalizeHgrStock(s) {
   if (!s) return s;
   const prefixed = s.startsWith('HGR') ? s : 'HGR' + s;
@@ -215,6 +237,11 @@ function parseXml(xml) {
   return items;
 }
 
+// Testable helper for HGR-COMPLETION T6. Exported alongside the handler so
+// the retry-set logic can be exercised without invoking the full Netlify
+// function. Runtime behavior unchanged.
+exports.selectRetryStocks = selectRetryStocks;
+
 exports.handler = async (event) => {
   console.log('HGR sync started');
   if (!SUPABASE_KEY) {
@@ -227,7 +254,7 @@ exports.handler = async (event) => {
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
-    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,sold,dx_locked', 'GET');
+    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,sold,dx_locked,status,completion_state,completion_attempts', 'GET');
     const existingRows = JSON.parse(existing.body);
     const existingStocks = new Set(existingRows.map(r => normalizeHgrStock(r.stock)));
     // soldStocks is LOAD-BEARING: already-sold rows never reappear in the feed, so without
@@ -347,8 +374,15 @@ exports.handler = async (event) => {
       } else {
         // Fresh HGR rows land as drafts. status='draft' set on INSERT only
         // (not on UPDATE — a copy is made so the shared item object is not
-        // mutated for any subsequent code that reads it).
-        const draftItem = Object.assign({}, item, { status: 'draft' });
+        // mutated for any subsequent code that reads it). HGR-COMPLETION
+        // (2026-09-21): also stamp completion_state='pending' and reset
+        // completion_attempts=0 so the chained generate-dx-background walks
+        // the lifecycle branch on this row.
+        const draftItem = Object.assign({}, item, {
+          status: 'draft',
+          completion_state: 'pending',
+          completion_attempts: 0,
+        });
         const r = await supabaseFetch('/rest/v1/inventory', 'POST', [draftItem]);
         if (r.status >= 400) {
           console.error('POST error', r.status, r.body.slice(0,200));
@@ -372,10 +406,21 @@ exports.handler = async (event) => {
     //   have no VIN column value and VIN enrichment is not part of HGR's
     //   intake contract. This ?stocks= trigger pattern must NOT be copied
     //   for VIN-bearing dealers without a different D6 story.
-    if (insertedStocks.length > 0) {
-      const stocksParam = insertedStocks.map(encodeURIComponent).join(',');
+    // HGR-COMPLETION (2026-09-21): chain to generate-dx-background with the
+    // UNION of this run's inserts and a retry set. Retry set = HGR draft rows
+    // where completion_state IN ('pending','retryable') AND completion_attempts < 3,
+    // ordered by stock, capped at 25. 'hold' is never retried; rows with
+    // completion_state NULL (legacy) are never selected.
+    const retryStocks = selectRetryStocks(existingRows, 25);
+
+    const combined = Array.from(new Set([...insertedStocks, ...retryStocks]));
+    console.log('[HGR-DX-TRIGGER] inserted stocks (' + insertedStocks.length + '): ' + (insertedStocks.join(', ') || '(none)'));
+    console.log('[HGR-DX-TRIGGER] retry stocks ('    + retryStocks.length    + '): ' + (retryStocks.join(', ')    || '(none)'));
+
+    if (combined.length > 0) {
+      const stocksParam = combined.map(encodeURIComponent).join(',');
       const url = 'https://hub.torquedma.com/.netlify/functions/generate-dx-background?stocks=' + stocksParam;
-      console.log('[HGR-DX-TRIGGER] chaining canonicalization for ' + insertedStocks.length + ' fresh draft(s): ' + insertedStocks.join(', '));
+      console.log('[HGR-DX-TRIGGER] chaining canonicalization for ' + combined.length + ' stock(s): ' + combined.join(', '));
       try {
         const trigRes = await fetch(url);
         console.log('[HGR-DX-TRIGGER] response status: ' + trigRes.status + ' (background function; body is empty by design)');
@@ -384,7 +429,7 @@ exports.handler = async (event) => {
       }
     }
 
-    const result = { success: true, inserted, updated, deleted: markedSoldCount, errors, total: feedItems.length, dx_triggered_for: insertedStocks };
+    const result = { success: true, inserted, updated, deleted: markedSoldCount, errors, total: feedItems.length, dx_triggered_for: combined, dx_inserted: insertedStocks, dx_retry: retryStocks };
     console.log('Done:', result);
     return { statusCode: 200, body: JSON.stringify(result) };
   } catch (err) {
