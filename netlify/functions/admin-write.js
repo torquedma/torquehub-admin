@@ -357,6 +357,12 @@ async function handlePatchInventoryPhotos({ data, svcKey }) {
   if (!Array.isArray(data.photos)) {
     return { status: 400, body: { error: 'data.photos is required and must be an array' } };
   }
+  // Defense in depth: an empty array replaces the whole gallery (and zeroes the
+  // generated photo_count / first_photo). Only an explicit, intentional delete-all
+  // from the client may do that.
+  if (data.photos.length === 0 && data.allow_empty !== true) {
+    return { status: 409, body: { error: 'Refusing to replace photos with an empty list without allow_empty' } };
+  }
 
   const url = `${SUPABASE_URL}/rest/v1/inventory`
     + `?stock=eq.${encodeURIComponent(data.stock.trim())}`

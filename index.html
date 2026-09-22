@@ -2003,6 +2003,48 @@ function ensurePhotoOpsAllowed(key) {
   return false;
 }
 
+// PHOTO_BASELINE: the authoritative photo list (signature) last read from the
+// server for a key. Save writes photos only when the current list differs from it.
+const PHOTO_BASELINE = {};
+// Normalized exactly like the save path: drop empty URLs, de-duplicate by URL, keep order.
+function photoListSignature(list) {
+  const seen = new Set();
+  return (list || [])
+    .map(p => ({ url: (p && (p.url || p.dataUrl)) || '', name: (p && p.name) || '' }))
+    .filter(p => { if (!p.url || seen.has(p.url)) return false; seen.add(p.url); return true; })
+    .map(p => p.url + '\u0001' + p.name).join('\u0002');
+}
+
+// Authoritative photo read through the authenticated admin-read gateway (drafts
+// included). Resolves to exactly one of:
+//   { state: 'LOADED',  photos: [...] }  — row found; photos may legitimately be []
+//   { state: 'MISSING' }                 — gateway answered, no row with that id
+//   { state: 'FAILED' }                  — auth / network / server / malformed
+// Only LOADED may replace PHOTO_STORE or authorize a photo write.
+async function fetchAuthoritativePhotos(id) {
+  try {
+    const token = await getValidToken();
+    if (!token) return { state: 'FAILED' };
+    const r = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ operation: 'get_inventory_photos', data: { id } })
+    });
+    if (!r.ok) return { state: 'FAILED' };
+    const j = await r.json();
+    if (j && j.found === false) return { state: 'MISSING' };
+    if (!j || j.found !== true || !Array.isArray(j.photos)) return { state: 'FAILED' };
+    const photos = j.photos.map((p, i) => {
+      const pu = (p && (p.url || p.dataUrl)) || '';
+      return { id: Date.now() + i, name: (p && p.name) || pu.split('/').pop(), url: pu, dataUrl: pu, type: 'url', fromUrl: true, storage: 'supabase' };
+    });
+    return { state: 'LOADED', photos };
+  } catch (e) {
+    console.warn('[fetchAuthoritativePhotos] failed for', id, ':', e && e.message);
+    return { state: 'FAILED' };
+  }
+}
+
 async function uploadPhotoViaNetlify(imageUrl, dealerSlug, stockNum, filename) {
   const resp = await fetch('/.netlify/functions/upload-photo', {
     method: 'POST',
@@ -2701,24 +2743,12 @@ async function loadRowThumbs() {
       continue;
     }
     if (img.getAttribute('src')) continue;
-    try {
-      const r = await fetch(
-        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${id}`,
-        { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
-      );
-      if (!r.ok) continue;
-      const rows = await r.json();
-      const raw = rows?.[0]?.photos || [];
-      if (key) {
-        PHOTO_STORE[key] = raw.map((p, i) => {
-          const pu = p.url || p.dataUrl || '';
-          return { id: Date.now() + i, name: p.name || pu.split('/').pop(), url: pu, dataUrl: pu, type: 'url', fromUrl: true, storage: 'supabase' };
-        });
-      }
-      const first = raw[0];
-      const fu = first ? (first.url || first.dataUrl || '') : '';
-      if (fu) { img.src = fu.startsWith('data:') ? fu : buildAdminThumbUrl(fu, 128, 96); img.style.display = ''; }
-    } catch(e) {}
+    const res = await fetchAuthoritativePhotos(id);
+    if (res.state !== 'LOADED') continue;
+    if (key) PHOTO_STORE[key] = res.photos;
+    const first = res.photos[0];
+    const fu = first ? (first.url || first.dataUrl || '') : '';
+    if (fu) { img.src = fu.startsWith('data:') ? fu : buildAdminThumbUrl(fu, 128, 96); img.style.display = ''; }
   }
 }
 
@@ -2750,47 +2780,22 @@ function openPhotoModal(listingKey) {
       PHOTO_STATE[listingKey] = 'LOADED';
       return;
     }
-    try {
-      const r = await fetch(
-        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${u.id}`,
-        { headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
-        }}
-      );
-      if (!r.ok) {
-        PHOTO_STATE[listingKey] = 'FAILED';
-        const _pmsg = document.getElementById('edit-saved-msg');
-        if (_pmsg) {
-          _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
-          _pmsg.classList.add('show');
-          setTimeout(() => _pmsg.classList.remove('show'), 5000);
-        }
-        return;
-      }
-      const rows = await r.json();
-      const raw = rows?.[0]?.photos || [];
-      PHOTO_STORE[listingKey] = raw.map((p, i) => {
-        const photoUrl = p.url || p.dataUrl || '';
-        return {
-          id: Date.now() + i,
-          name: p.name || photoUrl.split('/').pop(),
-          url: photoUrl,
-          dataUrl: photoUrl,
-          type: 'url', fromUrl: true, storage: 'supabase'
-        };
-      });
+    const res = await fetchAuthoritativePhotos(u.id);
+    if (res.state === 'LOADED') {
+      PHOTO_STORE[listingKey] = res.photos;
+      PHOTO_BASELINE[listingKey] = photoListSignature(res.photos);
       PHOTO_STATE[listingKey] = 'LOADED';
       if (currentListingKey === listingKey) renderPhotoGrid();
-    } catch(e) {
-      PHOTO_STATE[listingKey] = 'FAILED';
-      console.warn('Photo lazy-fetch failed for', listingKey, ':', e);
-      const _pmsg = document.getElementById('edit-saved-msg');
-      if (_pmsg) {
-        _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
-        _pmsg.classList.add('show');
-        setTimeout(() => _pmsg.classList.remove('show'), 5000);
-      }
+      return;
+    }
+    // MISSING / FAILED: never authoritative — do not replace the store or authorize a write.
+    PHOTO_STATE[listingKey] = 'FAILED';
+    console.warn('Photo load', res.state, 'for', listingKey);
+    const _pmsg = document.getElementById('edit-saved-msg');
+    if (_pmsg) {
+      _pmsg.textContent = '⚠ Could not load photos — save will not update photo data';
+      _pmsg.classList.add('show');
+      setTimeout(() => _pmsg.classList.remove('show'), 5000);
     }
   })();
 
@@ -3307,6 +3312,10 @@ async function saveListingEdits() {
       PHOTO_STATE[newKey] = PHOTO_STATE[oldKey];
       delete PHOTO_STATE[oldKey];
     }
+    if (PHOTO_BASELINE[oldKey] !== undefined) {
+      PHOTO_BASELINE[newKey] = PHOTO_BASELINE[oldKey];
+      delete PHOTO_BASELINE[oldKey];
+    }
     savePhotoStore();
   }
 
@@ -3349,14 +3358,32 @@ async function saveListingEdits() {
     const _rawPhotos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
     const _seen = new Set();
     const photos = _rawPhotos.filter(p => { if (!p.url || _seen.has(p.url)) return false; _seen.add(p.url); return true; });
-    fetch('/.netlify/functions/admin-write', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
-      body: JSON.stringify({ operation: 'patch_inventory_photos', data: { stock: u.stock, dealer: u.dealer, photos: photos } })
-    }).then(r => {
-      if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits PHOTOS] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
-      else console.log('[saveListingEdits PHOTOS] Photos saved to gateway:', photos.length, 'photos for', u.stock);
-    }).catch(err => console.warn('[saveListingEdits PHOTOS] Photo save error:', err.message));
+    const _pkey = getListingKey(u);
+    const _baseline = PHOTO_BASELINE[_pkey];              // undefined when no authoritative read this session
+    const _sig = photoListSignature(photos);
+    // Write only an intentional change. An empty list is written only as an explicit
+    // delete-all: authoritative baseline had >0 photos and the edit produced 0.
+    let _sendPhotos = true, _allowEmpty = false;
+    if (_baseline !== undefined && _sig === _baseline) {
+      _sendPhotos = false;                                  // untouched — no photo PATCH
+    } else if (photos.length === 0) {
+      if (_baseline !== undefined && _baseline !== '') _allowEmpty = true;   // N>0 → 0, deliberate
+      else _sendPhotos = false;                             // no authoritative non-empty baseline
+    }
+    if (_sendPhotos) {
+      const _data = { stock: u.stock, dealer: u.dealer, photos: photos };
+      if (_allowEmpty) _data.allow_empty = true;
+      fetch('/.netlify/functions/admin-write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+        body: JSON.stringify({ operation: 'patch_inventory_photos', data: _data })
+      }).then(r => {
+        if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits PHOTOS] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
+        else { PHOTO_BASELINE[_pkey] = _sig; console.log('[saveListingEdits PHOTOS] Photos saved to gateway:', photos.length, 'photos for', u.stock); }
+      }).catch(err => console.warn('[saveListingEdits PHOTOS] Photo save error:', err.message));
+    } else {
+      console.log('[saveListingEdits PHOTOS] Photo write skipped (unchanged or not an intentional delete-all) for', u.stock);
+    }
   } else if (u.stock) {
     console.log('Photo save skipped — photos not loaded for', u.stock);
   }
@@ -4652,28 +4679,15 @@ async function downloadListingPhotos(key, triggerBtn = null) {
   // For create-mode TMP- listings (no id), use staged photos from PHOTO_STORE.
   let photos;
   if (listing && listing.id) {
-    try {
-      const r = await fetch(
-        `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory_public_detail?select=photos&id=eq.${listing.id}`,
-        { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
-      );
-      if (r.ok) {
-        const rows = await r.json();
-        const raw = rows?.[0]?.photos || [];
-        photos = raw.map((p, i) => {
-          const photoUrl = p.url || p.dataUrl || '';
-          return { id: Date.now() + i, name: p.name || photoUrl.split('/').pop(),
-                   url: photoUrl, dataUrl: photoUrl, type: 'url', fromUrl: true, storage: 'supabase' };
-        });
-        PHOTO_STORE[key] = photos;
-        PHOTO_STATE[key] = 'LOADED';
-      } else {
-        photos = PHOTO_STORE[key] || [];
-      }
-    } catch(e) {
-      console.warn('[downloadListingPhotos] photo pre-fetch failed:', e);
-      photos = PHOTO_STORE[key] || [];
+    const res = await fetchAuthoritativePhotos(listing.id);
+    if (res.state !== 'LOADED') {
+      alert("Couldn't load photos for this listing — please try again.");
+      return;
     }
+    photos = res.photos;
+    PHOTO_STORE[key] = photos;
+    PHOTO_BASELINE[key] = photoListSignature(photos);
+    PHOTO_STATE[key] = 'LOADED';
   } else {
     photos = PHOTO_STORE[key] || [];
   }
@@ -5286,6 +5300,7 @@ function settingsClearPhotos() {
   Object.keys(PHOTO_STORE).forEach(k => {
     delete PHOTO_STORE[k];
     delete PHOTO_STATE[k];
+    delete PHOTO_BASELINE[k];
   });
   savePhotoStore();
   renderSettings();

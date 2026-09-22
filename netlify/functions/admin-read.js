@@ -1,5 +1,5 @@
 // admin-read.js — authenticated read gateway, mirrors admin-write.js auth gate exactly.
-// Operations: get_leads, get_leads_count, get_contacts, get_unit_debug. Service-role SELECT, fail-closed.
+// Operations: get_leads, get_leads_count, get_contacts, get_unit_debug, get_inventory_photos, ... Service-role SELECT, fail-closed.
 // Place at: torque-hub-admin/netlify/functions/admin-read.js
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
@@ -130,6 +130,34 @@ const OPERATIONS = {
     const inventory_rows = await invRes.json();
     const cards_rows = await cardsRes.json();
     return { status: 200, body: { inventory_rows, cards_rows } };
+  },
+
+  // get_inventory_photos: authoritative photo list for ONE inventory row, by id.
+  // Service-role SELECT behind the auth gate (drafts included — unlike the public
+  // inventory_public_detail view). Selects only id + photos.
+  // Returns { found: true, id, photos: [...] } | { found: false, id }. A non-array
+  // photos value is returned as photos: null so the client treats it as a failed read.
+  async get_inventory_photos({ data, svcKey }) {
+    const id = String((data && data.id) || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return { status: 400, body: { error: 'data.id must be a UUID' } };
+    }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/inventory?id=eq.${id}&select=id,photos`, {
+      headers: {
+        'apikey': svcKey,
+        'Authorization': 'Bearer ' + svcKey,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) {
+      return { status: 502, body: { error: 'inventory read failed', detail: res.status } };
+    }
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { status: 200, body: { found: false, id } };
+    }
+    const photos = rows[0].photos;
+    return { status: 200, body: { found: true, id, photos: Array.isArray(photos) ? photos : null } };
   },
 
   // get_inventory_admin: full admin inventory rows, paginated, optional dealer filter.
