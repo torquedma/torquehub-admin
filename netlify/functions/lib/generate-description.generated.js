@@ -631,16 +631,43 @@ function validateConfigurationOverview(overview, evidence, unit) {
   ].map(s => String(s == null ? '' : s));
   const evJoined = evLines.join('\n');
 
+  // SHAPE DIAGNOSTIC METRICS (2026-09-22) — measurement only, no control flow.
+  // Computed ONCE here, before the first SHAPE predicate, because five of the
+  // six SHAPE checks throw before the `sentences` const below exists. The
+  // sentence expression is character-for-character the one the check itself
+  // uses. Nothing below is reordered and no predicate or threshold changes.
+  // The overview text is NEVER placed on the error — counts and flags only.
+  const shapeMetrics = {
+    empty: !text,
+    length: text.length,
+    sentences: text.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z])/).filter(s => s.trim().length).length,
+    bullet: /^\s*[-*•]\s/m.test(text),
+    heading: /^\s*#/m.test(text),
+    markdown: /\*\*|__/.test(text),
+  };
+  // Wraps the SHARED fail() rather than editing it, so the other nine call
+  // sites (IDENTITY/CLASS/IDENTIFIER/NUMBER/PHRASE/QUANTITY_WORD/UNIT) keep
+  // throwing an error with no metrics attached. Re-throwing fail()'s own error
+  // object keeps message, code and reason byte-identical.
+  const failShape = () => {
+    try {
+      fail('SHAPE');
+    } catch (err) {
+      err.shapeMetrics = shapeMetrics;
+      throw err;
+    }
+  };
+
   // SHAPE — plain text, 1..2 sentences, <= 400 chars, no bullets/headings/markdown.
-  if (!text) fail('SHAPE');
-  if (text.length > 400) fail('SHAPE');
-  if (/^\s*[-*•]\s/m.test(text)) fail('SHAPE');
-  if (/^\s*#/m.test(text)) fail('SHAPE');
-  if (/\*\*|__/.test(text)) fail('SHAPE');
+  if (!text) failShape();
+  if (text.length > 400) failShape();
+  if (/^\s*[-*•]\s/m.test(text)) failShape();
+  if (/^\s*#/m.test(text)) failShape();
+  if (/\*\*|__/.test(text)) failShape();
   // Split on sentence terminator followed by whitespace + capitalized start,
   // which avoids false splits on decimals (".030") or embedded punctuation.
   const sentences = text.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z])/).filter(s => s.trim().length);
-  if (sentences.length === 0 || sentences.length > 2) fail('SHAPE');
+  if (sentences.length === 0 || sentences.length > 2) failShape();
 
   // IDENTITY — must not open with "This"; year and stock absent.
   if (/^\s*This\b/i.test(text)) fail('IDENTITY');
