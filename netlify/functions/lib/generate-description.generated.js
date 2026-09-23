@@ -671,12 +671,43 @@ function validateConfigurationOverview(overview, evidence, unit) {
   const sentences = text.replace(/\n+/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z])/).filter(s => s.trim().length);
   if (sentences.length === 0 || sentences.length > 2) failShape();
 
+  // IDENTITY DIAGNOSTIC METRICS (2026-09-22) — measurement only, no control flow.
+  // Computed ONCE here, before the first IDENTITY predicate, because the `yr`
+  // and `stk` declarations are interleaved BETWEEN the checks below and do not
+  // exist yet. Following the SHAPE precedent, the predicate expressions are
+  // duplicated character-for-character rather than hoisted; the block scope
+  // below re-derives `yr`/`stk` locally so the duplication is exact. The
+  // emptiness guards are part of the predicate: without them `_escapeRe('')`
+  // yields /\b\b/ and `includes('')` is always true, so a unit with no year or
+  // no stock would report true. Absent year/stock therefore reports false.
+  // The overview text, the year and the stock are NEVER placed on the error.
+  const identityMetrics = (() => {
+    const yr = String((unit && unit.year) || '').trim();
+    const stk = String((unit && unit.stock) || '').trim();
+    return {
+      opensWithThis: /^\s*This\b/i.test(text),
+      containsYear: yr ? new RegExp('\\b' + _escapeRe(yr) + '\\b').test(text) : false,
+      containsStock: stk ? text.toLowerCase().includes(stk.toLowerCase()) : false,
+    };
+  })();
+  // Wraps the SHARED fail() rather than editing it, exactly as failShape does.
+  // Re-throwing fail()'s own error object keeps message, code and reason
+  // byte-identical.
+  const failIdentity = () => {
+    try {
+      fail('IDENTITY');
+    } catch (err) {
+      err.identityMetrics = identityMetrics;
+      throw err;
+    }
+  };
+
   // IDENTITY — must not open with "This"; year and stock absent.
-  if (/^\s*This\b/i.test(text)) fail('IDENTITY');
+  if (/^\s*This\b/i.test(text)) failIdentity();
   const yr = String((unit && unit.year) || '').trim();
-  if (yr && new RegExp('\\b' + _escapeRe(yr) + '\\b').test(text)) fail('IDENTITY');
+  if (yr && new RegExp('\\b' + _escapeRe(yr) + '\\b').test(text)) failIdentity();
   const stk = String((unit && unit.stock) || '').trim();
-  if (stk && text.toLowerCase().includes(stk.toLowerCase())) fail('IDENTITY');
+  if (stk && text.toLowerCase().includes(stk.toLowerCase())) failIdentity();
 
   // PHRASE — no banned marketing phrase.
   const lowered = text.toLowerCase();
