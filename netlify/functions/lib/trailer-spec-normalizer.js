@@ -2,6 +2,16 @@
 
 const { presentCase } = require('./present-case');
 
+// HGR PRESENTATION EXCEPTIONS (2026-09-23, Chief-governed). EXACT normalizedLine
+// matches only — never substring, prefix, or pattern. Each entry maps one observed
+// HGR source form to its governed buyer-facing display. normalizedLine remains the
+// untouched evidence; presentCase and its case-only invariant are unchanged and
+// still apply to every other line. Add an entry only with Chief adjudication.
+const HGR_DISPLAY_EXACT = new Map([
+  ['(7)WAY PLUG', '7-Way Plug'],
+  ['(4)5000LB DRINGS', '(4) 5,000 LB D-Rings'],
+]);
+
 // trailer-spec-normalizer.js — Stage 0 SKELETON.
 // Public entry: normalizeTrailerSpecs(rawDescription, category).
 // CommonJS, zero external deps. No handlers yet: HGR/Impex/Allied/free-form all
@@ -258,7 +268,11 @@ function classifyHgr(lines) {
       // evidence-normalized line and is never modified; displayLine is what the
       // generator renders. presentCase enforces displayLine.toLowerCase() ===
       // normalizedLine.toLowerCase() at runtime (fail closed).
-      displayLine: presentCase(normalizedLine),
+      // HGR_DISPLAY_EXACT (exact normalizedLine match) takes precedence; everything
+      // else is presentCase as before.
+      displayLine: HGR_DISPLAY_EXACT.has(normalizedLine)
+        ? HGR_DISPLAY_EXACT.get(normalizedLine)
+        : presentCase(normalizedLine),
       group: assignGroup(normalizedLine),
       confidence,
       presentation: 'default',
