@@ -173,7 +173,7 @@ EVIDENCE (use ONLY these facts; do not add, invent, or infer anything else):
 ${evidence.join('\n')}
 
 CONTRACT — write ONE OR TWO SENTENCES of plain prose, TOTALLING NO MORE THAN 400 CHARACTERS. Both limits bind at once: at most two sentences AND at most 400 characters in total, counting spaces and punctuation. Return the prose ONLY: no headline, no "===" separator, no "Key Details", no bullet list, no markdown, no headings.
-- Open with the CONFIGURATION.
+- Open with the CONFIGURATION. Do NOT begin with "This".
 - SELECT, do not restate. The EVIDENCE list is longer than 400 characters allows. Name only the few most decision-relevant supported facts and omit the rest; every EVIDENCE line is already rendered for the reader elsewhere, so nothing is lost by leaving one out here. Do not walk the list in order and do not try to cover every line. Leaving a supported fact out is correct; exceeding either limit is a failure.
 - Keep sentences short. If a sentence is growing long, end it and drop the remaining facts rather than extending it or adding clauses.
 - Use ONLY facts in the supplied EVIDENCE. Restating selected spec facts is permitted.
