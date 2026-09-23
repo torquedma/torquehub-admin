@@ -172,10 +172,12 @@ function buildPrompt(unit, normalized, mode) {
 EVIDENCE (use ONLY these facts; do not add, invent, or infer anything else):
 ${evidence.join('\n')}
 
-CONTRACT — write ONE OR TWO SENTENCES of plain prose. Return the prose ONLY: no headline, no "===" separator, no "Key Details", no bullet list, no markdown, no headings.
+CONTRACT — write ONE OR TWO SENTENCES of plain prose, TOTALLING NO MORE THAN 400 CHARACTERS. Both limits bind at once: at most two sentences AND at most 400 characters in total, counting spaces and punctuation. Return the prose ONLY: no headline, no "===" separator, no "Key Details", no bullet list, no markdown, no headings.
 - Open with the CONFIGURATION.
+- SELECT, do not restate. The EVIDENCE list is longer than 400 characters allows. Name only the few most decision-relevant supported facts and omit the rest; every EVIDENCE line is already rendered for the reader elsewhere, so nothing is lost by leaving one out here. Do not walk the list in order and do not try to cover every line. Leaving a supported fact out is correct; exceeding either limit is a failure.
+- Keep sentences short. If a sentence is growing long, end it and drop the remaining facts rather than extending it or adding clauses.
 - Use ONLY facts in the supplied EVIDENCE. Restating selected spec facts is permitted.
-- NEVER state a quantity, count, rating, or dimension the EVIDENCE does not state.
+- NEVER state a quantity, count, rating, or dimension the EVIDENCE does not state. Never invent, infer, embellish, or generalise beyond what a line literally says.
 - Do NOT include Year, Make, Model, VIN, or Stock #.
 - No sales language, use cases, or buyer benefits. No "ready to work", "ideal for", "suited for", "perfect for", "great for".
 - Third person. No editorial judgment.`;
