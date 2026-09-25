@@ -311,3 +311,79 @@ test('review flow: a successful publish re-reads the queue from the server; a fa
   assert.equal((fn.match(/loadWalkaroundReview\(/g) || []).length, 1);
   assert.doesNotMatch(fn, /WALKAROUND_QUEUE_DATA = WALKAROUND_QUEUE_DATA\.filter/);
 });
+
+// ---------- server: unpublish_walkaround = withdraw THIS publication (Chief 2026-09-25, rollback integrity) ----------
+async function unpublish(state) {
+  const calls = stubFetch(state);
+  delete require.cache[require.resolve('../admin-write.js')];
+  const { handler } = require('../admin-write.js');
+  const l = console.log, w = console.warn, e = console.error; console.log = console.warn = console.error = () => {};
+  const res = await handler({ httpMethod: 'POST', headers: { authorization: 'Bearer t' }, body: JSON.stringify({ operation: 'unpublish_walkaround', data: { id: 'q1' } }) });
+  console.log = l; console.warn = w; console.error = e;
+  return { res, body: JSON.parse(res.body), calls, writes: calls.filter(c => c.method !== 'GET') };
+}
+const PUB = BI({ torque_take: ['Published text.'] });
+const PUBROW = { id: 'q1', stock: 'DBT-7800 P', status: 'published', engine_version: 'walkaround-v1.4.3-fable-5-1-ep', generated_bi: BI({ torque_take: ['G'] }), edited_bi: PUB, previous_buyer_intelligence: null };
+const reorder = (o) => JSON.parse(JSON.stringify(o, Object.keys(o).sort().reverse()));
+const liveUnit = (bi) => ({ stock: 'DBT-7800 P', status: 'published', sold: false, buyer_intelligence: bi });
+
+test('unpublish: live BI is this publication → withdraw to null; write filter re-asserts equality; previous_buyer_intelligence untouched', async () => {
+  const live = { ...reorder(PUB), decision_factors: reorder(PUB.decision_factors) };
+  const r = await unpublish({ queueRow: PUBROW, unit: liveUnit(live) });
+  assert.equal(r.res.statusCode, 200, JSON.stringify(r.body));
+  assert.equal(r.body.withdrawn, true);
+  const inv = r.writes.filter(w => w.url.includes('/inventory'));
+  assert.equal(inv.length, 1);
+  assert.deepEqual(JSON.parse(inv[0].body), { buyer_intelligence: null });
+  assert.ok(inv[0].url.includes('buyer_intelligence=eq.' + encodeURIComponent(JSON.stringify(PUB))), inv[0].url);
+  const q = r.writes.filter(w => w.url.includes('/walkaround_review_queue'));
+  assert.equal(q.length, 1);
+  const qb = JSON.parse(q[0].body);
+  assert.deepEqual(qb, { status: 'approved', published_at: null, publish_error: null });
+  assert.equal(Object.prototype.hasOwnProperty.call(qb, 'previous_buyer_intelligence'), false);
+});
+
+test('unpublish: current publication with non-null previous_buyer_intelligence still withdraws to null — never restores it', async () => {
+  const OLD = BI({ torque_take: ['RETIRED TEXT — MUST NEVER RETURN'] });
+  const r = await unpublish({ queueRow: { ...PUBROW, previous_buyer_intelligence: OLD }, unit: liveUnit(PUB) });
+  assert.equal(r.res.statusCode, 200, JSON.stringify(r.body));
+  const inv = r.writes.find(w => w.url.includes('/inventory'));
+  assert.deepEqual(JSON.parse(inv.body), { buyer_intelligence: null });
+  assert.equal(r.writes.some(w => (w.body || '').includes('RETIRED TEXT')), false);
+});
+
+for (const [name, queueRow, unit] of [
+  ['stale superseded sibling (live BI is a newer publication)', { ...PUBROW, engine_version: 'walkaround-v1.4.2-fable-5-1-ep', edited_bi: null, generated_bi: BI({ torque_take: ['OLDER GENERATION'] }) }, liveUnit(PUB)],
+  ['live BI corrected out of band (footer edited after publish)', PUBROW, liveUnit({ ...PUB, decision_factors: { ...PUB.decision_factors, makes_it_a_yes_footer: 'Corrected footer.' } })],
+  ['unit has no live BI', PUBROW, liveUnit(null)],
+  ['published row with no payload', { ...PUBROW, edited_bi: null, generated_bi: null }, liveUnit(PUB)],
+]) {
+  test(`unpublish: ${name} → 409 unit_bi_not_this_publication, zero writes`, async () => {
+    const r = await unpublish({ queueRow, unit });
+    assert.equal(r.res.statusCode, 409, JSON.stringify(r.body));
+    assert.equal(r.body.error, 'unit_bi_not_this_publication');
+    assert.equal(r.writes.length, 0, JSON.stringify(r.writes));
+  });
+}
+
+test('unpublish: live BI changes between read and write → 409, the guarded write lands on 0 rows, queue row untouched', async () => {
+  const r = await unpublish({ queueRow: PUBROW, unit: liveUnit(PUB), patchReturns: [] });
+  assert.equal(r.res.statusCode, 409);
+  assert.equal(r.body.error, 'unit_bi_not_this_publication');
+  assert.equal(r.writes.filter(w => w.url.includes('/walkaround_review_queue')).length, 0);
+});
+
+test('unpublish: row not published → 400 (unchanged); inventory read failure → 500; both zero writes', async () => {
+  const a = await unpublish({ queueRow: { ...PUBROW, status: 'approved' }, unit: liveUnit(PUB) });
+  assert.equal(a.res.statusCode, 400);
+  assert.equal(a.writes.length, 0);
+  const calls = stubFetch({ queueRow: PUBROW, unit: liveUnit(PUB) });
+  const base = global.fetch;
+  global.fetch = async (url, opts = {}) => (url.includes('/inventory') && (opts.method || 'GET') === 'GET')
+    ? ({ ok: false, status: 500, json: async () => ({}), text: async () => 'down' }) : base(url, opts);
+  delete require.cache[require.resolve('../admin-write.js')];
+  const { handler } = require('../admin-write.js');
+  const res = await handler({ httpMethod: 'POST', headers: { authorization: 'Bearer t' }, body: JSON.stringify({ operation: 'unpublish_walkaround', data: { id: 'q1' } }) });
+  assert.equal(res.statusCode, 500);
+  assert.equal(calls.filter(c => c.method !== 'GET').length, 0);
+});

@@ -1041,12 +1041,22 @@ async function handlePublishWalkaround({ data, svcKey, userEmail }) {
 
 // ---------------------------------------------------------------------------
 // OPERATION: unpublish_walkaround
-// Ported from netlify/functions/unpublish-walkaround.js in the sister site repo.
-// Roll a published Walkaround back: restore inventory.buyer_intelligence to the
-// snapshot taken at publish time, revert queue row to 'approved'.
+// Withdraw a published Walkaround (Chief ruling 2026-09-25, rollback integrity).
+// Inverse of publish_walkaround: publish may only place BI onto a null slot, so
+// unpublish may only take THIS row's publication back off — inventory BI → null.
+//
+//   - Fails closed (409 unit_bi_not_this_publication, zero writes) unless live
+//     inventory.buyer_intelligence equals this row's published payload
+//     (edited_bi ?? generated_bi — the same selection publish uses). A stale
+//     superseded row, or a row whose live BI was corrected/replaced out of band,
+//     can never overwrite or delete the BI that is actually live.
+//   - The equality is re-asserted in the inventory write's own filter, so a BI
+//     change between the read and the write cannot slip through.
+//   - previous_buyer_intelligence is NEVER written back to inventory. It is
+//     historical/audit material only, and this handler leaves it untouched.
 //
 // WRITE BOUNDARY: this handler writes to `inventory` in EXACTLY ONE place
-// (step 2), and the only column it touches there is `buyer_intelligence`.
+// (step 5), and the only column it touches there is `buyer_intelligence` (→ null).
 //
 // data: { id }
 // ---------------------------------------------------------------------------
@@ -1078,63 +1088,95 @@ async function handleUnpublishWalkaround({ data, svcKey }) {
   }
   const row = queueRows[0];
 
-  // Hard gate — only published rows can be unpublished. previous_buyer_intelligence
-  // may legitimately be null (means the unit had no buyer_intelligence before
-  // publish); we still proceed and restore null.
+  // 2. Hard gate — only published rows can be unpublished.
   if (row.status !== 'published') {
     return { status: 400, body: { ok: false, error: `only published rows can be unpublished (status='${row.status}')` } };
   }
 
-  // 2. THE ONLY WRITE TO `inventory` IN THIS HANDLER.
-  // Restore the snapshot. Updates exactly one column.
-  const invUrl = `${SUPABASE_URL}/rest/v1/inventory?stock=eq.${encodeURIComponent(row.stock)}`;
+  // 3. The payload this row published (same selection rule as publish_walkaround).
+  const payload = row.edited_bi != null ? row.edited_bi : row.generated_bi;
+  if (payload == null) {
+    return { status: 409, body: { ok: false, error: 'unit_bi_not_this_publication', stock: row.stock, id: row.id } };
+  }
+
+  // 4. CURRENCY GATE — READ only. Live BI must be exactly this row's publication.
+  const readUrl = `${SUPABASE_URL}/rest/v1/inventory?select=buyer_intelligence&stock=eq.${encodeURIComponent(row.stock)}`;
+  const rRes = await fetch(readUrl, { headers });
+  if (!rRes.ok) {
+    return { status: 500, body: { ok: false, error: 'inventory read failed' } };
+  }
+  const invRows = await rRes.json();
+  if (!Array.isArray(invRows) || invRows.length !== 1) {
+    return { status: 500, body: { ok: false, error: `inventory must have exactly 1 row for stock='${row.stock}'` } };
+  }
+  if (!walkaroundJsonEqual(invRows[0].buyer_intelligence, payload)) {
+    return { status: 409, body: { ok: false, error: 'unit_bi_not_this_publication', stock: row.stock, id: row.id } };
+  }
+
+  // 5. THE ONLY WRITE TO `inventory` IN THIS HANDLER: withdraw to null.
+  // The filter re-asserts the currency gate at the write boundary (jsonb equality),
+  // so the write lands only if live BI is still exactly this row's payload.
+  const invUrl = `${SUPABASE_URL}/rest/v1/inventory?stock=eq.${encodeURIComponent(row.stock)}`
+    + `&buyer_intelligence=eq.${encodeURIComponent(JSON.stringify(payload))}`;
   const updRes = await fetch(invUrl, {
     method: 'PATCH',
     headers: { ...headers, 'Prefer': 'return=representation' },
-    body: JSON.stringify({ buyer_intelligence: row.previous_buyer_intelligence }),
+    body: JSON.stringify({ buyer_intelligence: null }),
   });
   if (!updRes.ok) {
     const errText = await updRes.text();
-    await recordWalkaroundPublishError(svcKey, row.id, 'inventory restore failed: ' + errText);
-    return { status: 500, body: { ok: false, error: 'inventory restore failed' } };
+    await recordWalkaroundPublishError(svcKey, row.id, 'inventory withdraw failed: ' + errText);
+    return { status: 500, body: { ok: false, error: 'inventory withdraw failed' } };
   }
   const updated = await updRes.json();
   if (!Array.isArray(updated) || updated.length === 0) {
-    await recordWalkaroundPublishError(svcKey, row.id, `inventory update affected 0 rows for stock='${row.stock}'`);
-    return { status: 500, body: { ok: false, error: 'inventory restore affected 0 rows' } };
+    // Live BI changed between the read and the write. Nothing written.
+    return { status: 409, body: { ok: false, error: 'unit_bi_not_this_publication', stock: row.stock, id: row.id } };
   }
   if (updated.length > 1) {
     await recordWalkaroundPublishError(svcKey, row.id, `inventory update affected ${updated.length} rows for stock='${row.stock}'`);
-    return { status: 500, body: { ok: false, error: 'inventory restore affected multiple rows' } };
+    return { status: 500, body: { ok: false, error: 'inventory update affected multiple rows' } };
   }
 
-  // 3. Revert the queue row. Clear previous_buyer_intelligence so a future
-  // publish takes a fresh snapshot — prevents stale-snapshot replay on
-  // publish/unpublish/publish sequences.
+  // 6. Revert the queue row to approved. previous_buyer_intelligence is left
+  // untouched (audit only); a later publish records its own snapshot.
   const queuePatchUrl = `${SUPABASE_URL}/rest/v1/walkaround_review_queue?id=eq.${encodeURIComponent(row.id)}`;
   const qPatchRes = await fetch(queuePatchUrl, {
     method: 'PATCH',
     headers: { ...headers, 'Prefer': 'return=minimal' },
     body: JSON.stringify({
-      status:                      'approved',
-      published_at:                null,
-      previous_buyer_intelligence: null,
-      publish_error:               null,
+      status:        'approved',
+      published_at:  null,
+      publish_error: null,
     }),
   });
   if (!qPatchRes.ok) {
     const errText = await qPatchRes.text();
     return { status: 500, body: {
       ok: false,
-      error: 'inventory restored but queue write failed — queue row needs manual reconciliation',
+      error: 'inventory withdrawn but queue write failed — queue row needs manual reconciliation',
       detail: errText,
       stock: row.stock,
       id: row.id,
     } };
   }
 
-  // 4. Success
-  return { status: 200, body: { ok: true, stock: row.stock, id: row.id, restored: true } };
+  // 7. Success
+  return { status: 200, body: { ok: true, stock: row.stock, id: row.id, withdrawn: true } };
+}
+
+// walkaroundJsonEqual — structural equality of two JSON values (object key order
+// ignored, array order significant), matching jsonb equality for Walkaround payloads.
+function walkaroundJsonEqual(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    return a.length === b.length && a.every((x, i) => walkaroundJsonEqual(x, b[i]));
+  }
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length
+    && ka.every(k => Object.prototype.hasOwnProperty.call(b, k) && walkaroundJsonEqual(a[k], b[k]));
 }
 
 // validateWalkaroundPayload — returns an array of error strings; empty = OK.
