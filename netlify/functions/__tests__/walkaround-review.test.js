@@ -16,7 +16,7 @@ process.env.ADMIN_EMAILS = 'ryan@example.com';
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const block = html.slice(html.indexOf('// WA-CONTRACT-START'), html.indexOf('// WA-CONTRACT-END'));
 const ui = {};
-vm.runInNewContext(block + '\n;Object.assign(this.out, { WA_CURRENT_ENGINES, WA_LEGACY_ENGINES, waPublishPayload, waActionability, waQueueOrder, waModernPreview, waStatusBanner, waKeyDetails, waSupersededBy, waHeroImage });', { out: ui });
+vm.runInNewContext(block + '\n;Object.assign(this.out, { WA_CURRENT_ENGINES, WA_LEGACY_ENGINES, waPublishPayload, waActionability, waQueueOrder, waModernPreview, waStatusBanner, waKeyDetails, waSupersededBy, waHeroImage, waDefaultOutcome, waVisibleRows });', { out: ui });
 
 const DESC = 'Key Details\n- Year: 2016\n- Make: Hino\n- Stock #: DBT-7800 P\n\nOverview\nCab and chassis with an Allison automatic.';
 const BI = (o = {}) => Object.assign({
@@ -273,4 +273,30 @@ test('read model: hero_photo = first photos[] entry with a url (VDP gallery rule
   assert.equal(rows[1].source_facts.hero_photo, 'https://h/b.jpg');
   assert.equal(rows[2].source_facts.hero_photo, null);
   for (const r of rows) assert.ok(!('photos' in r.source_facts), 'photos array not shipped');
+});
+
+test('review flow: outcome pre-filled (edited → minor_wording_edit, generated → published_unchanged, blocked → none)', () => {
+  assert.equal(ui.waDefaultOutcome(row()), 'minor_wording_edit');
+  assert.equal(ui.waDefaultOutcome(row({ edited_bi: null })), 'published_unchanged');
+  assert.equal(ui.waDefaultOutcome(row({ source_facts: facts({ has_live_bi: true }) })), '');
+  assert.equal(ui.waDefaultOutcome(row({ hold: { reason: 'x' } })), '');
+});
+
+test('review flow: list shows only actionable rows unless the toggle is on', () => {
+  const ok1 = row({ id: 'a', stock: 'A' });
+  const live = row({ id: 'b', stock: 'B', source_facts: facts({ has_live_bi: true }) });
+  const held = row({ id: 'c', stock: 'C', hold: { reason: 'x' } });
+  const old = row({ id: 'd', stock: 'A', engine_version: 'walkaround-v1.2-text', edited_bi: null });
+  const all = [ok1, live, held, old];
+  assert.deepEqual(ui.waVisibleRows(all, false).map(r => r.id), ['a']);
+  assert.deepEqual(ui.waVisibleRows(all, true).map(r => r.id), ['a', 'b', 'c', 'd']);
+});
+
+test('review flow: page wiring — one Approve & Publish action, no standalone Approve/Publish buttons, reject confirms', () => {
+  assert.match(html, /data-wa-action="approve_publish"/);
+  assert.match(html, /Approve &amp; Publish/);
+  assert.doesNotMatch(html, /id="wa-approve-' \+ idAttr/);
+  assert.doesNotMatch(html, /id="wa-publish-' \+ idAttr/);
+  assert.match(html, /confirm\('Reject this Walkaround\?/);
+  assert.match(html, /data: \{ status: 'approved' \}/);
 });

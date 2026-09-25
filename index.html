@@ -7392,6 +7392,16 @@ async function loadWalkaroundReview() {
       },
       body: JSON.stringify({ operation: 'get_walkaround_queue', data: { status: 'generated' } })
     });
+    // Approved-but-unpublished rows stay on screen so a failed publish can be retried.
+    let approvedRows = [];
+    try {
+      const ra = await fetch('/.netlify/functions/admin-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+        body: JSON.stringify({ operation: 'get_walkaround_queue', data: { status: 'approved' } })
+      });
+      if (ra.ok) { const ja = await ra.json(); approvedRows = Array.isArray(ja.rows) ? ja.rows : []; }
+    } catch (e) { approvedRows = []; }
     if (!r.ok) {
       if (r.status === 401 || r.status === 403) {
         alert('Your session may have expired. Please log in again.');
@@ -7407,7 +7417,7 @@ async function loadWalkaroundReview() {
     // generations (v1, v1.1) still sit in the queue but are noise for review —
     // bump this string when a newer engine_version becomes the production target.
     // Supported engines only (see WA-CONTRACT): current work first, legacy history below.
-    WALKAROUND_QUEUE_DATA = (Array.isArray(j.rows) ? j.rows : [])
+    WALKAROUND_QUEUE_DATA = (Array.isArray(j.rows) ? j.rows : []).concat(approvedRows)
       .filter(r => WA_CURRENT_ENGINES.has(r.engine_version) || WA_LEGACY_ENGINES.has(r.engine_version));
     WALKAROUND_QUEUE_DATA.sort(waQueueOrder);   // sorted after assignment: supersession reads the full list
     renderWalkaroundQueue();
@@ -7421,13 +7431,26 @@ function renderWalkaroundQueue() {
   const list = document.getElementById('wa-review-list');
   const count = document.getElementById('wa-review-count');
   if (!list) return;
-  const rows = WALKAROUND_QUEUE_DATA;
-  if (count) count.textContent = rows.filter(r => waActionability(r).ok).length + ' actionable · ' + rows.length + ' pending review';
+  const all = WALKAROUND_QUEUE_DATA;
+  const rows = waVisibleRows(all, WA_SHOW_BLOCKED);
+  const actionableN = all.filter(r => waActionability(r, all).ok).length;
+  const blockedN = all.length - actionableN;
+  if (count) count.innerHTML = actionableN + ' actionable' + (blockedN
+    ? ' · <a href="#" onclick="waToggleBlocked();return false;" style="color:var(--text3);text-decoration:underline">' +
+        (WA_SHOW_BLOCKED ? 'Hide ' : 'Show ') + blockedN + ' not actionable</a>'
+    : '');
+  if (!document.getElementById('wa-review-style')) {
+    const st = document.createElement('style');
+    st.id = 'wa-review-style';
+    st.textContent = '#wa-review-list button:disabled{opacity:.4;cursor:not-allowed;filter:grayscale(1)}';
+    document.head.appendChild(st);
+  }
   // Keep the session summary line in sync — pending count changes after every
   // approve/reject/publish, so the denominator and percentage update with the list.
   _waRenderSessionSummary();
   if (!rows.length) {
-    list.innerHTML = '<p style="color:var(--text3);margin:0;padding:14px">No rows pending review.</p>';
+    list.innerHTML = '<p style="color:var(--text3);margin:0;padding:14px">' +
+      (blockedN && !WA_SHOW_BLOCKED ? 'No actionable Walkarounds right now.' : 'No rows pending review.') + '</p>';
     // Attach (idempotent) so the listener is wired even on empty-state first paint;
     // re-rendering replaces innerHTML but leaves the parent listener intact.
     _waAttachReviewListeners(list);
@@ -7460,8 +7483,9 @@ function _waOnListClick(e) {
   const id = btn.getAttribute('data-id');
   if (id == null) return;
   const action = btn.getAttribute('data-wa-action');
-  if (action === 'approve')      approveWalkaround(id);
-  else if (action === 'reject')  rejectWalkaround(id);
+  if (action === 'approve_publish') waApproveAndPublish(id);
+  else if (action === 'approve') approveWalkaround(id);
+  else if (action === 'reject') { if (confirm('Reject this Walkaround? It leaves the review list and will not be published.')) rejectWalkaround(id); }
   else if (action === 'publish') publishWalkaround(id);
 }
 
@@ -7605,6 +7629,17 @@ function waStatusBanner(r) {
   if (act.ok) return pub;
   const color = act.kind === 'held' ? '#dc2626' : '#ca8a04';
   return pub + '<div style="padding:10px 14px;margin:0 0 14px;border:1px solid ' + color + ';border-left:3px solid ' + color + ';border-radius:6px;font-size:13px;color:var(--text)"><strong style="color:' + color + '">Not publishable:</strong> ' + _waEsc(act.reason) + '</div>';
+}
+// Review-flow helpers (Ryan/Chief 2026-09-25): one decision per card.
+// Default outcome for an actionable card: edited text → minor_wording_edit, else published_unchanged.
+function waDefaultOutcome(r) {
+  if (!waActionability(r).ok) return '';
+  return (r && r.edited_bi != null) ? 'minor_wording_edit' : 'published_unchanged';
+}
+// Rows shown in the list: actionable only, unless the reviewer asks to see the rest.
+function waVisibleRows(rows, showBlocked) {
+  const all = rows || [];
+  return showBlocked ? all : all.filter(r => waActionability(r, all).ok);
 }
 // WA-CONTRACT-END ────────────────────────────────────────────────────────────
 
@@ -7772,9 +7807,10 @@ function _waRenderCard(r) {
   }
 
   // ── Outcome dropdown + Publish gating (LOGIC PRESERVED) ───────────────────
+  const defaultOutcome = waDefaultOutcome(r);
   const outcomeOptions =
     '<option value="">— Choose outcome —</option>' +
-    WALKAROUND_REVIEW_OUTCOMES.map(v => '<option value="' + v + '">' + v + '</option>').join('');
+    WALKAROUND_REVIEW_OUTCOMES.map(v => '<option value="' + v + '"' + (v === defaultOutcome ? ' selected' : '') + '>' + v + '</option>').join('');
 
   const act = waActionability(r);
   const publishDisabled = (isApproved && act.ok) ? '' : 'disabled';
@@ -7867,11 +7903,11 @@ function _waRenderCard(r) {
           '<select id="wa-outcome-' + idAttr + '" class="edit-input" style="max-width:280px;font-size:13px" data-wa-outcome="1" data-id="' + idAttr + '">' +
             outcomeOptions +
           '</select>' +
-          '<button id="wa-approve-' + idAttr + '" class="topbar-btn btn-primary" disabled style="font-size:13px;padding:7px 16px" data-wa-action="approve" data-id="' + idAttr + '">Approve</button>' +
-          '<button id="wa-reject-' + idAttr + '" class="topbar-btn" disabled style="font-size:13px;padding:7px 16px" data-wa-action="reject" data-id="' + idAttr + '">Reject</button>' +
+          '<button id="wa-reject-' + idAttr + '" class="topbar-btn" ' + (defaultOutcome ? '' : 'disabled') + ' style="font-size:13px;padding:7px 16px" data-wa-action="reject" data-id="' + idAttr + '">Reject</button>' +
           '<div style="flex:1"></div>' +
-          '<button id="wa-publish-' + idAttr + '" class="topbar-btn btn-primary" ' + publishDisabled + ' style="font-size:13px;padding:7px 16px" data-wa-action="publish" data-id="' + idAttr + '">Publish</button>' +
-          publishHint +
+          (act.ok
+            ? '<button id="wa-go-' + idAttr + '" class="topbar-btn btn-primary" style="font-size:14px;padding:9px 22px;font-weight:700" data-wa-action="approve_publish" data-id="' + idAttr + '">' + (isApproved ? 'Publish' : 'Approve &amp; Publish') + '</button>'
+            : publishHint) +
         '</div>' +
         '<div id="wa-msg-' + idAttr + '" style="display:none;margin-top:10px;font-size:12px"></div>' +
       '</div>' +
@@ -7934,6 +7970,39 @@ async function _waReviewWrite(id, status) {
 
 async function approveWalkaround(id) { return _waReviewWrite(id, 'approved'); }
 async function rejectWalkaround(id) { return _waReviewWrite(id, 'rejected'); }
+
+// Show/hide non-actionable rows (display only; nothing is changed in the queue).
+let WA_SHOW_BLOCKED = false;
+function waToggleBlocked() { WA_SHOW_BLOCKED = !WA_SHOW_BLOCKED; renderWalkaroundQueue(); }
+
+// One decision per card: approve with the chosen outcome, then publish. The server
+// runs every publish guard on the publish step; nothing here bypasses them.
+async function waApproveAndPublish(id) {
+  const row = (WALKAROUND_QUEUE_DATA || []).find(x => String(x.id) === String(id));
+  if (!row) return;
+  const act = waActionability(row);
+  if (!act.ok) { _waShowMsg(id, act.reason, true); return; }
+  const sel = document.getElementById('wa-outcome-' + id);
+  const outcome = sel && sel.value;
+  if (!outcome) { _waShowMsg(id, 'Pick an outcome first.', true); return; }
+  const btn = document.getElementById('wa-go-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
+  if (row.status !== 'approved') {
+    const res = await _waAuthFetch('review_walkaround', { id: id, status: 'approved', review_outcome: outcome });
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) alert('Your session may have expired. Please log in again.');
+      else _waShowMsg(id, (res.body && res.body.error) ? res.body.error : 'Approve failed', true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Approve & Publish'; }
+      return;
+    }
+    row.status = 'approved';
+    row._waSubmittedOutcome = outcome;
+  }
+  await publishWalkaround(id);
+  // Publish failed (row still listed): the card now offers Publish as a retry.
+  const still = document.getElementById('wa-go-' + id);
+  if (still) { still.disabled = false; still.textContent = 'Publish'; }
+}
 
 async function publishWalkaround(id) {
   const row = WALKAROUND_QUEUE_DATA.find(x => String(x.id) === String(id));
