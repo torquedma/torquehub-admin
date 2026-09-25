@@ -48,8 +48,21 @@ const WALKAROUND_FACT_SELECT = [
   'engine','fuel','condition','description',
   // 2026-09-25 (Chief): publish-safety read model. buyer_intelligence is reduced to
   // a has_live_bi boolean before it leaves this function.
-  'status','sold','buyer_intelligence'
+  'status','sold','buyer_intelligence',
+  // 2026-09-25 (Chief): review context only — reduced to a single hero_photo URL below.
+  'photos'
 ].join(',');
+
+// Hero photo = the first photo the live VDP gallery shows: the first photos[] entry
+// with a url (SITE vehicle.html initGallery: photos.filter(p => p && p.url)[0]).
+// Only that one URL leaves this function; the photos array does not.
+function heroPhotoUrl(raw) {
+  let arr = raw;
+  if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (e) { return null; } }
+  if (!Array.isArray(arr)) return null;
+  const p = arr.find(x => x && typeof x.url === 'string' && x.url.trim());
+  return p ? p.url.trim() : null;
+}
 
 const OPERATIONS = {
   // get_leads: returns up to `limit` leads, newest first.
@@ -291,6 +304,8 @@ const OPERATIONS = {
         if (!f || !f.stock) continue;
         f.has_live_bi = f.buyer_intelligence != null;
         delete f.buyer_intelligence;
+        f.hero_photo = heroPhotoUrl(f.photos);
+        delete f.photos;
         factsByStock.set(f.stock, f);
       }
     }

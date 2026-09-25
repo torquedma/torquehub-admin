@@ -16,7 +16,7 @@ process.env.ADMIN_EMAILS = 'ryan@example.com';
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const block = html.slice(html.indexOf('// WA-CONTRACT-START'), html.indexOf('// WA-CONTRACT-END'));
 const ui = {};
-vm.runInNewContext(block + '\n;Object.assign(this.out, { WA_CURRENT_ENGINES, WA_LEGACY_ENGINES, waPublishPayload, waActionability, waQueueOrder, waModernPreview, waStatusBanner, waKeyDetails, waSupersededBy });', { out: ui });
+vm.runInNewContext(block + '\n;Object.assign(this.out, { WA_CURRENT_ENGINES, WA_LEGACY_ENGINES, waPublishPayload, waActionability, waQueueOrder, waModernPreview, waStatusBanner, waKeyDetails, waSupersededBy, waHeroImage });', { out: ui });
 
 const DESC = 'Key Details\n- Year: 2016\n- Make: Hino\n- Stock #: DBT-7800 P\n\nOverview\nCab and chassis with an Allison automatic.';
 const BI = (o = {}) => Object.assign({
@@ -242,4 +242,35 @@ test('engine order parity: server WALKAROUND_ENGINE_ORDER equals page WA_ENGINE_
   const page = [...block.match(/const WA_ENGINE_ORDER = \[([^\]]*)\]/)[1].matchAll(/'([^']+)'/g)].map(x => x[1]);
   assert.deepEqual(server, page);
   assert.deepEqual(page.slice(2), [...ui.WA_CURRENT_ENGINES]);
+});
+
+test('hero photo: card shows the VDP hero URL (escaped) or an explicit no-photo state', () => {
+  const h = ui.waHeroImage({ hero_photo: 'https://x.supabase.co/storage/v1/object/public/vehicle-photos/a/b.jpg' });
+  assert.match(h, /<img src="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/vehicle-photos\/a\/b\.jpg"/);
+  assert.match(ui.waHeroImage({ hero_photo: null }), /No listing photo available/);
+  assert.match(ui.waHeroImage(null), /No listing photo available/);
+  assert.doesNotMatch(ui.waHeroImage({ hero_photo: '"><script>x</script>' }), /<script>/);
+});
+
+test('read model: hero_photo = first photos[] entry with a url (VDP gallery rule); photos array not shipped', async () => {
+  global.fetch = async (url) => {
+    const ok = (json, status = 200) => ({ ok: status < 400, status, json: async () => json, text: async () => '' });
+    if (url.includes('/auth/v1/user')) return ok({ email: 'ryan@example.com' });
+    if (url.includes('/walkaround_review_queue')) return ok([{ id: 'q1', stock: 'A' }, { id: 'q2', stock: 'B' }, { id: 'q3', stock: 'C' }]);
+    if (url.includes('/inventory')) return ok([
+      { stock: 'A', status: 'published', sold: false, buyer_intelligence: null, photos: [{ dataUrl: 'data:x' }, { url: 'https://h/1.jpg' }, { url: 'https://h/2.jpg' }] },
+      { stock: 'B', status: 'published', sold: false, buyer_intelligence: null, photos: JSON.stringify([{ url: 'https://h/b.jpg' }]) },
+      { stock: 'C', status: 'published', sold: false, buyer_intelligence: null, photos: [] },
+    ]);
+    if (url.includes('/bi_publication_hold')) return ok([]);
+    return ok([]);
+  };
+  delete require.cache[require.resolve('../admin-read.js')];
+  const { handler } = require('../admin-read.js');
+  const res = await handler({ httpMethod: 'POST', headers: { authorization: 'Bearer t' }, body: JSON.stringify({ operation: 'get_walkaround_queue', data: {} }) });
+  const rows = JSON.parse(res.body).rows;
+  assert.equal(rows[0].source_facts.hero_photo, 'https://h/1.jpg');
+  assert.equal(rows[1].source_facts.hero_photo, 'https://h/b.jpg');
+  assert.equal(rows[2].source_facts.hero_photo, null);
+  for (const r of rows) assert.ok(!('photos' in r.source_facts), 'photos array not shipped');
 });

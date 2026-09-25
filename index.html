@@ -7584,6 +7584,18 @@ function waModernPreview(bi, facts) {
   return out.join('') || '<p style="color:var(--text3)">Nothing buyer-facing in this payload.</p>';
 }
 
+// Listing hero photo (review context only; never part of buyer_intelligence). The URL is
+// the first photo the live VDP gallery shows, computed server-side in admin-read.
+function waHeroImage(facts) {
+  const url = facts && typeof facts.hero_photo === 'string' ? facts.hero_photo : '';
+  if (!url) {
+    return '<div style="aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;border:1px dashed var(--border);border-radius:8px;margin:0 0 14px;color:var(--text3);font-size:13px">No listing photo available</div>';
+  }
+  return '<div style="aspect-ratio:16/9;border-radius:8px;overflow:hidden;margin:0 0 14px;background:var(--surface2)">' +
+    '<img src="' + _waEsc(url) + '" alt="Listing hero photo" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block">' +
+  '</div>';
+}
+
 // Banner at the top of every card: which payload publishes, and why a row is blocked.
 function waStatusBanner(r) {
   const act = waActionability(r);
@@ -7714,7 +7726,7 @@ function _waRenderCard(r) {
 
   // ── RIGHT: SOURCE FACTS (tight, scan-fast; values pop, keys recede) ───────
   // Field order per spec: Year, Make, Model, Trim, Price, Mileage, Hours, Horsepower, Engine, Fuel, Condition.
-  waContent = waStatusBanner(r) + waContent;
+  waContent = waHeroImage(facts) + waStatusBanner(r) + waContent;
 
   let factsContent;
   if (facts) {
