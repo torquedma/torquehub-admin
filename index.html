@@ -8021,12 +8021,14 @@ async function publishWalkaround(id) {
   }
   _waToast('🚀 Published to inventory');
   // Capture the outcome that was tagged at approve-time (stashed by _waReviewWrite)
-  // BEFORE the row is filtered out — so session counter can bucket it correctly.
+  // so the session counter can bucket it correctly.
   const bucket = (row._waSubmittedOutcome === 'published_unchanged') ? 'published' : 'minor_edits';
-  // Row is now status='published'; drop from this view (which lists pending generated/approved).
-  WALKAROUND_QUEUE_DATA = WALKAROUND_QUEUE_DATA.filter(x => String(x.id) !== String(id));
-  renderWalkaroundQueue();
   _waBumpSession(bucket);
+  // Chief 2026-09-25: after every successful publication, re-read the queue from the
+  // server before offering another card. Eligibility (live BI, supersession, holds) is
+  // never inferred from the pre-publication dataset. A FAILED publish returns above
+  // without reloading, so its approved card stays visible with the error and retry.
+  await loadWalkaroundReview();
 }
 </script>
 </body>

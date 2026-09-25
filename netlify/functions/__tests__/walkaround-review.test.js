@@ -300,3 +300,14 @@ test('review flow: page wiring — one Approve & Publish action, no standalone A
   assert.match(html, /confirm\('Reject this Walkaround\?/);
   assert.match(html, /data: \{ status: 'approved' \}/);
 });
+
+test('review flow: a successful publish re-reads the queue from the server; a failed publish does not reload', () => {
+  const start = html.indexOf('async function publishWalkaround(id)');
+  const fn = html.slice(start, html.indexOf('\n}\n', start) + 2);
+  const failIdx = fn.indexOf("_waShowMsg(id, (res.body && res.body.error) ? res.body.error : 'Publish failed', true);");
+  const reloadIdx = fn.indexOf('await loadWalkaroundReview();');
+  assert.ok(failIdx > 0, 'failure path present');
+  assert.ok(reloadIdx > failIdx, 'reload only after the failure path has returned');
+  assert.equal((fn.match(/loadWalkaroundReview\(/g) || []).length, 1);
+  assert.doesNotMatch(fn, /WALKAROUND_QUEUE_DATA = WALKAROUND_QUEUE_DATA\.filter/);
+});
