@@ -7406,7 +7406,10 @@ async function loadWalkaroundReview() {
     // Filter client-side to the current production engine version. Earlier
     // generations (v1, v1.1) still sit in the queue but are noise for review —
     // bump this string when a newer engine_version becomes the production target.
-    WALKAROUND_QUEUE_DATA = (Array.isArray(j.rows) ? j.rows : []).filter(r => r.engine_version === 'walkaround-v1.2-text' || r.engine_version === 'walkaround-v1.3-text');
+    // Supported engines only (see WA-CONTRACT): current work first, legacy history below.
+    WALKAROUND_QUEUE_DATA = (Array.isArray(j.rows) ? j.rows : [])
+      .filter(r => WA_CURRENT_ENGINES.has(r.engine_version) || WA_LEGACY_ENGINES.has(r.engine_version));
+    WALKAROUND_QUEUE_DATA.sort(waQueueOrder);   // sorted after assignment: supersession reads the full list
     renderWalkaroundQueue();
   } catch (e) {
     if (list) list.innerHTML = '<p style="color:#dc2626;margin:0;padding:14px">Error: ' + _waEscapeHtml(e.message) + '</p>';
@@ -7419,7 +7422,7 @@ function renderWalkaroundQueue() {
   const count = document.getElementById('wa-review-count');
   if (!list) return;
   const rows = WALKAROUND_QUEUE_DATA;
-  if (count) count.textContent = rows.length + ' pending review';
+  if (count) count.textContent = rows.filter(r => waActionability(r).ok).length + ' actionable · ' + rows.length + ' pending review';
   // Keep the session summary line in sync — pending count changes after every
   // approve/reject/publish, so the denominator and percentage update with the list.
   _waRenderSessionSummary();
@@ -7474,6 +7477,125 @@ function _waOnListChange(e) {
 // v1.3 introduces a top-level `identity` object; its presence is the marker.
 function waGetShape(bi){ if (bi && bi.identity) return 'v1.3'; return 'v1.2'; }
 
+// WA-CONTRACT-START ──────────────────────────────────────────────────────────
+// Supported Walkaround engine contract (Chief ruling 2026-09-25).
+// CURRENT engines render the buyer-facing Walkaround exactly as the live VDP does:
+//   Key Details (from the unit description) → Torque Take (every paragraph) → Buyer Checklist.
+// LEGACY engines (v1.2/v1.3) stay readable in their historical view and sort below current work.
+// Add a new engine here only with a Chief ruling; nothing else in the page keys off a version string.
+const WA_CURRENT_ENGINES = new Set([
+  'walkaround-v1.4.2-fable-5-1-ep',
+  'walkaround-v1.4.3-fable-5-1-ep',
+  'walkaround-v1.5-opus-5-5-geb',
+]);
+const WA_LEGACY_ENGINES = new Set(['walkaround-v1.2-text', 'walkaround-v1.3-text']);
+// Oldest → newest. Only the newest supported generation for a stock can be actionable;
+// an older one (including one whose newer generation abstained) is superseded.
+const WA_ENGINE_ORDER = ['walkaround-v1.2-text', 'walkaround-v1.3-text', 'walkaround-v1.4.2-fable-5-1-ep', 'walkaround-v1.4.3-fable-5-1-ep', 'walkaround-v1.5-opus-5-5-geb'];
+function waSupersededBy(r, all) {
+  const rank = WA_ENGINE_ORDER.indexOf(r.engine_version);
+  let best = null, bestRank = rank;
+  for (const o of (all || [])) {
+    if (o === r || o.stock !== r.stock) continue;
+    const k = WA_ENGINE_ORDER.indexOf(o.engine_version);
+    if (k > bestRank) { best = o.engine_version; bestRank = k; }
+  }
+  return best;
+}
+
+function _waEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Which payload publish_walkaround will write: edited_bi wins over generated_bi.
+function waPublishPayload(r) { return (r && r.edited_bi != null) ? r.edited_bi : ((r && r.generated_bi) || {}); }
+
+// Publish-actionability. Mirrors the server-side gate in admin-write publish_walkaround,
+// which is the real protection; this only explains and disables the UI.
+function waActionability(r, all) {
+  const bi = waPublishPayload(r);
+  const f = r && r.source_facts;
+  if (bi && bi.abstain === true) return { ok: false, kind: 'abstain', reason: 'Abstained — nothing to publish' };
+  if (!f) return { ok: false, kind: 'no_inventory', reason: 'No matching inventory row' };
+  if (r.hold) return { ok: false, kind: 'held', reason: 'HELD — ' + (r.hold.reason || 'publication hold') + (r.hold.held_by ? ' (' + r.hold.held_by + ')' : '') };
+  if (f.status !== 'published') return { ok: false, kind: 'not_published', reason: 'Unit is not published' };
+  if (f.sold !== false) return { ok: false, kind: 'sold', reason: 'Unit is sold' };
+  if (f.has_live_bi) return { ok: false, kind: 'live_bi', reason: 'Unit already has live Buyer Intelligence — publishing would overwrite it' };
+  const sup = waSupersededBy(r, all || (typeof WALKAROUND_QUEUE_DATA !== 'undefined' ? WALKAROUND_QUEUE_DATA : []));
+  if (sup) return { ok: false, kind: 'superseded', reason: 'Superseded by a newer generation (' + sup + ')' };
+  return { ok: true, kind: 'ok', reason: '' };
+}
+
+// Queue order: actionable work first, then other current-engine rows, then legacy history.
+function waQueueRank(r) {
+  if (waActionability(r).ok) return 0;
+  return WA_CURRENT_ENGINES.has(r.engine_version) ? 1 : 2;
+}
+function waQueueOrder(a, b) {
+  return (waQueueRank(a) - waQueueRank(b)) || String(a.stock || '').localeCompare(String(b.stock || ''));
+}
+
+// Key Details card content from the canonical description ("Key Details" list, then "Overview").
+function waKeyDetails(desc) {
+  const lines = String(desc || '').split(/\r?\n/);
+  const items = []; const overview = [];
+  let mode = '';
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/^key details$/i.test(line)) { mode = 'kd'; continue; }
+    if (/^overview$/i.test(line)) { mode = 'ov'; continue; }
+    if (!line) continue;
+    if (mode === 'kd' && /^[-•]\s+/.test(line)) items.push(line.replace(/^[-•]\s+/, ''));
+    else if (mode === 'ov') overview.push(line);
+  }
+  return { items, overview };
+}
+
+// Modern preview — mirrors SITE vehicle.html buildBuyerIntelligenceCards (three-card journey,
+// Foreman ruling 2026-09-18). The internal buyer_question is NOT part of the preview.
+function waModernPreview(bi, facts) {
+  const card = (title, body) =>
+    '<div style="border:1px solid var(--border);border-left:3px solid #16a34a;border-radius:8px;padding:16px 18px;margin:0 0 14px;background:var(--surface)">' +
+      '<div style="font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:var(--text);margin:0 0 10px">' + _waEsc(title) + '</div>' +
+      body +
+    '</div>';
+  const para = t => '<p style="margin:0 0 10px;font-size:14px;line-height:1.65;color:var(--text)">' + _waEsc(t) + '</p>';
+  const out = [];
+  const kd = waKeyDetails(facts && facts.description);
+  if (kd.items.length || kd.overview.length) {
+    out.push(card('Key Details',
+      (kd.items.length ? '<ul style="margin:0 0 10px;padding-left:18px;font-size:14px;line-height:1.6;color:var(--text)">' + kd.items.map(i => '<li>' + _waEsc(i) + '</li>').join('') + '</ul>' : '') +
+      kd.overview.map(para).join('')));
+  }
+  const tt = Array.isArray(bi.torque_take) ? bi.torque_take.map(s => (s == null ? '' : String(s).trim())).filter(Boolean) : [];
+  if (tt.length) {
+    const heading = (typeof bi.title === 'string' && bi.title.trim()) ? bi.title.trim() : 'Torque Take';
+    out.push(card(heading, tt.map(para).join('')));
+  }
+  const df = bi.decision_factors || {};
+  const yes = Array.isArray(df.makes_it_a_yes) ? df.makes_it_a_yes.map(s => (s == null ? '' : String(s).trim())).filter(Boolean) : [];
+  if (yes.length) {
+    const footer = typeof df.makes_it_a_yes_footer === 'string' ? df.makes_it_a_yes_footer.trim() : '';
+    out.push(card('Buyer Checklist',
+      para('What a good one should show:') +
+      '<ul style="margin:0 0 10px;padding-left:18px;font-size:14px;line-height:1.6;color:var(--text)">' + yes.map(v => '<li>' + _waEsc(v) + '</li>').join('') + '</ul>' +
+      (footer ? para(footer) : '')));
+  }
+  return out.join('') || '<p style="color:var(--text3)">Nothing buyer-facing in this payload.</p>';
+}
+
+// Banner at the top of every card: which payload publishes, and why a row is blocked.
+function waStatusBanner(r) {
+  const act = waActionability(r);
+  const src = (r && r.edited_bi != null) ? 'edited_bi' : 'generated_bi';
+  const engineKind = WA_CURRENT_ENGINES.has(r.engine_version) ? 'current engine' : (WA_LEGACY_ENGINES.has(r.engine_version) ? 'legacy engine' : 'unsupported engine');
+  const pub = '<div style="font-size:12px;color:var(--text3);margin:0 0 12px">Publishes: <strong style="color:var(--text)">' + src + '</strong> · ' + _waEsc(r.engine_version || '—') + ' (' + engineKind + ')</div>';
+  if (act.ok) return pub;
+  const color = act.kind === 'held' ? '#dc2626' : '#ca8a04';
+  return pub + '<div style="padding:10px 14px;margin:0 0 14px;border:1px solid ' + color + ';border-left:3px solid ' + color + ';border-radius:6px;font-size:13px;color:var(--text)"><strong style="color:' + color + '">Not publishable:</strong> ' + _waEsc(act.reason) + '</div>';
+}
+// WA-CONTRACT-END ────────────────────────────────────────────────────────────
+
 function _waRenderCard(r) {
   // ── Data extraction (unchanged from prior version) ─────────────────────────
   const bi = r.edited_bi || r.generated_bi || {};
@@ -7500,6 +7622,9 @@ function _waRenderCard(r) {
       '<div style="padding:18px 20px;background:var(--surface2);border:1px solid #ca8a04;border-left:3px solid #ca8a04;border-radius:8px;font-size:13px;line-height:1.55;color:var(--text)">' +
         '<strong style="color:#ca8a04">⚠ Abstain object.</strong> The model declined to write a Walkaround for this unit.' +
       '</div>';
+  } else if (WA_CURRENT_ENGINES.has(r.engine_version)) {
+    // Current engines: the buyer-facing Walkaround, no "Meet the Truck" split.
+    waContent = waModernPreview(bi, facts);
   } else {
     const shape = waGetShape(bi);
 
@@ -7589,6 +7714,8 @@ function _waRenderCard(r) {
 
   // ── RIGHT: SOURCE FACTS (tight, scan-fast; values pop, keys recede) ───────
   // Field order per spec: Year, Make, Model, Trim, Price, Mileage, Hours, Horsepower, Engine, Fuel, Condition.
+  waContent = waStatusBanner(r) + waContent;
+
   let factsContent;
   if (facts) {
     const factRows = [
@@ -7637,9 +7764,10 @@ function _waRenderCard(r) {
     '<option value="">— Choose outcome —</option>' +
     WALKAROUND_REVIEW_OUTCOMES.map(v => '<option value="' + v + '">' + v + '</option>').join('');
 
-  const publishDisabled = (isApproved && !isAbstain) ? '' : 'disabled';
-  const publishHint = isAbstain
-    ? '<span style="font-size:12px;color:#ca8a04;margin-left:8px">abstain cannot be published</span>'
+  const act = waActionability(r);
+  const publishDisabled = (isApproved && act.ok) ? '' : 'disabled';
+  const publishHint = !act.ok
+    ? '<span style="font-size:12px;color:#ca8a04;margin-left:8px">' + _waEsc(act.reason) + '</span>'
     : (!isApproved ? '<span style="font-size:12px;color:var(--text3);margin-left:8px">approve first to enable Publish</span>' : '');
 
   // Small tinted pill for uncertainty_type — used in the engine summary strip below.
@@ -7657,7 +7785,9 @@ function _waRenderCard(r) {
     : '';
   // decision_layers count = torque_take.length - 1 (the first element is the
   // throwaway dropped by .slice(1) at render time). Clamped to 0 for empty/missing.
-  const decisionLayers = Array.isArray(bi.torque_take) ? Math.max(bi.torque_take.length - 1, 0) : 0;
+  const decisionLayers = Array.isArray(bi.torque_take)
+    ? (WA_CURRENT_ENGINES.has(r.engine_version) ? bi.torque_take.length : Math.max(bi.torque_take.length - 1, 0))
+    : 0;
 
   // Local helper for the strip field captions (small muted uppercase).
   const stripLabel = (text) =>
@@ -7745,7 +7875,11 @@ function onWalkaroundOutcomeChange(id) {
   const approve = document.getElementById('wa-approve-' + id);
   const reject = document.getElementById('wa-reject-' + id);
   const has = sel && sel.value;
-  if (approve) approve.disabled = !has;
+  // Approve stays disabled for rows that could never publish (held, live BI, sold,
+  // unpublished, abstain); Reject stays available so stale rows can be closed out.
+  const row = (WALKAROUND_QUEUE_DATA || []).find(x => String(x.id) === String(id));
+  const actionable = row ? waActionability(row).ok : false;
+  if (approve) approve.disabled = !(has && actionable);
   if (reject) reject.disabled = !has;
 }
 

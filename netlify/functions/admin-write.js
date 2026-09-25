@@ -47,6 +47,15 @@ const CONTACT_FIELDS = ['name', 'phone', 'email', 'notes'];
 
 // Walkaround review queue — restricted enums for the review op.
 const WALKAROUND_REVIEW_STATUSES = new Set(['approved', 'rejected']);
+// Supported Walkaround engines, oldest → newest (must equal WA_ENGINE_ORDER in index.html;
+// a test enforces parity). Only the newest supported generation for a stock may publish.
+const WALKAROUND_ENGINE_ORDER = [
+  'walkaround-v1.2-text',
+  'walkaround-v1.3-text',
+  'walkaround-v1.4.2-fable-5-1-ep',
+  'walkaround-v1.4.3-fable-5-1-ep',
+  'walkaround-v1.5-opus-5-5-geb',
+];
 const WALKAROUND_REVIEW_OUTCOMES = new Set([
   'published_unchanged',
   'minor_wording_edit',
@@ -896,7 +905,8 @@ async function handlePublishWalkaround({ data, svcKey, userEmail }) {
   }
 
   // 5. Snapshot existing inventory.buyer_intelligence for rollback. READ only.
-  const snapUrl = `${SUPABASE_URL}/rest/v1/inventory?select=buyer_intelligence&stock=eq.${encodeURIComponent(row.stock)}`;
+  //    Also reads status/sold for the publish-safety gate (5b).
+  const snapUrl = `${SUPABASE_URL}/rest/v1/inventory?select=buyer_intelligence,status,sold&stock=eq.${encodeURIComponent(row.stock)}`;
   const sRes = await fetch(snapUrl, { headers });
   if (!sRes.ok) {
     const errText = await sRes.text();
@@ -914,10 +924,63 @@ async function handlePublishWalkaround({ data, svcKey, userEmail }) {
   }
   const snapshot = snapRows[0].buyer_intelligence; // may be null — that is the correct rollback value
 
+  // 5b. PUBLISH-SAFETY GATE (Chief 2026-09-25) — fail closed, no writes.
+  //     Publishing never overwrites live Buyer Intelligence, never targets a sold or
+  //     unpublished unit, and never publishes a unit under a governed hold. A future
+  //     replacement workflow must be separately governed.
+  const unit = snapRows[0];
+  if (unit.status !== 'published') {
+    return { status: 409, body: { ok: false, error: 'unit_not_published', stock: row.stock, unit_status: unit.status } };
+  }
+  if (unit.sold !== false) {
+    return { status: 409, body: { ok: false, error: 'unit_sold', stock: row.stock } };
+  }
+  if (snapshot != null) {
+    return { status: 409, body: { ok: false, error: 'unit_has_live_bi', stock: row.stock } };
+  }
+  const holdUrl = `${SUPABASE_URL}/rest/v1/bi_publication_hold?select=stock,reason&stock=eq.${encodeURIComponent(row.stock)}`;
+  const hRes = await fetch(holdUrl, { headers });
+  if (!hRes.ok) {
+    return { status: 500, body: { ok: false, error: 'hold check failed' } };
+  }
+  const holds = await hRes.json();
+  if (!Array.isArray(holds)) {
+    return { status: 500, body: { ok: false, error: 'hold check failed' } };
+  }
+  if (holds.length) {
+    return { status: 409, body: { ok: false, error: 'unit_held', stock: row.stock, reason: holds[0].reason } };
+  }
+
+  // 5c. SUPERSESSION GATE (Chief 2026-09-25) — only the newest supported generation for a
+  //     stock may publish. Any newer supported generation (any status, including an
+  //     abstention) supersedes this row. Unsupported engines and unreadable siblings fail closed.
+  const reqRank = WALKAROUND_ENGINE_ORDER.indexOf(row.engine_version);
+  if (reqRank < 0) {
+    return { status: 409, body: { ok: false, error: 'unsupported_engine', stock: row.stock, engine_version: row.engine_version || null } };
+  }
+  const sibUrl = `${SUPABASE_URL}/rest/v1/walkaround_review_queue?select=id,engine_version,status&stock=eq.${encodeURIComponent(row.stock)}`;
+  const sibRes = await fetch(sibUrl, { headers });
+  if (!sibRes.ok) {
+    return { status: 500, body: { ok: false, error: 'generation check failed' } };
+  }
+  const siblings = await sibRes.json();
+  if (!Array.isArray(siblings)) {
+    return { status: 500, body: { ok: false, error: 'generation check failed' } };
+  }
+  const newer = siblings
+    .filter(x => x && x.id !== row.id && WALKAROUND_ENGINE_ORDER.indexOf(x.engine_version) > reqRank)
+    .sort((a, b) => WALKAROUND_ENGINE_ORDER.indexOf(b.engine_version) - WALKAROUND_ENGINE_ORDER.indexOf(a.engine_version));
+  if (newer.length) {
+    return { status: 409, body: { ok: false, error: 'unit_generation_superseded', stock: row.stock, engine_version: row.engine_version, newer_engine: newer[0].engine_version } };
+  }
+
   // 6. THE ONLY WRITE TO `inventory` IN THIS HANDLER.
   // Updates exactly one column (buyer_intelligence). Prefer: return=representation
   // gives us back the affected rows so we can confirm exactly 1.
-  const invUrl = `${SUPABASE_URL}/rest/v1/inventory?stock=eq.${encodeURIComponent(row.stock)}`;
+  // The write itself re-asserts the gate (published, unsold, no live BI) so a state
+  // change between the read and the write cannot slip through.
+  const invUrl = `${SUPABASE_URL}/rest/v1/inventory?stock=eq.${encodeURIComponent(row.stock)}`
+    + `&status=eq.published&sold=eq.false&buyer_intelligence=is.null`;
   const updRes = await fetch(invUrl, {
     method: 'PATCH',
     headers: { ...headers, 'Prefer': 'return=representation' },
@@ -930,8 +993,8 @@ async function handlePublishWalkaround({ data, svcKey, userEmail }) {
   }
   const updated = await updRes.json();
   if (!Array.isArray(updated) || updated.length === 0) {
-    await recordWalkaroundPublishError(svcKey, row.id, `inventory update affected 0 rows for stock='${row.stock}'`);
-    return { status: 500, body: { ok: false, error: 'inventory update affected 0 rows' } };
+    // Gate re-asserted at write time: the unit changed state after the read. Nothing written.
+    return { status: 409, body: { ok: false, error: 'unit_state_changed', stock: row.stock } };
   }
   if (updated.length > 1) {
     await recordWalkaroundPublishError(svcKey, row.id, `inventory update affected ${updated.length} rows for stock='${row.stock}'`);

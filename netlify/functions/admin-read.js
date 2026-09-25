@@ -45,7 +45,10 @@ const WALKAROUND_QUEUE_SELECT = [
 // the BI payload against the underlying listing.
 const WALKAROUND_FACT_SELECT = [
   'stock','year','make','model','trim','price','hours','horsepower','mileage',
-  'engine','fuel','condition','description'
+  'engine','fuel','condition','description',
+  // 2026-09-25 (Chief): publish-safety read model. buyer_intelligence is reduced to
+  // a has_live_bi boolean before it leaves this function.
+  'status','sold','buyer_intelligence'
 ].join(',');
 
 const OPERATIONS = {
@@ -285,12 +288,36 @@ const OPERATIONS = {
       }
       const factsRows = await fRes.json();
       for (const f of (factsRows || [])) {
-        if (f && f.stock) factsByStock.set(f.stock, f);
+        if (!f || !f.stock) continue;
+        f.has_live_bi = f.buyer_intelligence != null;
+        delete f.buyer_intelligence;
+        factsByStock.set(f.stock, f);
       }
     }
 
-    // 3. Attach source_facts to each queue row (null when no matching inventory row)
-    const rows = queueRows.map(r => ({ ...r, source_facts: factsByStock.get(r.stock) || null }));
+    // 3. Governed publication holds (public.bi_publication_hold). Fail closed: if the
+    //    hold read fails, return an error rather than rows that could look actionable.
+    const holdsByStock = new Map();
+    if (stocks.length) {
+      const inList = stocks.map(s => encodeURIComponent(s)).join(',');
+      const holdUrl = `${SUPABASE_URL}/rest/v1/bi_publication_hold`
+        + `?stock=in.(${inList})`
+        + `&select=stock,reason,held_by,held_at`;
+      const hRes = await fetch(holdUrl, { headers });
+      if (!hRes.ok) {
+        return { status: 502, body: { error: 'bi_publication_hold read failed', detail: hRes.status } };
+      }
+      for (const h of (await hRes.json()) || []) {
+        if (h && h.stock) holdsByStock.set(h.stock, { reason: h.reason, held_by: h.held_by, held_at: h.held_at });
+      }
+    }
+
+    // 4. Attach source_facts and hold to each queue row (null when absent)
+    const rows = queueRows.map(r => ({
+      ...r,
+      source_facts: factsByStock.get(r.stock) || null,
+      hold: holdsByStock.get(r.stock) || null,
+    }));
     return { status: 200, body: { rows } };
   }
 };
