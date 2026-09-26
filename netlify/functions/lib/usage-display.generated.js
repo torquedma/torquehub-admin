@@ -121,7 +121,8 @@ const SUPPRESS_BOTH = new Set([
   'Belt Trailer',
   'Boat',
   'Engine',
-  'Truck Body'
+  'Truck Body',
+  'Skid Steer Attachment'
 ]);
 
 // Normalize unit.subcategory through the taxonomy alias map to a canonical value.

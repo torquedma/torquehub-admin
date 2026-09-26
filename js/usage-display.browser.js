@@ -119,7 +119,8 @@
     'Belt Trailer',
     'Boat',
     'Engine',
-    'Truck Body'
+    'Truck Body',
+    'Skid Steer Attachment'
   ];
 
   function normalizeSubcategory(unit) {
