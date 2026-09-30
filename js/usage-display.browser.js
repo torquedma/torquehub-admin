@@ -120,7 +120,8 @@
     'Boat',
     'Engine',
     'Truck Body',
-    'Skid Steer Attachment'
+    'Skid Steer Attachment',
+    'Grain Drill'
   ];
 
   function normalizeSubcategory(unit) {
