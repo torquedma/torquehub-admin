@@ -119,7 +119,7 @@ async function publish(state) {
   console.log = l; console.warn = w; console.error = e;
   return { res, body: JSON.parse(res.body), calls, writes: calls.filter(c => c.method !== 'GET') };
 }
-const QROW = { id: 'q1', stock: 'DBT-7800 P', status: 'approved', engine_version: 'walkaround-v1.4.2-fable-5-1-ep', generated_bi: BI({ torque_take: ['G'] }), edited_bi: BI() };
+const QROW = { id: 'q1', stock: 'DBT-7800 P', status: 'approved', review_outcome: 'minor_wording_edit', engine_version: 'walkaround-v1.4.2-fable-5-1-ep', generated_bi: BI({ torque_take: ['G'] }), edited_bi: BI() };
 const UNIT = { stock: 'DBT-7800 P', status: 'published', sold: false, buyer_intelligence: null };
 
 test('server: clean unit publishes edited_bi; the inventory write re-asserts the gate in its filter', async () => {

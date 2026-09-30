@@ -126,7 +126,7 @@ async function publish(queueRow, siblings) {
 }
 
 test('T5: server publish accepts the manual label (over an older geb sibling) and still rejects walkaround-v9-unknown', async () => {
-  const manual = { id: 'm1', stock: 'MAN-1', status: 'approved', engine_version: MANUAL, generated_bi: BI(), edited_bi: null };
+  const manual = { id: 'm1', stock: 'MAN-1', status: 'approved', review_outcome: 'published_unchanged', engine_version: MANUAL, generated_bi: BI(), edited_bi: null };
   const ok = await publish(manual, [
     { id: 'g1', engine_version: GEB, status: 'generated' },
     { id: 'm1', engine_version: MANUAL, status: 'approved' },

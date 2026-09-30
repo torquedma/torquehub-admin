@@ -7808,7 +7808,8 @@ function _waRenderCard(r) {
   }
 
   // ── Outcome dropdown + Publish gating (LOGIC PRESERVED) ───────────────────
-  const defaultOutcome = waDefaultOutcome(r);
+  // A recorded review_outcome is shown as-is; the default applies only when none exists.
+  const defaultOutcome = (r.review_outcome != null) ? r.review_outcome : waDefaultOutcome(r);
   const outcomeOptions =
     '<option value="">— Choose outcome —</option>' +
     WALKAROUND_REVIEW_OUTCOMES.map(v => '<option value="' + v + '"' + (v === defaultOutcome ? ' selected' : '') + '>' + v + '</option>').join('');
@@ -7986,19 +7987,27 @@ async function waApproveAndPublish(id) {
   const sel = document.getElementById('wa-outcome-' + id);
   const outcome = sel && sel.value;
   if (!outcome) { _waShowMsg(id, 'Pick an outcome first.', true); return; }
+  // A recorded outcome is never overwritten from this card (the server rejects it too).
+  if (row.review_outcome != null && outcome !== row.review_outcome) {
+    _waShowMsg(id, "Outcome already recorded as '" + row.review_outcome + "' — it is not changed here.", true);
+    return;
+  }
   const btn = document.getElementById('wa-go-' + id);
   if (btn) { btn.disabled = true; btn.textContent = 'Publishing…'; }
-  if (row.status !== 'approved') {
+  // Persist the outcome BEFORE publishing (Chief 2026-09-30): a not-yet-approved row is
+  // approved with it; an approved row without one gets it recorded (outcome only).
+  if (row.status !== 'approved' || row.review_outcome == null) {
     const res = await _waAuthFetch('review_walkaround', { id: id, status: 'approved', review_outcome: outcome });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) alert('Your session may have expired. Please log in again.');
       else _waShowMsg(id, (res.body && res.body.error) ? res.body.error : 'Approve failed', true);
-      if (btn) { btn.disabled = false; btn.textContent = 'Approve & Publish'; }
+      if (btn) { btn.disabled = false; btn.textContent = row.status === 'approved' ? 'Publish' : 'Approve & Publish'; }
       return;
     }
     row.status = 'approved';
-    row._waSubmittedOutcome = outcome;
+    row.review_outcome = outcome;
   }
+  row._waSubmittedOutcome = row.review_outcome;
   await publishWalkaround(id);
   // Publish failed (row still listed): the card now offers Publish as a retry.
   const still = document.getElementById('wa-go-' + id);

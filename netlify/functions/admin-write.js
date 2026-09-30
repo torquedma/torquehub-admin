@@ -793,6 +793,8 @@ async function handleDeleteContact({ data, svcKey }) {
 // data: { id, status, review_outcome }
 //   - status must be 'approved' or 'rejected'
 //   - review_outcome must be one of the 8 taxonomy values
+//   - an already-approved row only gains a missing review_outcome (status/reviewed_at kept);
+//     a different outcome on top of a recorded one is rejected (409)
 // Uses Prefer: return=representation so we can confirm exactly one row updated.
 // ---------------------------------------------------------------------------
 async function handleReviewWalkaround({ data, svcKey }) {
@@ -806,6 +808,45 @@ async function handleReviewWalkaround({ data, svcKey }) {
     return { status: 400, body: { error: 'data.review_outcome is missing or not in the 8 allowed taxonomy values' } };
   }
 
+  const rowUrl = `${SUPABASE_URL}/rest/v1/walkaround_review_queue?id=eq.${encodeURIComponent(data.id)}`;
+  const readHeaders = { 'apikey': svcKey, 'Authorization': 'Bearer ' + svcKey };
+  const curRes = await fetch(`${rowUrl}&select=id,status,review_outcome`, { headers: readHeaders });
+  if (!curRes.ok) {
+    return { status: 500, body: { error: 'queue row read failed' } };
+  }
+  const cur = await curRes.json();
+  if (!Array.isArray(cur) || cur.length === 0) {
+    return { status: 404, body: { error: 'queue row not found' } };
+  }
+  if (cur.length > 1) {
+    return { status: 500, body: { error: 'multiple queue rows matched the id — data integrity issue' } };
+  }
+
+  // Already approved (Chief 2026-09-30): the approval event already happened, so status and
+  // reviewed_at are never rewritten. A missing outcome is recorded (outcome only); an
+  // existing outcome is never silently overwritten.
+  if (cur[0].status === 'approved' && data.status === 'approved') {
+    const existing = cur[0].review_outcome;
+    if (existing != null) {
+      if (existing === data.review_outcome) return { status: 200, body: { ok: true, id: cur[0].id } };
+      return { status: 409, body: { error: `review_outcome is already recorded as '${existing}' — not overwritten` } };
+    }
+    const setRes = await fetch(`${rowUrl}&status=eq.approved&review_outcome=is.null`, {
+      method: 'PATCH',
+      headers: { ...readHeaders, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ review_outcome: data.review_outcome }),
+    });
+    if (!setRes.ok) {
+      const errText = await setRes.text();
+      return { status: setRes.status, body: { error: errText } };
+    }
+    const set = await setRes.json();
+    if (!Array.isArray(set) || set.length !== 1) {
+      return { status: 409, body: { error: 'queue row changed while recording review_outcome — reload and retry' } };
+    }
+    return { status: 200, body: { ok: true, id: set[0].id } };
+  }
+
   // Allowlist enforced: only these three columns travel to Supabase.
   const payload = {
     status:         data.status,
@@ -813,7 +854,7 @@ async function handleReviewWalkaround({ data, svcKey }) {
     reviewed_at:    new Date().toISOString(),
   };
 
-  const url = `${SUPABASE_URL}/rest/v1/walkaround_review_queue?id=eq.${encodeURIComponent(data.id)}`;
+  const url = rowUrl;
   const res = await fetch(url, {
     method: 'PATCH',
     headers: {
@@ -890,6 +931,13 @@ async function handlePublishWalkaround({ data, svcKey, userEmail }) {
   // 2. Hard gate (no writes have happened yet)
   if (row.status !== 'approved') {
     return { status: 400, body: { ok: false, error: `only approved rows can be published (status='${row.status}')` } };
+  }
+  // Fail closed without a recorded review outcome (Chief 2026-09-30): every publication
+  // carries one of the eight taxonomy values. Nothing is written on this rejection.
+  if (!WALKAROUND_REVIEW_OUTCOMES.has(row.review_outcome)) {
+    return { status: 409, body: { ok: false, error: row.review_outcome == null
+      ? 'review_outcome_missing: record a review outcome before publishing'
+      : `review_outcome_invalid: '${row.review_outcome}' is not one of the 8 taxonomy values` } };
   }
   if (row.generated_bi == null && row.edited_bi == null) {
     return { status: 400, body: { ok: false, error: 'both generated_bi and edited_bi are null — nothing to publish' } };
