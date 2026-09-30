@@ -31,8 +31,8 @@ const row = (o = {}) => Object.assign({
 }, o);
 const facts = (o) => Object.assign({ stock: 'X', status: 'published', sold: false, has_live_bi: false, description: DESC }, o);
 
-test('engine contract: the three current engines and two legacy engines', () => {
-  assert.deepEqual([...ui.WA_CURRENT_ENGINES], ['walkaround-v1.4.2-fable-5-1-ep', 'walkaround-v1.4.3-fable-5-1-ep', 'walkaround-v1.5-opus-5-5-geb']);
+test('engine contract: the four current engines and two legacy engines', () => {
+  assert.deepEqual([...ui.WA_CURRENT_ENGINES], ['walkaround-v1.4.2-fable-5-1-ep', 'walkaround-v1.4.3-fable-5-1-ep', 'walkaround-v1.5-opus-5-5-geb', 'walkaround-v1.4-manual-adjudicated']);
   assert.deepEqual([...ui.WA_LEGACY_ENGINES], ['walkaround-v1.2-text', 'walkaround-v1.3-text']);
 });
 

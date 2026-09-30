@@ -7511,11 +7511,12 @@ const WA_CURRENT_ENGINES = new Set([
   'walkaround-v1.4.2-fable-5-1-ep',
   'walkaround-v1.4.3-fable-5-1-ep',
   'walkaround-v1.5-opus-5-5-geb',
+  'walkaround-v1.4-manual-adjudicated',
 ]);
 const WA_LEGACY_ENGINES = new Set(['walkaround-v1.2-text', 'walkaround-v1.3-text']);
 // Oldest → newest. Only the newest supported generation for a stock can be actionable;
 // an older one (including one whose newer generation abstained) is superseded.
-const WA_ENGINE_ORDER = ['walkaround-v1.2-text', 'walkaround-v1.3-text', 'walkaround-v1.4.2-fable-5-1-ep', 'walkaround-v1.4.3-fable-5-1-ep', 'walkaround-v1.5-opus-5-5-geb'];
+const WA_ENGINE_ORDER = ['walkaround-v1.2-text', 'walkaround-v1.3-text', 'walkaround-v1.4.2-fable-5-1-ep', 'walkaround-v1.4.3-fable-5-1-ep', 'walkaround-v1.5-opus-5-5-geb', 'walkaround-v1.4-manual-adjudicated'];
 function waSupersededBy(r, all) {
   const rank = WA_ENGINE_ORDER.indexOf(r.engine_version);
   let best = null, bestRank = rank;

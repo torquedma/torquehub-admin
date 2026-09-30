@@ -55,6 +55,7 @@ const WALKAROUND_ENGINE_ORDER = [
   'walkaround-v1.4.2-fable-5-1-ep',
   'walkaround-v1.4.3-fable-5-1-ep',
   'walkaround-v1.5-opus-5-5-geb',
+  'walkaround-v1.4-manual-adjudicated',
 ];
 const WALKAROUND_REVIEW_OUTCOMES = new Set([
   'published_unchanged',
