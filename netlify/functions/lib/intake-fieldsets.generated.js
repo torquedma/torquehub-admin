@@ -856,7 +856,8 @@ const DATA = {
       "Classic Car",
       "Engine",
       "Boat",
-      "Truck Body"
+      "Truck Body",
+      "Golf Cart"
     ]
   },
   "subcategory_overrides": {}
