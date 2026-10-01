@@ -1232,7 +1232,9 @@ function walkaroundJsonEqual(a, b) {
 // v1.4 contract (Foreman rulings 2026-09-18) — the stored object is EXACTLY what
 // the live Walkaround cards consume:
 //   torque_take[]           1..3 non-empty paragraph strings, display order, NO placeholder slot
-//   decision_factors{}      makes_it_a_yes: exactly 4 non-empty strings; makes_it_a_yes_footer: non-empty string
+//   decision_factors{}      makes_it_a_yes: 0..N non-empty strings — no count quota (Owner rule 2026-10-01: the
+//                           evidence decides how many checks belong; 0 is valid and the VDP then omits the card);
+//                           makes_it_a_yes_footer: optional; when present a non-empty string, and only with >= 1 item
 //   uncertainty_type        optional: term|config|business|system|condition|ownership (or null)
 //   buyer_question          optional non-empty string
 //   version                 optional; when present must be "1.4"
@@ -1269,11 +1271,13 @@ function validateWalkaroundPayload(payload) {
     const yes = df.makes_it_a_yes;
     if (!Array.isArray(yes)) errs.push('decision_factors.makes_it_a_yes is not an array');
     else {
-      if (yes.length !== 4) errs.push(`decision_factors.makes_it_a_yes must hold exactly 4 items (got ${yes.length})`);
       yes.forEach((s, i) => { if (typeof s !== 'string' || !s.trim()) errs.push(`decision_factors.makes_it_a_yes[${i}] is empty`); });
     }
     const footer = df.makes_it_a_yes_footer;
-    if (typeof footer !== 'string' || !footer.trim()) errs.push('missing or empty decision_factors.makes_it_a_yes_footer');
+    if (footer != null) {
+      if (typeof footer !== 'string' || !footer.trim()) errs.push('decision_factors.makes_it_a_yes_footer, when present, must be a non-empty string');
+      else if (!Array.isArray(yes) || yes.length === 0) errs.push('decision_factors.makes_it_a_yes_footer requires at least one checklist item');
+    }
   }
 
   if (payload.uncertainty_type != null && !WALKAROUND_UNCERTAINTY_TYPES.has(payload.uncertainty_type)) errs.push(`uncertainty_type "${payload.uncertainty_type}" is not an allowed value`);
