@@ -28,7 +28,7 @@ const INVENTORY_ADMIN_SELECT = [
   // GIP: the modal must LOAD unit locality or a later save could not preserve it.
   'location_city','location_state','location_zip',
   'engine_description','transmission_description','video_url','mileage','notes','status',
-  'prod_status','dx_locked','model_locked','subcategory_locked','raw_description',
+  'prod_status','dx_locked','model_locked','subcategory_locked','vin_locked','raw_description',
   'description_source','photo_count','first_photo','hours','horsepower',
   'gvwr_class','body_class','provenance','vin_decoded_at',
   // HGR-COMPLETION (2026-09-21): completion lifecycle indicator.

@@ -75,6 +75,7 @@ const OPERATIONS = {
   toggle_featured:        handleToggleFeatured,
   create_inventory:       handleCreateInventory,
   update_inventory:       handleUpdateInventory,
+  set_vin_lock:           handleSetVinLock,
   patch_inventory_photos: handlePatchInventoryPhotos,
   mark_sold:              handleMarkSold,
   unmark_sold:            handleUnmarkSold,
@@ -353,6 +354,49 @@ async function handleUpdateInventory({ data, svcKey, userEmail }) {
     return { status: res.status, body: { error: errText } };
   }
   return { status: 200, body: { ok: true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: set_vin_lock   (2026-10-01 P4 Stage 1, Chief)
+// PATCH /rest/v1/inventory?stock=eq.{stock}&dealer=eq.{dealer}   body: { vin_locked }
+// The ONLY Admin path that writes vin_locked. It is deliberately NOT in
+// INVENTORY_UPDATE_FIELDS or INVENTORY_CREATE_FIELDS, so an ordinary listing save can
+// never lock or unlock a VIN decision, even from a stale client copy. The lock binds
+// automated writers only; a human VIN edit through update_inventory is always allowed.
+// ---------------------------------------------------------------------------
+async function handleSetVinLock({ data, svcKey }) {
+  const stock  = typeof data.stock  === 'string' ? data.stock.trim()  : '';
+  const dealer = typeof data.dealer === 'string' ? data.dealer.trim() : '';
+  if (!stock || !dealer) {
+    return { status: 400, body: { error: 'data.stock and data.dealer are required' } };
+  }
+  if (typeof data.vin_locked !== 'boolean') {
+    return { status: 400, body: { error: 'data.vin_locked must be true or false' } };
+  }
+  const url = `${SUPABASE_URL}/rest/v1/inventory`
+    + `?stock=eq.${encodeURIComponent(stock)}`
+    + `&dealer=eq.${encodeURIComponent(dealer)}`
+    + `&select=stock,vin_locked`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'apikey':        svcKey,
+      'Authorization': 'Bearer ' + svcKey,
+      'Content-Type':  'application/json',
+      'Prefer':        'return=representation',
+    },
+    body: JSON.stringify({ vin_locked: data.vin_locked }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { status: res.status, body: { error: errText } };
+  }
+  const rows = await res.json();
+  // (stock, dealer) is UNIQUE, so 0 or 1 rows. 0 = nothing written: report it, never succeed silently.
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    return { status: 409, body: { error: `set_vin_lock matched ${Array.isArray(rows) ? rows.length : 0} rows (expected 1)` } };
+  }
+  return { status: 200, body: { ok: true, stock: rows[0].stock, vin_locked: rows[0].vin_locked === true } };
 }
 
 // ---------------------------------------------------------------------------

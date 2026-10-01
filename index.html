@@ -1662,7 +1662,9 @@ document.querySelector('.sidebar').classList.toggle('open');
               <input class="edit-input" id="edit-vin" type="text" placeholder="VIN">
             </div>
             <button class="secondary-btn" type="button" id="decode-edit-btn" onclick="decodeVinForEdit()">Decode VIN</button>
+            <button class="secondary-btn" type="button" id="vin-lock-btn" onclick="toggleVinLock()">Lock VIN</button>
           </div>
+          <div id="vin-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:4px">VIN Locked - feed syncs will not write this VIN</div>
           <div class="decode-note" id="edit-vin-note">VIN decoder can fill year, make, model, and fuel when available.</div>
         </div>
         <div class="edit-field"><label class="edit-label">Site Tag</label>
@@ -2682,6 +2684,7 @@ function populateEditForm(u) {
   document.getElementById("edit-trans-desc").value = u.transmission_description || "";
   document.getElementById("edit-video-url").value = u.video_url || "";
   document.getElementById("edit-vin").value = u.vin || "";
+  renderVinLock(u);
   var vinNote = document.getElementById("edit-vin-note");
   if (vinNote) vinNote.textContent = "VIN decoder can fill year, make, model, and fuel when available.";
   var sn = document.getElementById('edit-stock-note');
@@ -2878,6 +2881,38 @@ function toggleModelLock() {
   var ind = document.getElementById("model-lock-indicator");
   if (btn) { btn.textContent = u.model_locked ? "Locked" : "Lock Model"; btn.style.background = u.model_locked ? "#d1fae5" : ""; btn.style.color = u.model_locked ? "#065f46" : ""; }
   if (ind) ind.style.display = u.model_locked ? "block" : "none";
+}
+
+// 2026-10-01 P4 Stage 1: vin_locked is written ONLY by its own admin-write operation
+// (set_vin_lock), immediately, never by saveListingEdits. Unlock asks for confirmation.
+function renderVinLock(u) {
+  var locked = !!(u && u.vin_locked);
+  var btn = document.getElementById("vin-lock-btn");
+  var ind = document.getElementById("vin-lock-indicator");
+  if (btn) btn.textContent = locked ? "Unlock VIN" : "Lock VIN";
+  if (ind) ind.style.display = locked ? "block" : "none";
+}
+
+async function toggleVinLock() {
+  var u = INVENTORY.find(function(x){ return getListingKey(x) === currentListingKey; });
+  if (!u || !u.stock) return;
+  var next = !u.vin_locked;
+  if (!next && !confirm("Unlock the VIN on " + u.stock + "? Feed syncs will be able to write this VIN again.")) return;
+  var btn = document.getElementById("vin-lock-btn");
+  if (btn) btn.disabled = true;
+  try {
+    var r = await fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+      body: JSON.stringify({ operation: 'set_vin_lock', data: { stock: u._originalStock || u.stock, dealer: u.dealer, vin_locked: next } })
+    });
+    var j = await r.json().catch(function(){ return {}; });
+    if (!r.ok || !j.ok) { alert('VIN lock not changed: ' + (j.error || r.status)); return; }
+    u.vin_locked = j.vin_locked === true;
+    renderVinLock(u);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function toggleSubcategoryLock() {
@@ -6584,6 +6619,7 @@ async function loadApp() {
       dx_locked: item.dx_locked || false,
       model_locked: item.model_locked || false,
       subcategory_locked: item.subcategory_locked || false,
+      vin_locked: item.vin_locked === true,
       raw_description: item.raw_description || '',
       description_source: item.description_source || '',
       photo_count: item.photo_count || 0,

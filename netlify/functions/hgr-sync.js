@@ -254,7 +254,7 @@ exports.handler = async (event) => {
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
-    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,sold,dx_locked,status,completion_state,completion_attempts', 'GET');
+    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,vin_locked,sold,dx_locked,status,completion_state,completion_attempts', 'GET');
     const existingRows = JSON.parse(existing.body);
     const existingStocks = new Set(existingRows.map(r => normalizeHgrStock(r.stock)));
     // soldStocks is LOAD-BEARING: already-sold rows never reappear in the feed, so without
@@ -263,6 +263,7 @@ exports.handler = async (event) => {
     const soldStocks = new Set(existingRows.filter(r => r.sold === true).map(r => normalizeHgrStock(r.stock)));
     const lockedStocks = new Set(existingRows.filter(r => r.subcategory_locked).map(r => normalizeHgrStock(r.stock)));
     const modelLockedStocks = new Set(existingRows.filter(r => r.model_locked).map(r => normalizeHgrStock(r.stock)));
+    const vinLockedStocks = new Set(existingRows.filter(r => r.vin_locked).map(r => normalizeHgrStock(r.stock)));
     // dxLockedStocks is LOAD-BEARING: this sync writes its own legacy buildTorqueHubDX
     // output into `description`, the buyer-facing SSOT. ONLY generate-dx-background
     // guards on dx_locked (documented 2026-06-20), so without this set every nightly
@@ -355,6 +356,10 @@ exports.handler = async (event) => {
         delete patchPayload.description;
         delete patchPayload.description_source;
         delete patchPayload.torque_hub_dx;
+        // 2026-10-01 P4 STAGE 1 (Chief): HGR honors the same human VIN adjudication as the
+        // receiver. A vin_locked row never takes vin from the feed, and a blank/missing feed VIN
+        // is absence, not evidence: it never PATCHes NULL over a stored VIN.
+        if (vinLockedStocks.has(item.stock) || patchPayload.vin == null || String(patchPayload.vin).trim() === '') delete patchPayload.vin;
         // 2026-09-13 FREEZE SYMMETRY (RC-1c). While FREEZE_MARK_SOLD is
         // active the mark-sold loop cannot BURY a row — but this PATCH path
         // could still RESURRECT one. existingStocks (~356) is built with no
