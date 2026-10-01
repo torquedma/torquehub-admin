@@ -107,6 +107,7 @@ const CANONICAL_SUBCATEGORIES = new Set([
   'Land Leveler',
   'Overseeder',
   'Grain Drill',
+  'Sprayer',
   'V-Ripper',
   'Turf & Grounds Care',
   'SUV',

@@ -845,6 +845,7 @@ const DATA = {
       "Utility Vehicle",
       "Land Leveler",
       "Overseeder",
+      "Sprayer",
       "V-Ripper",
       "Turf & Grounds Care",
       "Side by Side"

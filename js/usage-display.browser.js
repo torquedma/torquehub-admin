@@ -121,7 +121,8 @@
     'Engine',
     'Truck Body',
     'Skid Steer Attachment',
-    'Grain Drill'
+    'Grain Drill',
+    'Sprayer'
   ];
 
   function normalizeSubcategory(unit) {
