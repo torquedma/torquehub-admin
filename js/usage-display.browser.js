@@ -86,7 +86,8 @@
     'Water Truck',
     'SUV',
     'Motorcycle',
-    'Classic Car'
+    'Classic Car',
+    'Golf Cart'
   ];
   var suppressBoth = [
     'Enclosed Trailer',

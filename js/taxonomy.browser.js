@@ -107,6 +107,7 @@
     "Overseeder",
     "Grain Drill",
     "Sprayer",
+    "Golf Cart",
     "V-Ripper",
     "Turf & Grounds Care",
     "SUV",

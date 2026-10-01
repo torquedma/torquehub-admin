@@ -87,7 +87,8 @@ const ALLOW_MILEAGE = new Set([
   'Water Truck',
   'SUV',
   'Motorcycle',
-  'Classic Car'
+  'Classic Car',
+  'Golf Cart'
 ]);
 
 const SUPPRESS_BOTH = new Set([
