@@ -176,6 +176,38 @@ const OPERATIONS = {
     return { status: 200, body: { found: true, id, photos: Array.isArray(photos) ? photos : null } };
   },
 
+  // get_inventory_walkaround: the live Walkaround intelligence for ONE inventory row, by id.
+  // The listing edit modal reads it on open — the same per-open authoritative pattern as
+  // get_inventory_photos. buyer_intelligence stays OUT of INVENTORY_ADMIN_SELECT: the paged list
+  // is one buffered function response (Netlify 6 MB cap) and BI would add ~1.1 MB to its first page.
+  // Selects only id + buyer_intelligence. Returns { found: true, id, buyer_intelligence }
+  // (null = no live Walkaround) | { found: false, id }. Never reads walkaround_review_queue.
+  async get_inventory_walkaround({ data, svcKey }) {
+    const id = String((data && data.id) || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return { status: 400, body: { error: 'data.id must be a UUID' } };
+    }
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/inventory?id=eq.${id}&select=id,buyer_intelligence`, {
+      headers: {
+        'apikey': svcKey,
+        'Authorization': 'Bearer ' + svcKey,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok) {
+      return { status: 502, body: { error: 'inventory read failed', detail: res.status } };
+    }
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { status: 200, body: { found: false, id } };
+    }
+    // A row without the column is a failed read, never "no Walkaround".
+    if (!Object.prototype.hasOwnProperty.call(rows[0], 'buyer_intelligence')) {
+      return { status: 502, body: { error: 'inventory read failed', detail: 'buyer_intelligence missing' } };
+    }
+    return { status: 200, body: { found: true, id, buyer_intelligence: rows[0].buyer_intelligence } };
+  },
+
   // get_inventory_admin: full admin inventory rows, paginated, optional dealer filter.
   // Service-role SELECT behind the auth gate. Mirrors the column list the admin UI consumes.
   // Params: limit (default 1000, clamped 1..1000), offset (default 0, min 0), dealer (optional).

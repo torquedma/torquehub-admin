@@ -476,6 +476,13 @@
   .dx-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
   .dx-btn.primary:hover { background: #c73508; color: white; }
   .dx-helper-note { font-size: 11px; color: var(--text3); line-height: 1.45; margin-bottom: 10px; }
+  /* Listing editor Walkaround: disabled controls read as disabled (same treatment as Walkaround Review). */
+  #wa-edit button:disabled { opacity: .4; cursor: not-allowed; filter: grayscale(1); }
+  #wa-edit textarea:disabled { opacity: .55; cursor: not-allowed; }
+  /* The listing form grid is wider than the modal (pre-existing horizontal overflow). Keep the Walkaround
+     section inside the visible modal width (.modal max 680px, overlay padding 20px, body padding 24px)
+     so its move/remove buttons and text are never off-screen. */
+  #wa-edit { max-width: calc(min(680px, 100vw - 40px) - 48px); }
 
 </style>
 </head>
@@ -1710,7 +1717,7 @@ document.querySelector('.sidebar').classList.toggle('open');
         </div>
         <div class="edit-field" style="flex-direction:column;align-items:flex-start;gap:6px;grid-column:1/-1">
           <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-            <label class="edit-label" style="margin:0">Description</label>
+            <label class="edit-label" style="margin:0">Key Details + Overview (Description)</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="dx-btn" onclick="useFeedDX()" style="background:#f8fafc;color:#374151;border:1px solid #d1d5db">&#8617; Restore Feed</button>
               <button class="dx-btn" onclick="generateDXCanonical()" style="background:#334155;color:#fff;border:1px solid #334155">&#9998; Generate DX</button>
@@ -1719,6 +1726,29 @@ document.querySelector('.sidebar').classList.toggle('open');
           </div>
           <div id="dx-lock-indicator" style="display:none;font-size:11px;color:#065f46;background:#d1fae5;padding:3px 8px;border-radius:4px;margin-bottom:4px">&#128274; Manual DX Locked</div>
           <textarea class="edit-input" id="edit-description" rows="5" placeholder="Vehicle description…" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5;grid-column:1/-1"></textarea>
+        </div>
+        <!-- Walkaround: Torque Take + Buyer Checklist from the live listing (inventory.buyer_intelligence).
+             Saved ONLY by Save Walkaround (save_walkaround). Save & Close never carries it. -->
+        <div class="edit-field full" id="wa-edit" style="gap:8px;border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+          <label class="edit-label">Walkaround</label>
+          <div class="decode-note" id="wa-edit-status" style="margin-top:0"></div>
+          <div id="wa-edit-body" style="display:none;flex-direction:column;gap:8px">
+            <label class="edit-label">Torque Take</label>
+            <div class="decode-note" style="margin-top:0">Each box is one paragraph on the listing (one to three).</div>
+            <div id="wa-edit-tt" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div><button type="button" class="dx-btn" id="wa-add-para" onclick="waModalAdd('tt')">+ Add paragraph</button></div>
+            <label class="edit-label" style="margin-top:6px">Buyer Checklist</label>
+            <div class="decode-note" style="margin-top:0">Any number of checks, in the order buyers see them. Blank checks are not saved.</div>
+            <div id="wa-edit-items" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div><button type="button" class="dx-btn" id="wa-add-item" onclick="waModalAdd('item')">+ Add check</button></div>
+            <label class="edit-label" style="margin-top:6px" for="wa-edit-footer">Checklist footer (optional)</label>
+            <textarea class="edit-input" id="wa-edit-footer" rows="2" oninput="waModalFit(this)" style="width:100%;resize:vertical;font-family:inherit;line-height:1.5"></textarea>
+            <div class="decode-note" id="wa-footer-note" style="margin-top:0"></div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
+              <button type="button" class="dx-btn primary" id="wa-save-btn" onclick="waModalSaveWalkaround()">Save Walkaround</button>
+              <span id="wa-save-msg" role="status" style="font-size:12px;font-weight:600;white-space:pre-line"></span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="edit-save-row">
@@ -2713,7 +2743,330 @@ function populateEditForm(u) {
   if (dxBtn) { dxBtn.textContent = u.dx_locked ? "DX Locked" : "Lock DX"; dxBtn.style.background = u.dx_locked ? "#d1fae5" : ""; dxBtn.style.color = u.dx_locked ? "#065f46" : ""; }
   setListingStatus(u.status || 'published');
   document.getElementById("edit-saved-msg").classList.remove("show");
+  waModalOpen(u);
 }
+
+// WA-MODAL-START ─────────────────────────────────────────────────────────────
+// Listing editor ↔ live Walkaround (Owner requirement 2026-10-01). The modal edits the SAME
+// canonical data the VDP renders: Key Details + Overview = inventory.description (the Description
+// field); Torque Take / Buyer Checklist / footer = inventory.buyer_intelligence. Only those three
+// buyer-facing parts are editable; every other key (version, title, buyer_question,
+// uncertainty_type, older decision_factors keys) is carried through untouched. No review-queue row
+// is read or needed. The live value is read on each open (get_inventory_walkaround), like photos.
+// It is written ONLY by Save Walkaround (save_walkaround: one column, guarded by the loaded value).
+// Save & Close never carries it; leaving with unsaved Walkaround edits asks first.
+let WA_MODAL = { token: 0, key: null, state: 'NONE', live: null, base: null };
+
+// Only a shape the form can represent losslessly is editable; anything else stays read-only.
+function waModalEditable(bi) {
+  if (!bi || typeof bi !== 'object' || Array.isArray(bi)) return false;
+  const df = bi.decision_factors;
+  if (!df || typeof df !== 'object' || Array.isArray(df)) return false;
+  const strs = a => Array.isArray(a) && a.every(s => typeof s === 'string');
+  if (!strs(bi.torque_take) || !strs(df.makes_it_a_yes)) return false;
+  return df.makes_it_a_yes_footer == null || typeof df.makes_it_a_yes_footer === 'string';
+}
+
+// The form's three editable parts, as plain strings.
+function waModalFields(bi) {
+  const df = bi.decision_factors;
+  return {
+    paras: bi.torque_take.slice(),
+    items: df.makes_it_a_yes.slice(),
+    footer: typeof df.makes_it_a_yes_footer === 'string' ? df.makes_it_a_yes_footer : '',
+  };
+}
+
+function waModalSameList(a, b) { return a.length === b.length && a.every((x, i) => x === b[i]); }
+
+// Structural JSON equality (object key order ignored, array order significant) — jsonb equality.
+function waModalJsonEqual(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === b.length && a.every((x, i) => waModalJsonEqual(x, b[i]));
+  const ka = Object.keys(a), kb = Object.keys(b);
+  return ka.length === kb.length && ka.every(k => Object.prototype.hasOwnProperty.call(b, k) && waModalJsonEqual(a[k], b[k]));
+}
+
+// Rebuild buyer_intelligence from the live object. A part the form did not change keeps its exact
+// live value; a changed part is trimmed with blank entries dropped. A footer needs >= 1 check.
+// live = object read on open; base = the form as hydrated (read back); cur = the form now.
+function waModalBuild(live, base, cur) {
+  const bi = JSON.parse(JSON.stringify(live));
+  const df = bi.decision_factors;
+  const itemsChanged = !waModalSameList(cur.items, base.items);
+  const footerChanged = cur.footer !== base.footer;
+  if (!waModalSameList(cur.paras, base.paras)) bi.torque_take = cur.paras.map(s => s.trim()).filter(Boolean);
+  if (itemsChanged) df.makes_it_a_yes = cur.items.map(s => s.trim()).filter(Boolean);
+  if (df.makes_it_a_yes.length === 0) {
+    if (itemsChanged || footerChanged) delete df.makes_it_a_yes_footer;
+  } else if (footerChanged) {
+    const f = cur.footer.trim();
+    if (f) df.makes_it_a_yes_footer = f; else delete df.makes_it_a_yes_footer;
+  }
+  return { bi, changed: !waModalJsonEqual(bi, live) };
+}
+
+// The one rule the form itself can break. The server (validateWalkaroundPayload) is the authority.
+function waModalProblem(bi) {
+  const n = Array.isArray(bi.torque_take) ? bi.torque_take.length : 0;
+  if (n < 1) return 'The Torque Take needs at least one paragraph.';
+  if (n > 3) return 'The Torque Take can have at most three paragraphs.';
+  return '';
+}
+
+// Save decision: { send:false } | { send:false, error } | { send:true, bi, expected }.
+function waModalDecision(m, listingKey, cur) {
+  if (!m || m.state !== 'LOADED' || m.key !== listingKey || !m.live || !m.base || !cur) return { send: false };
+  const r = waModalBuild(m.live, m.base, cur);
+  if (!r.changed) return { send: false };
+  const problem = waModalProblem(r.bi);
+  if (problem) return { send: false, error: problem };
+  return { send: true, bi: r.bi, expected: m.live };
+}
+
+function waModalFailureMessage(status, text) {
+  let j = null;
+  try { j = JSON.parse(text); } catch (e) { j = null; }
+  const code = j && j.error;
+  let why;
+  if (code === 'walkaround_changed') why = 'It changed after you opened this listing (published or edited somewhere else). Reopen the listing and make the edit again.';
+  else if (code === 'walkaround_invalid') why = 'It did not pass the publishing rules:\n- ' + (Array.isArray(j.details) ? j.details.join('\n- ') : '');
+  else if (status === 401 || status === 403) why = 'Your session may have expired. Log in again.';
+  else why = 'Server response ' + status + (code ? ': ' + String(code).slice(0, 200) : '') + '.';
+  return 'Walkaround not saved. Nothing was written.\n' + why;
+}
+
+// True when the form holds Walkaround edits that are not on the live listing.
+function waModalDirty(m, cur) {
+  if (!m || m.state !== 'LOADED' || !m.live || !m.base || !cur) return false;
+  return waModalBuild(m.live, m.base, cur).changed;
+}
+
+const WA_MODAL_STATUS = {
+  NONE: 'No live Walkaround on this listing.',
+  LOADING: 'Loading the live Walkaround…',
+  FAILED: "Couldn't load the live Walkaround. Saving this listing won't change it. Reopen the listing to try again.",
+  UNSUPPORTED: "This Walkaround is in a shape this editor can't change safely. Saving this listing won't change it.",
+  LOADED: 'The Torque Take and Buyer Checklist cards buyers see on this listing. Save Walkaround updates them on the live listing; Save & Close does not.',
+};
+
+async function fetchLiveWalkaround(id) {
+  try {
+    const token = await getValidToken();
+    if (!token) return { state: 'FAILED' };
+    const r = await fetch('/.netlify/functions/admin-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ operation: 'get_inventory_walkaround', data: { id } })
+    });
+    if (!r.ok) return { state: 'FAILED' };
+    const j = await r.json();
+    if (!j || j.found !== true || !Object.prototype.hasOwnProperty.call(j, 'buyer_intelligence')) return { state: 'FAILED' };
+    return { state: 'LOADED', bi: j.buyer_intelligence };
+  } catch (e) {
+    console.warn('[fetchLiveWalkaround] failed for', id, ':', e && e.message);
+    return { state: 'FAILED' };
+  }
+}
+
+function waModalSetState(state) {
+  WA_MODAL.state = state;
+  const st = document.getElementById('wa-edit-status');
+  const body = document.getElementById('wa-edit-body');
+  if (st) st.textContent = WA_MODAL_STATUS[state] || '';
+  if (body) body.style.display = state === 'LOADED' ? 'flex' : 'none';
+  if (state === 'LOADED') waModalFitAll();
+}
+
+// Grow a box to show its whole text. A hidden box (offsetParent null) keeps its default rows.
+function waModalFit(ta) {
+  if (!ta || !ta.offsetParent) return;
+  ta.style.height = 'auto';
+  ta.style.height = (ta.scrollHeight + 2) + 'px';
+}
+function waModalFitAll() { document.querySelectorAll('#wa-edit textarea').forEach(waModalFit); }
+
+// Every open starts from nothing; a slower read from an earlier open can never fill this one.
+function waModalOpen(u) {
+  const token = ++WA_MODAL.token;
+  WA_MODAL.key = currentListingKey;
+  WA_MODAL.live = null;
+  WA_MODAL.base = null;
+  waModalNote('', '');
+  waModalRender({ paras: [], items: [], footer: '' });
+  if (!u || !u.id) { waModalSetState('NONE'); return; }
+  waModalSetState('LOADING');
+  fetchLiveWalkaround(u.id).then(res => {
+    if (token !== WA_MODAL.token) return;
+    if (res.state !== 'LOADED') { waModalSetState('FAILED'); return; }
+    if (res.bi == null) { waModalSetState('NONE'); return; }
+    if (!waModalEditable(res.bi)) { waModalSetState('UNSUPPORTED'); return; }
+    WA_MODAL.live = res.bi;
+    waModalRender(waModalFields(res.bi));
+    WA_MODAL.base = waModalRead();
+    waModalSetState('LOADED');
+  });
+}
+
+function waModalRow(kind, value, i, n) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:flex-start';
+  const ta = document.createElement('textarea');
+  ta.className = 'edit-input';
+  ta.rows = kind === 'tt' ? 4 : 2;
+  ta.style.cssText = 'flex:1;min-width:0;resize:vertical;font-family:inherit;line-height:1.5';
+  ta.value = value;
+  ta.setAttribute('data-wa', kind);
+  ta.setAttribute('aria-label', kind === 'tt' ? 'Torque Take paragraph ' + (i + 1) : 'Buyer Checklist check ' + (i + 1));
+  ta.oninput = () => { waModalFit(ta); if (kind === 'item') waModalSyncFooter(); };
+  row.appendChild(ta);
+  const btn = (label, title, fn, disabled) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'dx-btn'; b.style.padding = '4px 9px';
+    b.textContent = label; b.title = title; b.setAttribute('aria-label', title);
+    b.disabled = !!disabled; b.onclick = fn;
+    return b;
+  };
+  if (kind === 'item') {
+    row.appendChild(btn('↑', 'Move check up', () => waModalMove(i, -1), i === 0));
+    row.appendChild(btn('↓', 'Move check down', () => waModalMove(i, 1), i === n - 1));
+    row.appendChild(btn('✕', 'Remove check', () => waModalRemove('item', i), false));
+  } else {
+    row.appendChild(btn('✕', 'Remove paragraph', () => waModalRemove('tt', i), n <= 1));
+  }
+  return row;
+}
+
+function waModalRender(f) {
+  const tt = document.getElementById('wa-edit-tt');
+  const it = document.getElementById('wa-edit-items');
+  const ft = document.getElementById('wa-edit-footer');
+  if (!tt || !it || !ft) return;
+  tt.replaceChildren(...f.paras.map((p, i) => waModalRow('tt', p, i, f.paras.length)));
+  it.replaceChildren(...f.items.map((s, i) => waModalRow('item', s, i, f.items.length)));
+  ft.value = f.footer;
+  const addP = document.getElementById('wa-add-para');
+  if (addP) addP.disabled = f.paras.length >= 3;
+  waModalSyncFooter();
+  waModalFitAll();
+}
+
+function waModalRead() {
+  const vals = sel => Array.from(document.querySelectorAll(sel)).map(t => t.value);
+  const ft = document.getElementById('wa-edit-footer');
+  return {
+    paras: vals('#wa-edit-tt textarea[data-wa="tt"]'),
+    items: vals('#wa-edit-items textarea[data-wa="item"]'),
+    footer: ft ? ft.value : '',
+  };
+}
+
+function waModalAdd(kind) {
+  if (WA_MODAL.state !== 'LOADED') return;
+  const f = waModalRead();
+  if (kind === 'tt') { if (f.paras.length >= 3) return; f.paras.push(''); }
+  else f.items.push('');
+  waModalRender(f);
+  const boxes = document.querySelectorAll(kind === 'tt' ? '#wa-edit-tt textarea' : '#wa-edit-items textarea');
+  if (boxes.length) boxes[boxes.length - 1].focus();
+}
+
+function waModalRemove(kind, i) {
+  if (WA_MODAL.state !== 'LOADED') return;
+  const f = waModalRead();
+  if (kind === 'tt') { if (f.paras.length <= 1) return; f.paras.splice(i, 1); }
+  else f.items.splice(i, 1);
+  waModalRender(f);
+}
+
+function waModalMove(i, d) {
+  if (WA_MODAL.state !== 'LOADED') return;
+  const f = waModalRead();
+  const j = i + d;
+  if (j < 0 || j >= f.items.length) return;
+  const t = f.items[i]; f.items[i] = f.items[j]; f.items[j] = t;
+  waModalRender(f);
+}
+
+// A footer shows only under at least one check; with none, it is disabled and not saved.
+function waModalSyncFooter() {
+  const ft = document.getElementById('wa-edit-footer');
+  const note = document.getElementById('wa-footer-note');
+  if (!ft) return;
+  const any = waModalRead().items.some(s => s.trim());
+  ft.disabled = !any;
+  if (note) note.textContent = any
+    ? 'Shown under the checklist. Leave blank for none.'
+    : 'No checks, so no footer. A footer is not saved while the checklist is empty.';
+}
+
+function waModalSaveData() {
+  return waModalDecision(WA_MODAL, currentListingKey, WA_MODAL.state === 'LOADED' ? waModalRead() : null);
+}
+
+function waModalNote(text, kind) {
+  const el = document.getElementById('wa-save-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = kind === 'ok' ? '#16a34a' : kind === 'error' ? '#b91c1c' : 'var(--text3)';
+}
+
+function waModalBusy(busy) {
+  document.querySelectorAll('#wa-edit-body textarea, #wa-edit-body button').forEach(el => { el.disabled = busy; });
+  const btn = document.getElementById('wa-save-btn');
+  if (btn) btn.textContent = busy ? 'Saving…' : 'Save Walkaround';
+}
+
+// Save Walkaround: sends ONLY the row id, the rebuilt buyer_intelligence and the loaded value it
+// replaces. "Saved" appears only after the server confirms; the confirmed value becomes the new base.
+async function waModalSaveWalkaround() {
+  const d = waModalSaveData();
+  if (d.error) { waModalNote(d.error + ' Nothing was saved.', 'error'); return; }
+  if (!d.send) { waModalNote('No Walkaround changes to save.', ''); return; }
+  const u = INVENTORY.find(x => getListingKey(x) === currentListingKey);
+  if (!u || !u.id) { waModalNote('Walkaround not saved: this listing has no saved record yet.', 'error'); return; }
+  const token = WA_MODAL.token;
+  waModalNote('', '');
+  waModalBusy(true);
+  let r = null, text = '';
+  try {
+    r = await fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+      body: JSON.stringify({ operation: 'save_walkaround', data: { id: u.id, buyer_intelligence: d.bi, buyer_intelligence_expected: d.expected } })
+    });
+    text = await r.text();
+  } catch (e) {
+    r = null;
+  }
+  waModalBusy(false);
+  if (token !== WA_MODAL.token) return;   // the modal moved to another listing meanwhile
+  let j = null;
+  try { j = JSON.parse(text); } catch (e) { j = null; }
+  if (r && r.ok && j && j.ok === true && j.buyer_intelligence && typeof j.buyer_intelligence === 'object') {
+    WA_MODAL.live = j.buyer_intelligence;
+    waModalRender(waModalFields(j.buyer_intelligence));
+    WA_MODAL.base = waModalRead();
+    waModalNote('Walkaround saved.', 'ok');
+    return;
+  }
+  waModalRender(waModalRead());           // re-enable the form with the operator's edits intact
+  waModalNote(r ? waModalFailureMessage(r.status, text) : 'Network error: the Walkaround save could not be confirmed. Reopen the listing to check what was saved.', 'error');
+}
+
+// Leaving the listing (Close, X, Save & Close, previous/next) with unsaved Walkaround edits asks
+// first. Save & Close never folds them into the listing save. OK discards them; Cancel stays.
+function waModalConfirmLeave() {
+  if (!waModalDirty(WA_MODAL, WA_MODAL.state === 'LOADED' ? waModalRead() : null)) return true;
+  if (!confirm('The Walkaround has unsaved changes. Save & Close does not save them.\n\nOK: discard the Walkaround changes and continue.\nCancel: go back and press Save Walkaround.')) return false;
+  waModalRender(waModalFields(WA_MODAL.live));
+  WA_MODAL.base = waModalRead();
+  waModalNote('', '');
+  return true;
+}
+// WA-MODAL-END ───────────────────────────────────────────────────────────────
 
 // ===================== PHOTO MODAL =====================
 
@@ -3018,6 +3371,7 @@ function warnOffCanonSubcategory(sub) {
 }
 
 async function saveAndClose() {
+  if (!waModalConfirmLeave()) return;
   const btn = document.getElementById('save-close-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
@@ -3561,6 +3915,7 @@ function navigateListing(direction) {
 
   const nextIdx = currentIdx + direction;
   if (nextIdx < 0 || nextIdx >= filtered.length) return;
+  if (!waModalConfirmLeave()) return;
 
   openPhotoModal(getListingKey(filtered[nextIdx]));
 
@@ -3569,6 +3924,7 @@ function navigateListing(direction) {
 }
 
 function closeModal() {
+  if (!waModalConfirmLeave()) return;
   document.getElementById("photo-modal").classList.remove("open");
   // Return to inventory URL
   if (window.location.pathname.startsWith('/listing/')) {

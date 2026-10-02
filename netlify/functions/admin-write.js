@@ -76,6 +76,7 @@ const OPERATIONS = {
   create_inventory:       handleCreateInventory,
   update_inventory:       handleUpdateInventory,
   set_vin_lock:           handleSetVinLock,
+  save_walkaround:        handleSaveWalkaround,
   patch_inventory_photos: handlePatchInventoryPhotos,
   mark_sold:              handleMarkSold,
   unmark_sold:            handleUnmarkSold,
@@ -397,6 +398,59 @@ async function handleSetVinLock({ data, svcKey }) {
     return { status: 409, body: { error: `set_vin_lock matched ${Array.isArray(rows) ? rows.length : 0} rows (expected 1)` } };
   }
   return { status: 200, body: { ok: true, stock: rows[0].stock, vin_locked: rows[0].vin_locked === true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: save_walkaround   (2026-10-01 Owner requirement; Chief recut ruling)
+// PATCH /rest/v1/inventory?id=eq.{id}&buyer_intelligence=eq.{expected}   body: { buyer_intelligence }
+// The listing editor's "Save Walkaround". Writes exactly one column on one row, and only while the
+// live value still equals what the editor loaded (buyer_intelligence_expected) — a stale edit
+// matches no row and writes nothing. Edits an existing live Walkaround only: never creates one
+// (live NULL never matches a non-null expected) and never clears one. buyer_intelligence is not in
+// INVENTORY_UPDATE_FIELDS, so Save & Close stays BI-blind; this op never sends a listing field and
+// never reads or writes walkaround_review_queue.
+// ---------------------------------------------------------------------------
+async function handleSaveWalkaround({ data, svcKey }) {
+  const id = typeof data.id === 'string' ? data.id.trim() : '';
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return { status: 400, body: { error: 'data.id must be a UUID' } };
+  }
+  const next = data.buyer_intelligence;
+  const expected = data.buyer_intelligence_expected;
+  if (next == null) {
+    return { status: 400, body: { error: 'walkaround_clear_not_supported', detail: 'The listing editor cannot remove a Walkaround.' } };
+  }
+  if (expected == null || typeof expected !== 'object' || Array.isArray(expected)) {
+    return { status: 400, body: { error: 'walkaround_create_not_supported', detail: 'The listing editor only edits an existing live Walkaround.' } };
+  }
+  const shapeErrs = validateWalkaroundPayload(next);
+  if (shapeErrs.length) {
+    return { status: 400, body: { error: 'walkaround_invalid', details: shapeErrs } };
+  }
+  const url = `${SUPABASE_URL}/rest/v1/inventory`
+    + `?id=eq.${id}`
+    + `&buyer_intelligence=eq.${encodeURIComponent(JSON.stringify(expected))}`
+    + `&select=id,buyer_intelligence`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'apikey':        svcKey,
+      'Authorization': 'Bearer ' + svcKey,
+      'Content-Type':  'application/json',
+      'Prefer':        'return=representation',
+    },
+    body: JSON.stringify({ buyer_intelligence: next }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { status: res.status, body: { error: errText } };
+  }
+  const rows = await res.json();
+  // id is the primary key, so 0 or 1 rows. 0 = the live Walkaround (or the row) changed: nothing written.
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { status: 409, body: { error: 'walkaround_changed', detail: 'The live Walkaround changed after this listing was opened.' } };
+  }
+  return { status: 200, body: { ok: true, id: rows[0].id, buyer_intelligence: rows[0].buyer_intelligence } };
 }
 
 // ---------------------------------------------------------------------------
