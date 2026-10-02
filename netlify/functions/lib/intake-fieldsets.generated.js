@@ -797,7 +797,8 @@ const DATA = {
       "Lowboy Trailer",
       "Flatbed Trailer",
       "Hopper Bottom Trailer",
-      "Belt Trailer"
+      "Belt Trailer",
+      "Chip Trailer"
     ],
     "Construction": [
       "Skid Steer",

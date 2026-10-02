@@ -118,6 +118,7 @@
     'Flatbed Trailer',
     'Hopper Bottom Trailer',
     'Belt Trailer',
+    'Chip Trailer',
     'Boat',
     'Engine',
     'Truck Body',
