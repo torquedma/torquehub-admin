@@ -3725,6 +3725,10 @@ async function saveListingEdits() {
       console.log('Photo save skipped — photos not loaded for', u.stock);
     }
 
+    // The stock this update commits. On success it becomes the modal's identity anchor, so the next
+    // Save (or VIN lock) in the same open modal targets the renamed row; a failed update leaves the
+    // anchor on the old stock for retry. (Chief ruling 2026-10-07, identity-anchor correction.)
+    const _savedStock = u.stock;
     fetch('/.netlify/functions/admin-write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
@@ -3750,6 +3754,7 @@ async function saveListingEdits() {
         if (_photoWrite) console.warn('[saveListingEdits PHOTOS] Not sent — the listing update failed for', u.stock);
         return;
       }
+      u._originalStock = _savedStock;
       const b = await r.json().catch(() => null);
       _notePublishResult(b && b.publish, 'update_inventory');
       console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock);

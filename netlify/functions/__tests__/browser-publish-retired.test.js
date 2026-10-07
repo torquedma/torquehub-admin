@@ -106,7 +106,7 @@ test('C6: client toggleFeatured makes exactly one request, to admin-write, and n
 
 // ---------------- server: in-memory PostgREST + dealer endpoints ----------------
 function makeWorld(rows, { dealerStatus = 200, patchStatus = 204 } = {}) {
-  const w = { inventory: clone(rows), publishLog: [], dealerPosts: [], order: [] };
+  const w = { inventory: clone(rows), publishLog: [], dealerPosts: [], order: [], patchStatus };   // patchStatus is mutable mid-test
   const res = (json, status = 200) => ({ ok: status < 400, status, json: async () => json, text: async () => (json == null ? '' : JSON.stringify(json)) });
   global.fetch = async (url, opts = {}) => {
     const method = (opts.method || 'GET').toUpperCase();
@@ -126,7 +126,7 @@ function makeWorld(rows, { dealerStatus = 200, patchStatus = 204 } = {}) {
     }
     const hit = w.inventory.filter((r) => filters.every(([k, op, v]) => op === 'eq' && r[k] != null && String(r[k]) === v));
     if (method === 'GET') return res(clone(hit));
-    if (method === 'PATCH') { if (patchStatus >= 400) return res({ error: 'db down' }, patchStatus); const b = JSON.parse(opts.body); hit.forEach((r) => Object.assign(r, b)); w.order.push('db'); return res(null, 204); }
+    if (method === 'PATCH') { if (w.patchStatus >= 400) return res({ error: 'db down' }, w.patchStatus); const b = JSON.parse(opts.body); hit.forEach((r) => Object.assign(r, b)); w.order.push('db'); return res(null, 204); }
     if (method === 'DELETE') { w.inventory = w.inventory.filter((r) => !hit.includes(r)); w.order.push('db'); return res(null, 204); }
     if (method === 'POST') { const ins = JSON.parse(opts.body).map((r, n) => ({ id: 'new-' + n, ...r })); w.inventory.push(...ins); w.order.push('db'); return res(clone(ins), 201); }
     return res({ error: 'unexpected method' }, 500);
@@ -344,4 +344,44 @@ test('S11: why the client must sequence — a photo PATCH sent before a stock re
   const final = w.dealerPosts[w.dealerPosts.length - 1].units[0];
   assert.equal(final.stock, 'NEW-1');
   assert.deepEqual(urls(final), OLD_PHOTOS.map((x) => x.url), 'stale gallery when photos go first — A1 proves the client now prevents this order');
+});
+
+// ---------------- identity-anchor correction (Chief 2026-10-07) ----------------
+test('A4: after a successful OLD-1 → NEW-1 save, a second Save in the same open modal targets NEW-1 and the edit lands; VIN lock targets NEW-1', async () => {
+  const w = makeWorld([unit('OLD-1', WTS, 'published', { photos: OLD_PHOTOS, price: '$1' })]);
+  const u = editedUnit({ stock: 'NEW-1', _originalStock: 'OLD-1' });
+  await runExistingSave(w, u, 'OLD-1', photoStateFor('NEW-1', OLD_PHOTOS, OLD_PHOTOS));
+  assert.equal(u._originalStock, 'NEW-1', 'anchor advanced to the committed stock');
+  u.price = '$9,900';                                   // second edit, same open modal
+  const reqs = await runExistingSave(w, u, 'NEW-1', photoStateFor('NEW-1', OLD_PHOTOS, OLD_PHOTOS));
+  assert.deepEqual(reqs.map((r) => r.operation), ['update_inventory']);
+  assert.equal(reqs[0].data.filterStock, 'NEW-1', 'second save targets the renamed row');
+  const row = w.inventory.find((r) => r.stock === 'NEW-1');
+  assert.equal(row.price, '$9,900', 'the second edit actually landed');
+  assert.equal(w.dealerPosts[w.dealerPosts.length - 1].units[0].price, '$9,900');
+  // Same anchor drives the VIN lock: the REAL toggleVinLock now targets NEW-1.
+  const vinCalls = [];
+  const vctx = {
+    INVENTORY: [u], currentListingKey: 'NEW-1', DUPE_STOCKS: new Set(), getValidToken: async () => 't',
+    confirm: () => true, alert() {}, renderVinLock() {}, document: { getElementById: () => null },
+    fetch: async (url, opts) => { vinCalls.push(JSON.parse(opts.body)); return { ok: true, json: async () => ({ ok: true, vin_locked: true }) }; },
+  };
+  u.vin_locked = false;
+  vm.runInNewContext(extractFn('getListingKey') + '\n' + extractFn('toggleVinLock') + '\n;this.run = toggleVinLock;', vctx);
+  await vctx.run();
+  assert.equal(vinCalls.length, 1); assert.equal(vinCalls[0].operation, 'set_vin_lock');
+  assert.equal(vinCalls[0].data.stock, 'NEW-1', 'VIN lock targets the renamed row');
+});
+
+test('A5: a failed rename leaves the anchor on OLD-1, and the retry renames OLD-1', async () => {
+  const w = makeWorld([unit('OLD-1', WTS, 'published', { photos: OLD_PHOTOS, price: '$1' })], { patchStatus: 500 });
+  const u = editedUnit({ stock: 'NEW-1', _originalStock: 'OLD-1' });
+  const first = await runExistingSave(w, u, 'OLD-1', photoStateFor('NEW-1', OLD_PHOTOS, OLD_PHOTOS));
+  assert.deepEqual(first.map((r) => r.operation), ['update_inventory']);
+  assert.equal(u._originalStock, 'OLD-1', 'anchor not advanced after a failed update');
+  w.patchStatus = 204;                                  // database recovers; user saves again
+  const retry = await runExistingSave(w, u, 'NEW-1', photoStateFor('NEW-1', OLD_PHOTOS, OLD_PHOTOS));
+  assert.equal(retry[0].data.filterStock, 'OLD-1', 'retry targets the row that still exists');
+  assert.ok(w.inventory.find((r) => r.stock === 'NEW-1') && !w.inventory.find((r) => r.stock === 'OLD-1'), 'rename lands on retry');
+  assert.equal(u._originalStock, 'NEW-1');
 });
