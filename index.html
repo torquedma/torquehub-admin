@@ -3687,9 +3687,44 @@ async function saveListingEdits() {
   saveListingCatOverrides();
   saveAppSession();
 
-  // Save to Supabase
+  // SAVE-EXISTING-WRITES-START
+  // Save to Supabase. The listing update goes first; the photo PATCH (when one is needed) is sent only
+  // after the update succeeds, so a stock rename lands before the photo write targets the new stock.
+  // A failed update sends no photo PATCH. (Chief ruling 2026-10-07, final bridge amendment.)
   if (u.stock) {
     const filterStock = u._originalStock || oldKey;
+
+    // Decide the photo write now, from the state at save time — require explicit LOADED state
+    // (not LOADING/FAILED/UNLOADED). Guards Defect B: a stale-authorized empty-array wipe cannot
+    // fire, because a LOADING or FAILED hydration never transitions to LOADED.
+    let _photoWrite = null;
+    if (PHOTO_STATE[getListingKey(u)] === 'LOADED') {
+      const _rawPhotos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
+      const _seen = new Set();
+      const photos = _rawPhotos.filter(p => { if (!p.url || _seen.has(p.url)) return false; _seen.add(p.url); return true; });
+      const _pkey = getListingKey(u);
+      const _baseline = PHOTO_BASELINE[_pkey];              // undefined when no authoritative read this session
+      const _sig = photoListSignature(photos);
+      // Write only an intentional change. An empty list is written only as an explicit
+      // delete-all: authoritative baseline had >0 photos and the edit produced 0.
+      let _sendPhotos = true, _allowEmpty = false;
+      if (_baseline !== undefined && _sig === _baseline) {
+        _sendPhotos = false;                                  // untouched — no photo PATCH
+      } else if (photos.length === 0) {
+        if (_baseline !== undefined && _baseline !== '') _allowEmpty = true;   // N>0 → 0, deliberate
+        else _sendPhotos = false;                             // no authoritative non-empty baseline
+      }
+      if (_sendPhotos) {
+        const _data = { stock: u.stock, dealer: u.dealer, photos: photos };
+        if (_allowEmpty) _data.allow_empty = true;
+        _photoWrite = { data: _data, pkey: _pkey, sig: _sig, count: photos.length };
+      } else {
+        console.log('[saveListingEdits PHOTOS] Photo write skipped (unchanged or not an intentional delete-all) for', u.stock);
+      }
+    } else {
+      console.log('Photo save skipped — photos not loaded for', u.stock);
+    }
+
     fetch('/.netlify/functions/admin-write', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
@@ -3707,48 +3742,36 @@ async function saveListingEdits() {
         subcategory_locked: u.subcategory_locked || false, raw_description: u.raw_description || null,
         ...(_sendLoc ? { location_city: u.location_city, location_state: u.location_state, location_zip: u.location_zip } : {})
       }})
-    }).then(r => {
-      if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits UPDATE] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
-      else { r.json().then(b => _notePublishResult(b && b.publish, 'update_inventory')).catch(() => {}); console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock); }
-    }).catch(err => console.warn('[saveListingEdits UPDATE] Save error:', err.message));
-
-  // Save photos to Supabase — require explicit LOADED state (not LOADING/FAILED/UNLOADED).
-  // Guards Defect B: a stale-authorized empty-array wipe cannot fire, because a LOADING or
-  // FAILED hydration never transitions to LOADED and this branch is skipped.
-  if (u.stock && PHOTO_STATE[getListingKey(u)] === 'LOADED') {
-    const _rawPhotos = (PHOTO_STORE[getListingKey(u)] || []).map(p => ({ url: p.url || p.dataUrl || '', name: p.name }));
-    const _seen = new Set();
-    const photos = _rawPhotos.filter(p => { if (!p.url || _seen.has(p.url)) return false; _seen.add(p.url); return true; });
-    const _pkey = getListingKey(u);
-    const _baseline = PHOTO_BASELINE[_pkey];              // undefined when no authoritative read this session
-    const _sig = photoListSignature(photos);
-    // Write only an intentional change. An empty list is written only as an explicit
-    // delete-all: authoritative baseline had >0 photos and the edit produced 0.
-    let _sendPhotos = true, _allowEmpty = false;
-    if (_baseline !== undefined && _sig === _baseline) {
-      _sendPhotos = false;                                  // untouched — no photo PATCH
-    } else if (photos.length === 0) {
-      if (_baseline !== undefined && _baseline !== '') _allowEmpty = true;   // N>0 → 0, deliberate
-      else _sendPhotos = false;                             // no authoritative non-empty baseline
-    }
-    if (_sendPhotos) {
-      const _data = { stock: u.stock, dealer: u.dealer, photos: photos };
-      if (_allowEmpty) _data.allow_empty = true;
-      fetch('/.netlify/functions/admin-write', {
+    }).then(async r => {
+      if (!r.ok) {
+        const t = await r.text().catch(() => '');
+        console.warn('[saveListingEdits UPDATE] Gateway error:', t);
+        if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.');
+        if (_photoWrite) console.warn('[saveListingEdits PHOTOS] Not sent — the listing update failed for', u.stock);
+        return;
+      }
+      const b = await r.json().catch(() => null);
+      _notePublishResult(b && b.publish, 'update_inventory');
+      console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock);
+      if (!_photoWrite) return;
+      const pr = await fetch('/.netlify/functions/admin-write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
-        body: JSON.stringify({ operation: 'patch_inventory_photos', data: _data })
-      }).then(r => {
-        if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits PHOTOS] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
-        else { PHOTO_BASELINE[_pkey] = _sig; console.log('[saveListingEdits PHOTOS] Photos saved to gateway:', photos.length, 'photos for', u.stock); }
-      }).catch(err => console.warn('[saveListingEdits PHOTOS] Photo save error:', err.message));
-    } else {
-      console.log('[saveListingEdits PHOTOS] Photo write skipped (unchanged or not an intentional delete-all) for', u.stock);
-    }
-  } else if (u.stock) {
-    console.log('Photo save skipped — photos not loaded for', u.stock);
+        body: JSON.stringify({ operation: 'patch_inventory_photos', data: _photoWrite.data })
+      });
+      if (!pr.ok) {
+        const t = await pr.text().catch(() => '');
+        console.warn('[saveListingEdits PHOTOS] Gateway error:', t);
+        if (pr.status === 401 || pr.status === 403) alert('Your session may have expired. Please log in again.');
+        return;
+      }
+      PHOTO_BASELINE[_photoWrite.pkey] = _photoWrite.sig;
+      const pb = await pr.json().catch(() => null);
+      _notePublishResult(pb && pb.publish, 'patch_inventory_photos');
+      console.log('[saveListingEdits PHOTOS] Photos saved to gateway:', _photoWrite.count, 'photos for', u.stock);
+    }).catch(err => console.warn('[saveListingEdits] Save error:', err.message));
   }
-  }
+  // SAVE-EXISTING-WRITES-END
 
   currentListingKey = newKey;
   // Update modal header

@@ -255,3 +255,93 @@ test('S10: a field + photo save converges on the new gallery and fields in eithe
   // The client half — no browser dealer-site POST on any save — is C1 + C2 (no client code can reach a
   // dealer inventory endpoint) and the jsdom runtime gate.
 });
+
+// ---------------- client sequencing amendment (Chief 2026-10-07, final) ----------------
+// The REAL existing-listing write block of saveListingEdits (between SAVE-EXISTING-WRITES markers) runs in a
+// vm with the REAL getListingKey / photoListSignature / _notePublishResult; its fetch is routed to the REAL
+// admin-write handler over the in-memory PostgREST fake (a zero-row PATCH succeeds, as PostgREST does).
+function runExistingSave(w, u, oldKey, photoState, { slowUpdateMs = 0 } = {}) {
+  const i = html.indexOf('// SAVE-EXISTING-WRITES-START'), j = html.indexOf('// SAVE-EXISTING-WRITES-END');
+  assert.ok(i > 0 && j > i, 'SAVE-EXISTING-WRITES markers missing');
+  const block = html.slice(i, j);
+  const requests = [];
+  const pending = new Set();
+  const ctx = {
+    console: { log() {}, warn() {}, error() {} }, alert() {}, setTimeout,
+    document: { getElementById: () => null },
+    DUPE_STOCKS: new Set(), PHOTO_STATE: photoState.state, PHOTO_STORE: photoState.store, PHOTO_BASELINE: photoState.baseline,
+    getValidToken: async () => 't', JSON,
+    fetch: (url, opts) => {
+      const body = JSON.parse(opts.body);
+      requests.push({ url, operation: body.operation, data: body.data });
+      const p = (async () => {
+        assert.equal(url, '/.netlify/functions/admin-write', 'client may only call admin-write');
+        if (body.operation === 'update_inventory' && slowUpdateMs) await new Promise((r) => setTimeout(r, slowUpdateMs));   // a slow update must not let photos win
+        const { handler } = require('../admin-write.js');
+        const r = await quietly(() => handler({ httpMethod: 'POST', headers: { authorization: 'Bearer t' }, body: opts.body }));
+        return { ok: r.statusCode < 400, status: r.statusCode, json: async () => JSON.parse(r.body), text: async () => r.body };
+      })();
+      pending.add(p); p.finally(() => pending.delete(p));
+      return p;
+    },
+  };
+  ctx.u = u; ctx.oldKey = oldKey; ctx._sendLoc = false;
+  delete require.cache[require.resolve('../admin-write.js')];
+  vm.runInNewContext(extractFn('getListingKey') + '\n' + extractFn('photoListSignature') + '\n' + extractFn('_notePublishResult') +
+    '\n;this.run = async function () {\n' + block + '\n};', ctx);
+  return (async () => {
+    await ctx.run();
+    for (let k = 0; k < 50; k++) { await new Promise((r) => setTimeout(r, 5)); if (pending.size === 0) { await new Promise((r) => setTimeout(r, 5)); if (pending.size === 0) break; } }
+    return requests;
+  })();
+}
+const editedUnit = (over) => ({ dealer: WTS, year: '2020', make: 'X', model: 'Y', price: '$8,800', status: 'published', ...over });
+const photoStateFor = (key, store, baselineList) => ({ state: { [key]: 'LOADED' }, store: { [key]: store }, baseline: { [key]: require('vm').runInNewContext(extractFn('photoListSignature') + ';photoListSignature(list)', { list: baselineList }) } });
+
+test('A1: existing listing — stock rename OLD-1 → NEW-1 + field + gallery: update commits first, photo PATCH targets NEW-1, final dealer payload has NEW-1 + new field + new gallery', async () => {
+  const w = makeWorld([unit('OLD-1', WTS, 'published', { photos: OLD_PHOTOS, price: '$1' })]);
+  const u = editedUnit({ stock: 'NEW-1', _originalStock: 'OLD-1' });
+  const reqs = await runExistingSave(w, u, 'OLD-1', photoStateFor('NEW-1', NEW_PHOTOS, OLD_PHOTOS), { slowUpdateMs: 40 });
+  assert.deepEqual(reqs.map((r) => r.operation), ['update_inventory', 'patch_inventory_photos'], 'update first, then photos');
+  assert.equal(reqs[0].data.filterStock, 'OLD-1'); assert.equal(reqs[0].data.stock, 'NEW-1');
+  assert.equal(reqs[1].data.stock, 'NEW-1', 'photo PATCH targets the renamed stock');
+  const row = w.inventory.find((r) => r.stock === 'NEW-1');
+  assert.ok(row && !w.inventory.find((r) => r.stock === 'OLD-1'), 'row renamed');
+  assert.deepEqual(urls(row), NEW_PHOTOS.map((p) => p.url), 'gallery written to the renamed row');
+  assert.equal(w.dealerPosts.length, 2); assert.equal(w.publishLog.length, 2);
+  assert.ok(w.dealerPosts.every((p) => p.auth === 'Bearer tok-wts'), 'only the server publisher posts to the dealer site');
+  const final = w.dealerPosts[w.dealerPosts.length - 1].units;
+  assert.deepEqual(final.map((x) => x.stock), ['NEW-1']);
+  assert.equal(final[0].price, '$8,800');
+  assert.deepEqual(urls(final[0]), NEW_PHOTOS.map((p) => p.url));
+});
+
+test('A2: existing listing — failed update_inventory + intended photo change → zero photo PATCH requests', async () => {
+  const w = makeWorld([unit('OLD-1', WTS, 'published', { photos: OLD_PHOTOS, price: '$1' })], { patchStatus: 500 });
+  const u = editedUnit({ stock: 'NEW-1', _originalStock: 'OLD-1' });
+  const ps = photoStateFor('NEW-1', NEW_PHOTOS, OLD_PHOTOS);
+  const before = ps.baseline['NEW-1'];
+  const reqs = await runExistingSave(w, u, 'OLD-1', ps);
+  assert.deepEqual(reqs.map((r) => r.operation), ['update_inventory'], 'no patch_inventory_photos after a failed update');
+  assert.equal(w.dealerPosts.length, 0); assert.equal(w.publishLog.length, 0);
+  assert.deepEqual(urls(w.inventory[0]), OLD_PHOTOS.map((p) => p.url), 'gallery untouched');
+  assert.equal(ps.baseline['NEW-1'], before, 'photo baseline not advanced');
+});
+
+test('A3: existing listing — unchanged gallery → update only, one server publish', async () => {
+  const w = makeWorld([unit('WTS-1', WTS, 'published', { photos: OLD_PHOTOS, price: '$1' })]);
+  const reqs = await runExistingSave(w, editedUnit({ stock: 'WTS-1' }), 'WTS-1', photoStateFor('WTS-1', OLD_PHOTOS, OLD_PHOTOS));
+  assert.deepEqual(reqs.map((r) => r.operation), ['update_inventory']);
+  assert.equal(w.dealerPosts.length, 1); assert.equal(w.dealerPosts[0].units[0].price, '$8,800');
+});
+
+test('S11: why the client must sequence — a photo PATCH sent before a stock rename matches zero rows yet succeeds, and the final dealer payload keeps the old gallery', async () => {
+  const w = makeWorld([unit('OLD-1', WTS, 'published', { photos: OLD_PHOTOS, price: '$1' })]);
+  const p = await call('patch_inventory_photos', { stock: 'NEW-1', dealer: WTS, photos: NEW_PHOTOS });
+  assert.equal(p.status, 200, 'PostgREST-style zero-row PATCH reports success');
+  const r = await call('update_inventory', { filterStock: 'OLD-1', dealer: WTS, stock: 'NEW-1', price: '$8,800' });
+  assert.equal(r.status, 200);
+  const final = w.dealerPosts[w.dealerPosts.length - 1].units[0];
+  assert.equal(final.stock, 'NEW-1');
+  assert.deepEqual(urls(final), OLD_PHOTOS.map((x) => x.url), 'stale gallery when photos go first — A1 proves the client now prevents this order');
+});
