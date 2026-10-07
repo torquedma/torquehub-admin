@@ -274,7 +274,11 @@ async function handleCreateInventory({ data, svcKey, userEmail }) {
   let inserted;
   try { inserted = JSON.parse(text); } catch { inserted = []; }
   const id = Array.isArray(inserted) && inserted[0] ? inserted[0].id || null : null;
-  return { status: 200, body: { ok: true, id } };
+  // Temporary bridge until dealer-site pull feeds (Chief 2026-10-07): the insert is committed;
+  // republish this dealer's site server-side. The payload filters status='published', so a draft
+  // create republishes the dealer without exposing the draft. Never rolls back the insert.
+  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
+  return { status: 200, body: { ok: true, id, publish } };
 }
 
 // ---------------------------------------------------------------------------
@@ -354,7 +358,12 @@ async function handleUpdateInventory({ data, svcKey, userEmail }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  return { status: 200, body: { ok: true } };
+  // Temporary bridge until dealer-site pull feeds (Chief 2026-10-07): the update is committed;
+  // republish this dealer's site server-side. Covers draft -> published (unit appears) and
+  // published -> draft (unit disappears) because the payload filters status='published'.
+  // Never rolls back the update.
+  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
+  return { status: 200, body: { ok: true, publish } };
 }
 
 // ---------------------------------------------------------------------------

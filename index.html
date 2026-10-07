@@ -582,7 +582,6 @@ document.querySelector('.sidebar').classList.toggle('open');
     <div class="topbar-right">
       <button class="topbar-btn btn-primary" onclick="openCreateListingPreMenu()">+ Add Listing</button>
       <button class="topbar-btn btn-ghost" onclick="invDealerFilter=&#39;&#39;;showView(&#39;inventory&#39;, document.querySelectorAll(&#39;.nav-item&#39;)[2])">All Inventory</button>
-      <button class="topbar-btn btn-primary" id="publish-btn" onclick="publishDealerSites()" title="Push live inventory to dealer websites"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg> Publish Inventory</button>
     </div>
   </header>
 
@@ -1179,40 +1178,15 @@ document.querySelector('.sidebar').classList.toggle('open');
 
       <!-- TAB: PUBLISH -->
       <div class="settings-tab-panel" id="stab-publish">
-        <div class="card" style="border:2px solid var(--accent)">
-          <div class="card-header" style="background:linear-gradient(135deg,#fff8f6,#fff)">
+        <div class="card">
+          <div class="card-header">
             <div>
-              <div class="card-title" style="color:var(--accent)">Publish Inventory to Dealer Sites</div>
-              <div class="card-sub">Send the latest live inventory to connected dealer websites.</div>
+              <div class="card-title">Dealer Site Publish History</div>
+              <div class="card-sub">Dealer websites are updated by the server after each saved change. Every server publish is logged here.</div>
             </div>
-            <span id="publish-last-time" style="font-size:11px;color:var(--text3)">Last published: —</span>
           </div>
-          <div style="padding:18px 22px;display:flex;flex-direction:column;gap:14px">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="publish-dealer-list"></div>
-            <div style="display:flex;flex-direction:column;gap:10px">
-              <div>
-                <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Publish To</div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                  <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:white">
-                    <input type="radio" name="publish-target" value="__all__" id="publish-target-all" checked onchange="updatePublishLabel()" style="accent-color:var(--accent)"> All Dealers
-                  </label>
-                  <div id="publish-dealer-radios" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-                </div>
-              </div>
-              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                <button class="topbar-btn btn-primary" style="font-size:13px;padding:9px 20px" id="publish-btn-settings" onclick="publishDealerSites()">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
-                  <span id="publish-btn-label">Publish to All</span>
-                </button>
-                <div id="publish-status" style="font-size:13px;color:var(--green)"></div>
-              </div>
-            </div>
-            <div>
-              <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px">Publish Token</div>
-              <input id="publish-token" class="search-input" type="password" placeholder="Enter publish token" style="width:100%;max-width:420px;font-family:monospace;font-size:12px" oninput="savePublishConfig()">
-            </div>
+          <div style="padding:18px 22px">
             <div style="background:var(--surface2);border-radius:8px;padding:12px 14px">
-              <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">Publish History</div>
               <div id="publish-log-list" style="font-size:12px;color:var(--text3)">No publish history yet.</div>
             </div>
           </div>
@@ -3342,7 +3316,6 @@ async function toggleFeatured(stock, val) {
       if (u) u.featured = val;
       refreshAllViews();
       console.log('Featured updated:', stock, val);
-      if (u && u.dealer) afterInventoryMutation(u.dealer, 'toggle featured');
     } else {
       r.text().then(t => {
         console.warn('Featured update failed:', t);
@@ -3591,6 +3564,7 @@ async function saveListingEdits() {
         return;
       }
       if (result && result.id) newUnit.id = result.id;
+      _notePublishResult(result && result.publish, 'create_inventory');
       console.log('[saveListingEdits INSERT] Saved to gateway — stock:', stock);
     }).catch(err => {
       console.error('[saveListingEdits INSERT] Network error:', err.message);
@@ -3603,8 +3577,6 @@ async function saveListingEdits() {
     const msg = document.getElementById('edit-saved-msg');
     msg.classList.add('show');
     setTimeout(() => msg.classList.remove('show'), 2500);
-    const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === dealer);
-    if (dealerPub) pushDealerInventoryToBackend(dealer).catch(err => console.warn('Auto-publish failed:', err.message));
     return true;
   }
   // ---- end INSERT branch ----
@@ -3737,7 +3709,7 @@ async function saveListingEdits() {
       }})
     }).then(r => {
       if (!r.ok) r.text().then(t => { console.warn('[saveListingEdits UPDATE] Gateway error:', t); if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.'); });
-      else console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock);
+      else { r.json().then(b => _notePublishResult(b && b.publish, 'update_inventory')).catch(() => {}); console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock); }
     }).catch(err => console.warn('[saveListingEdits UPDATE] Save error:', err.message));
 
   // Save photos to Supabase — require explicit LOADED state (not LOADING/FAILED/UNLOADED).
@@ -3791,11 +3763,6 @@ async function saveListingEdits() {
   const msg = document.getElementById("edit-saved-msg");
   msg.classList.add("show");
   setTimeout(() => msg.classList.remove("show"), 2500);
-  // Auto-publish to dealer sites
-  console.log("Auto-publish check:", u?.dealer, PUBLISH_DEALERS?.length);
-  const dealerPub = PUBLISH_DEALERS.find(d => d.dealerKey === u.dealer);
-  if (dealerPub) pushDealerInventoryToBackend(u.dealer).then(r=>console.log("Auto-publish result:",JSON.stringify(r))).catch(err => console.warn("Auto-publish failed:", err.message));
-  else console.warn("No dealer config found for:", u.dealer);
   return true;
   } finally { savingListing = false; }
 }
@@ -5291,7 +5258,6 @@ async function confirmMarkSold() {
       if (r.ok) {
         const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'mark_sold');
         console.log('Marked sold:', u.stock);
-        if (u.dealer) afterInventoryMutation(u.dealer, 'mark sold');
       } else {
         r.text().then(t => {
           console.warn('Mark sold failed:', u.stock, r.status, t);
@@ -5324,7 +5290,6 @@ async function unmarkSold(key) {
       if (r.ok) {
         const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'unmark_sold');
         console.log('Unmarked sold:', u.stock);
-        if (u.dealer) afterInventoryMutation(u.dealer, 'unmark sold');
       } else {
         r.text().then(t => {
           console.warn('Unmark sold failed:', u.stock, r.status, t);
@@ -5358,7 +5323,6 @@ async function removeListing(key) {
       if (r.ok) {
         const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'remove_inventory');
         console.log('Deleted:', u.stock);
-        if (u.dealer) afterInventoryMutation(u.dealer, 'delete');
       } else {
         r.text().then(t => {
           console.warn('Remove listing failed:', u.stock, r.status, t);
@@ -5416,8 +5380,6 @@ function renderSettings() {
   const szEl = document.getElementById('settings-storage-size');
   if (szEl) szEl.textContent = 'Photos stored in Supabase only — not cached locally';
 
-  // Populate publish dealer list & radio buttons
-  renderPublishDealerList();
 }
 
 function settingsEditDealer(i) { openDealerEditModal(i); }
@@ -6427,7 +6389,6 @@ function init() {
   showBookmarkletHint();
   renderDashboardStats();
   renderSettings();
-  // syncDavenportFromBackend(); // disabled - data in Supabase
   // Route to correct view based on URL hash
   const initialView = getViewFromPath();
   if (initialView !== "dashboard") {
@@ -6440,430 +6401,15 @@ function init() {
 }
 
 
-// ===================== PUBLISH TO DEALER SITES =====================
-
-// NOTE:
-// functionUrl = Netlify endpoint used for inventory publishing (POST target). Do NOT change.
-// url         = customer-facing website (display/reference only).
-// Do not substitute one for the other — they are intentionally different hosts for Wilson & Fat Daddy's.
-const PUBLISH_DEALERS = [
-  {
-    name: 'Davenport Motors',
-    dealerKey: 'Davenport Motors',
-    functionUrl: 'https://davenportmotors.net/.netlify/functions/inventory',
-    url: 'https://davenportmotors.net',
-  },
-  {
-    name: "Fat Daddy's Truck Sales",
-    dealerKey: "Fat Daddy's Truck Sales",
-    functionUrl: 'https://fatdaddystrucksales.netlify.app/.netlify/functions/inventory',
-    url: 'https://fatdaddystrucksales.com',
-  },
-  {
-    name: 'Wilson Trailer Sales & Service',
-    dealerKey: 'Wilson Trailer Sales & Service',
-    functionUrl: 'https://wilson-trailer-sales.netlify.app/.netlify/functions/inventory',
-    url: 'https://wilsontrailersalesinc.com',
-  },
-  // Add more dealers here as you onboard them:
-];
-
-const PUBLISH_CONFIG_KEY = 'torquehub_publish_config_v1';
-
-function loadPublishConfig() {
-  try { return JSON.parse(localStorage.getItem(PUBLISH_CONFIG_KEY) || '{}'); }
-  catch(e) { return {}; }
-}
-
-function savePublishConfig() {
-  const cfg = {
-    token: (document.getElementById('publish-token')||{}).value || '',
-  };
-  try { localStorage.setItem(PUBLISH_CONFIG_KEY, JSON.stringify(cfg)); } catch(e) {}
-}
-
-function renderPublishDealerList() {
-  const el = document.getElementById('publish-dealer-list');
-  if (!el) return;
-
-  // Restore last publish time
-  try {
-    const meta = JSON.parse(localStorage.getItem('torquehub_publish_meta_v1') || '{}');
-    const lastEl = document.getElementById('publish-last-time');
-    if (meta.lastPublished && lastEl)
-      lastEl.textContent = 'Last published: ' + new Date(meta.lastPublished).toLocaleString();
-  } catch(e) {}
-
-  el.innerHTML = PUBLISH_DEALERS.map(d => {
-    const count = INVENTORY.filter(u => u.dealer === d.dealerKey && !u.sold).length;
-    return `<div style="background:var(--surface2);border-radius:8px;padding:12px 14px;border:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px">${d.name}</div>
-      <div style="font-size:11px;color:var(--text3)">${count} active listing${count!==1?'s':''} · <a href="${d.url}" target="_blank" style="color:var(--accent)">${d.url.replace('https://','')}</a></div>
-    </div>`;
-  }).join('');
-
-  // Render per-dealer radio buttons
-  const radiosEl = document.getElementById('publish-dealer-radios');
-  if (radiosEl) {
-    radiosEl.innerHTML = PUBLISH_DEALERS.map(d => {
-      const safeId = 'publish-target-' + d.dealerKey.replace(/[^a-z0-9]/gi, '-');
-      return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;cursor:pointer;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:white">
-        <input type="radio" name="publish-target" value="${d.dealerKey}" id="${safeId}" onchange="updatePublishLabel()" style="accent-color:var(--accent)">
-        ${d.name}
-      </label>`;
-    }).join('');
-  }
-
-  // Restore saved config
-  const cfg = loadPublishConfig();
-  const tokenEl = document.getElementById('publish-token');
-  if (tokenEl && cfg.token) tokenEl.value = cfg.token;
-}
-
-function updatePublishLabel() {
-  const selected = document.querySelector('input[name="publish-target"]:checked');
-  const labelEl = document.getElementById('publish-btn-label');
-  if (!selected || !labelEl) return;
-  if (selected.value === '__all__') {
-    labelEl.textContent = 'Publish to All';
-  } else {
-    const dealer = PUBLISH_DEALERS.find(d => d.dealerKey === selected.value);
-    labelEl.textContent = dealer ? 'Publish to ' + dealer.name : 'Publish';
-  }
-}
-
-async function buildDealerPayload(dealerKey) {
-  // Per-dealer fetch of photos + all publishable fields — freshByStock falls back to in-memory INVENTORY on failure.
-  const photosByStock = {};
-  const freshByStock = {};
-  try {
-    const res = await fetch('/.netlify/functions/admin-read', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (await getValidToken())
-      },
-      body: JSON.stringify({ operation: 'get_inventory_admin', data: { dealer: dealerKey, limit: 1000 } })
-    });
-    if (res.ok) {
-      const iJson = await res.json();
-      const rows = iJson.rows || [];
-      rows.forEach(r => {
-        if (r.stock) {
-          freshByStock[r.stock] = r;
-        }
-      });
-    } else {
-      console.warn(`[buildDealerPayload] fetch failed for ${dealerKey} (HTTP ${res.status}) — falling back to in-memory INVENTORY`);
-    }
-  } catch (err) {
-    console.warn(`[buildDealerPayload] fetch error for ${dealerKey} — falling back to in-memory INVENTORY:`, err.message);
-  }
-
-  try {
-    const photosRes = await fetch(
-      `https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?select=stock,photos&dealer=eq.${encodeURIComponent(dealerKey)}&limit=1000`,
-      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY } }
-    );
-    if (photosRes.ok) {
-      const photoRows = await photosRes.json();
-      photoRows.forEach(r => { if (r.stock) photosByStock[r.stock] = r.photos || []; });
-    } else {
-      console.warn(`[buildDealerPayload] photos fetch failed for ${dealerKey} (HTTP ${photosRes.status})`);
-    }
-  } catch (err) {
-    console.warn(`[buildDealerPayload] photos fetch error for ${dealerKey}:`, err.message);
-  }
-
-  return INVENTORY
-    .filter(u => u.dealer === dealerKey)
-    .map(u => {
-      const f = freshByStock[u.stock] || u;
-      const key = getListingKey(u);
-      const stored = PHOTO_STORE[key] || [];
-      const feedPhotos = photosByStock[u.stock] || [];
-      const photos = stored.length
-        ? stored.map(p => ({ url: p.dataUrl, name: p.name, fromUrl: p.fromUrl || false }))
-        : (Array.isArray(feedPhotos) ? feedPhotos : []).map(p => ({
-            url: p.url || p.dataUrl || null,
-            name: p.name || null,
-            fromUrl: true,
-          })).filter(p => p.url);
-      return {
-        year: f.year, make: f.make, model: f.model, trim: f.trim || null,
-        condition: f.condition, price: f.price, stock: u.stock,
-        days: u.days, fuel: f.fuel || null, vin: f.vin || null,
-        description: f.description || null, color: u.color || null,
-        mileage: f.mileage || null, photos,
-        engine: f.engine || null, transmission: f.transmission || null,
-        drivetrain: f.drivetrain || null,
-        engine_description: f.engine_description || null,
-        transmission_description: f.transmission_description || null,
-        category: f.category || null, subcategory: f.subcategory || null, siteTag: u.siteTag || null, featured: f.featured || 0, video_url: f.video_url || null,
-        sold: u.sold === true, sold_type: u.sold_type || null,
-      };
-    });
-}
-
-
-function runPublishChecklist(dealerKey) {
-  const listings = INVENTORY.filter(u => u.dealer === dealerKey && !u.sold);
-  const issues = [];
-  listings.forEach(u => {
-    const missing = [];
-    if (!u.year && !u.make && !u.model) missing.push('title');
-    if (!u.price || parseFloat(String(u.price).replace(/[^0-9.]/g,'')) === 0) missing.push('price');
-    if (!u.dealer || u.dealer.trim() === '') missing.push('dealer');
-    if (!u.category || u.category.trim() === '') missing.push('category');
-    const key = getListingKey(u);
-    const stored = PHOTO_STORE[key] || [];
-    const feedPhotos = Array.isArray(u.photos) ? u.photos : [];
-    if (stored.length === 0 && feedPhotos.length === 0) missing.push('photo');
-    if (missing.length > 0) {
-      issues.push('* ' + [u.year,u.make,u.model].filter(Boolean).join(' ') + ' (' + (u.stock||'no stock') + ') missing: ' + missing.join(', '));
-    }
-  });
-  return issues;
-}
-
-async function publishDealerSites() {
-  const cfg = loadPublishConfig();
-  const token = (document.getElementById('publish-token')||{}).value?.trim() || cfg.token;
-
-  if (!token) {
-    alert('⚠️ Please enter your Inventory Token in Settings → Publish to Dealer Sites first.');
-    showView('settings', document.querySelectorAll('.nav-item')[3]);
-    return;
-  }
-
-  const btn = document.getElementById('publish-btn');
-  const statusEl = document.getElementById('publish-status');
-
-  const setStatus = (msg, color) => {
-    if (statusEl) { statusEl.textContent = msg; statusEl.style.color = color || 'var(--text3)'; }
-  };
-
-  // Lock button while publishing
-  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Publishing…'; }
-  const btnSettings2 = document.getElementById('publish-btn-settings');
-  if (btnSettings2) { btnSettings2.disabled = true; btnSettings2.querySelector('#publish-btn-label').textContent = 'Publishing…'; }
-  setStatus('Sending to dealer site…', '#f59e0b');
-
-  // Determine which dealers to publish to
-  const selectedTarget = (document.querySelector('input[name="publish-target"]:checked') || {}).value || '__all__';
-  const dealersToPublish = selectedTarget === '__all__'
-    ? PUBLISH_DEALERS
-    : PUBLISH_DEALERS.filter(d => d.dealerKey === selectedTarget);
-
-  let successCount = 0;
-  const errors = [];
-
-  // Ready-to-publish check
-  let allIssues = [];
-  for (const d of dealersToPublish) {
-    const issues = runPublishChecklist(d.dealerKey);
-    if (issues.length > 0) allIssues.push(d.dealerKey + ' has ' + issues.length + ' incomplete listing(s):\n' + issues.slice(0,5).join('\n'));
-  }
-  if (allIssues.length > 0) {
-    const go = confirm('Ready-to-Publish Check:\n\n' + allIssues.join('\n\n') + '\n\nPublish anyway?');
-    if (!go) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Publish Inventory'; }
-      setStatus('Publish cancelled.', '#f59e0b');
-      return;
-    }
-  }
-
-  for (const dealer of dealersToPublish) {
-    try {
-      const payload = JSON.stringify(await buildDealerPayload(dealer.dealerKey));
-
-      // Diagnostic counts — verify photos source distribution per publish
-      const _payloadParsed = JSON.parse(payload);
-      const _counts = {
-        dealer: dealer.name,
-        units: _payloadParsed.length,
-        fromPhotoStore: 0,
-        fromFeedFallback: 0,
-        zeroPhotos: 0,
-      };
-      _payloadParsed.forEach(unit => {
-        const key = getListingKey({ dealer: dealer.dealerKey, stock: unit.stock });
-        const stored = PHOTO_STORE[key] || [];
-        if (stored.length > 0) _counts.fromPhotoStore++;
-        else if (unit.photos && unit.photos.length > 0) _counts.fromFeedFallback++;
-        else _counts.zeroPhotos++;
-      });
-      console.log('[publish counts]', _counts);
-
-      const res = await fetch(dealer.functionUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: payload,
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`HTTP ${res.status}: ${txt.slice(0,120)}`);
-      }
-      successCount++;
-    } catch(e) {
-      console.error('Publish failed for', dealer.name, e);
-      errors.push(`${dealer.name}: ${e.message}`);
-    }
-  }
-
-  // Restore button
-  if (btn) {
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Publish Inventory';
-  }
-  const btnSettings = document.getElementById('publish-btn-settings');
-  if (btnSettings) {
-    btnSettings.disabled = false;
-    btnSettings.querySelector('svg').outerHTML;
-    updatePublishLabel();
-  }
-
-  if (errors.length === 0) {
-    try { localStorage.setItem('torquehub_publish_meta_v1', JSON.stringify({ lastPublished: new Date().toISOString() })); } catch(e) {}
-    setStatus(`✅ Published ${successCount} site${successCount!==1?'s':''} successfully!`, 'var(--green)');
-    renderPublishDealerList();
-  } else {
-    setStatus(`⚠️ ${successCount} succeeded, ${errors.length} failed — see console`, '#f59e0b');
-    console.error('Publish errors:', errors);
-    const e0 = errors[0] || '';
-    if (e0.includes('401') || e0.includes('403'))
-      alert('❌ Auth failed. Check your INVENTORY_TOKEN — make sure it matches what is set in Netlify environment variables.');
-    else if (e0.includes('404'))
-      alert('❌ Function not found. Make sure inventory.js is deployed to /.netlify/functions/inventory.');
-    else
-      alert('❌ Publish error:\n' + errors.join('\n'));
-  }
-}
-
-// renderPublishDealerList is called directly inside renderSettings above
-
-// Same source of truth as pushDealerInventoryToBackend — no second dealer list.
-function dealerHasPublishTarget(dealerName) {
-  return !!(dealerName && PUBLISH_DEALERS.find(d => d.dealerKey === dealerName));
-}
-
-// Fire-and-forget auto-publish after any inventory mutation. Safe no-op for dealers
-// with no site; errors are swallowed (logged) so the caller's success path is never
-// blocked by a publish failure.
-async function afterInventoryMutation(dealerName, actionLabel) {
-  if (!dealerName) return;
-  if (!dealerHasPublishTarget(dealerName)) return;
-  try {
-    await pushDealerInventoryToBackend(dealerName);
-  } catch (err) {
-    console.warn('Auto-publish failed after ' + actionLabel, dealerName, err);
-  }
-}
-
-async function pushDealerInventoryToBackend(dealerKey, options = {}) {
-  const dealer = PUBLISH_DEALERS.find(d => d.dealerKey === dealerKey);
-  if (!dealer) return { ok:false, reason:'Dealer not configured' };
-
-  const cfg = loadPublishConfig();
-  const token = (document.getElementById('publish-token')||{}).value?.trim() || cfg.token;
-  if (!token) return { ok:false, reason:'Missing publish token' };
-
-  const payload = JSON.stringify(await buildDealerPayload(dealerKey));
-  const res = await fetch(dealer.functionUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: payload,
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Publish failed (${res.status}): ${txt.slice(0,160)}`);
-  }
-
-  if (options.toast) {
-    const msg = document.getElementById('edit-saved-msg');
-    if (msg) {
-      msg.textContent = '✓ Saved to Netlify';
-      msg.classList.add('show');
-      setTimeout(() => { msg.textContent = '✓ Saved'; msg.classList.remove('show'); }, 2400);
-    }
-  }
-
-  return { ok:true };
-}
-
-async function pullDealerInventoryFromBackend(dealerKey) {
-  const dealer = PUBLISH_DEALERS.find(d => d.dealerKey === dealerKey);
-  if (!dealer) return { ok:false, reason:'Dealer not configured' };
-
-  const res = await fetch(dealer.functionUrl, { cache:'no-store' });
-  if (!res.ok) throw new Error(`Load failed (${res.status})`);
-  const remote = await res.json();
-  if (!Array.isArray(remote)) throw new Error('Remote inventory was not an array');
-
-  // Remove existing unsold units for this dealer, then replace with backend data
-  for (let i = INVENTORY.length - 1; i >= 0; i--) {
-    if (INVENTORY[i].dealer === dealerKey && !INVENTORY[i].sold) INVENTORY.splice(i, 1);
-  }
-
-  remote.forEach(unit => {
-    INVENTORY.push({
-      year: unit.year || '',
-      make: unit.make || '',
-      model: unit.model || '',
-      condition: unit.condition || 'Used',
-      price: unit.price || '',
-      dealer: dealerKey,
-      stock: unit.stock || '',
-      days: unit.days || '',
-      vin: unit.vin || '',
-      fuel: unit.fuel || '',
-      description: unit.description || '',
-      color: unit.color || '',
-      mileage: unit.mileage || '',
-      category: unit.category || '',
-      sold: false
-    });
-
-    // Restore remote photos into local photo store so the admin portal stays in sync
-    const listing = INVENTORY[INVENTORY.length - 1];
-    const key = getListingKey(listing);
-    if (Array.isArray(unit.photos) && unit.photos.length) {
-      PHOTO_STORE[key] = unit.photos.map((p, idx) => ({
-        id: Date.now() + Math.random() + idx,
-        name: p.name || `image-${idx+1}.jpg`,
-        dataUrl: p.url,
-        type: 'url',
-        fromUrl: true
-      }));
-    }
-  });
-
-  savePhotoStore();
-  saveAppSession();
-  refreshDealerCategoryMap();
-  refreshAllViews();
-  return { ok:true, count: remote.length };
-}
-
-async function syncDavenportFromBackend() {
-  try {
-    const result = await pullDealerInventoryFromBackend('Davenport Inc.');
-    console.log('Davenport inventory synced from Netlify.', result);
-  } catch (e) {
-    console.warn('Davenport Netlify sync skipped:', e.message);
-  }
-}
-
-
-// ===================== END PUBLISH TO DEALER SITES =====================
+// ===================== DEALER SITE PUBLISHING =====================
+// Browser-side dealer-site publishing was retired 2026-10-07 (Chief ruling, Drive
+// 1tf7HZWpvY0MBL8Edv_KvXtEBq6R7OcrT_dI4svkvd5g). Dealer sites are published only by the
+// server: admin-write.js -> lib/publish-to-dealer.js sends status='published' rows and
+// logs every attempt to publish_log. Purge the retired browser publish token/config.
+try {
+  localStorage.removeItem('torquehub_publish_config_v1');
+  localStorage.removeItem('torquehub_publish_meta_v1');
+} catch (e) {}
 
 async function loadApp() {
   const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
