@@ -105,7 +105,7 @@ test('C6: client toggleFeatured makes exactly one request, to admin-write, and n
 });
 
 // ---------------- server: in-memory PostgREST + dealer endpoints ----------------
-function makeWorld(rows, { dealerStatus = 200 } = {}) {
+function makeWorld(rows, { dealerStatus = 200, patchStatus = 204 } = {}) {
   const w = { inventory: clone(rows), publishLog: [], dealerPosts: [], order: [] };
   const res = (json, status = 200) => ({ ok: status < 400, status, json: async () => json, text: async () => (json == null ? '' : JSON.stringify(json)) });
   global.fetch = async (url, opts = {}) => {
@@ -126,7 +126,7 @@ function makeWorld(rows, { dealerStatus = 200 } = {}) {
     }
     const hit = w.inventory.filter((r) => filters.every(([k, op, v]) => op === 'eq' && r[k] != null && String(r[k]) === v));
     if (method === 'GET') return res(clone(hit));
-    if (method === 'PATCH') { const b = JSON.parse(opts.body); hit.forEach((r) => Object.assign(r, b)); w.order.push('db'); return res(null, 204); }
+    if (method === 'PATCH') { if (patchStatus >= 400) return res({ error: 'db down' }, patchStatus); const b = JSON.parse(opts.body); hit.forEach((r) => Object.assign(r, b)); w.order.push('db'); return res(null, 204); }
     if (method === 'DELETE') { w.inventory = w.inventory.filter((r) => !hit.includes(r)); w.order.push('db'); return res(null, 204); }
     if (method === 'POST') { const ins = JSON.parse(opts.body).map((r, n) => ({ id: 'new-' + n, ...r })); w.inventory.push(...ins); w.order.push('db'); return res(clone(ins), 201); }
     return res({ error: 'unexpected method' }, 500);
@@ -200,4 +200,58 @@ test('S6: the four existing publisher call sites are unchanged — one publish e
     assert.equal(r.status, 200, op); assert.equal(r.body.publish.status, 'success', op);
     assert.equal(w.dealerPosts.length, 1, op); assert.equal(w.publishLog.length, 1, op);
   }
+});
+
+// ---------------- photo-race amendment (Chief 2026-10-07) ----------------
+const OLD_PHOTOS = [{ url: 'https://cdn.example/old.jpg', name: 'old' }];
+const NEW_PHOTOS = [{ url: 'https://cdn.example/new1.jpg', name: 'n1' }, { url: 'https://cdn.example/new2.jpg', name: 'n2' }];
+const urls = (u) => u.photos.map((p) => p.url);
+
+test('S7: patch_inventory_photos for a dealer-site dealer → DB write, then ONE server publish carrying the new gallery, logged', async () => {
+  const w = makeWorld([unit('DAV-1', DAV, 'published', { photos: OLD_PHOTOS })]);
+  const r = await call('patch_inventory_photos', { stock: 'DAV-1', dealer: DAV, photos: NEW_PHOTOS });
+  assert.equal(r.status, 200); assert.equal(r.body.ok, true); assert.equal(r.body.publish.status, 'success');
+  assert.deepEqual(w.order, ['db', 'dealer', 'log'], 'publish runs after the committed photo write');
+  assert.equal(w.dealerPosts.length, 1); assert.equal(w.publishLog.length, 1); assert.equal(w.publishLog[0].status, 'success');
+  assert.deepEqual(urls(w.dealerPosts[0].units[0]), NEW_PHOTOS.map((p) => p.url));
+});
+
+test('S8: a failed photo PATCH publishes nothing (DB error and refused empty list)', async () => {
+  const w1 = makeWorld([unit('DAV-1', DAV, 'published', { photos: OLD_PHOTOS })], { patchStatus: 500 });
+  const r1 = await call('patch_inventory_photos', { stock: 'DAV-1', dealer: DAV, photos: NEW_PHOTOS });
+  assert.equal(r1.status, 500); assert.equal(r1.body.publish, undefined);
+  assert.equal(w1.dealerPosts.length, 0); assert.equal(w1.publishLog.length, 0);
+  const w2 = makeWorld([unit('DAV-1', DAV, 'published', { photos: OLD_PHOTOS })]);
+  const r2 = await call('patch_inventory_photos', { stock: 'DAV-1', dealer: DAV, photos: [] });
+  assert.equal(r2.status, 409);
+  assert.equal(w2.dealerPosts.length, 0); assert.equal(w2.publishLog.length, 0);
+  assert.deepEqual(urls(w2.inventory[0]), OLD_PHOTOS.map((p) => p.url), 'gallery untouched');
+});
+
+test('S9: photo PATCH for a dealer without a dealer site → skipped, no dealer POST, no publish_log row', async () => {
+  const w = makeWorld([unit('DBT-1', 'DeBary Truck Sales', 'published', { photos: OLD_PHOTOS })]);
+  const r = await call('patch_inventory_photos', { stock: 'DBT-1', dealer: 'DeBary Truck Sales', photos: NEW_PHOTOS });
+  assert.equal(r.status, 200); assert.equal(r.body.publish.status, 'skipped');
+  assert.equal(w.dealerPosts.length, 0); assert.equal(w.publishLog.length, 0);
+  assert.deepEqual(urls(w.inventory[0]), NEW_PHOTOS.map((p) => p.url), 'the photo write itself still lands');
+});
+
+test('S10: a field + photo save converges on the new gallery and fields in either completion order; only the server posts', async () => {
+  for (const order of [['update_inventory', 'patch_inventory_photos'], ['patch_inventory_photos', 'update_inventory']]) {
+    const w = makeWorld([unit('WTS-1', WTS, 'published', { photos: OLD_PHOTOS, price: '$1' })]);
+    for (const op of order) {
+      const r = op === 'update_inventory'
+        ? await call(op, { filterStock: 'WTS-1', dealer: WTS, price: '$7,500' })
+        : await call(op, { stock: 'WTS-1', dealer: WTS, photos: NEW_PHOTOS });
+      assert.equal(r.status, 200, op);
+    }
+    assert.equal(w.dealerPosts.length, 2, order.join(' then '));
+    assert.equal(w.publishLog.length, 2, order.join(' then '));
+    assert.ok(w.dealerPosts.every((p) => p.auth === 'Bearer tok-wts'), 'every dealer POST is the server publisher');
+    const final = w.dealerPosts[w.dealerPosts.length - 1].units.find((u) => u.stock === 'WTS-1');
+    assert.deepEqual(urls(final), NEW_PHOTOS.map((p) => p.url), order.join(' then ') + ': final gallery');
+    assert.equal(final.price, '$7,500', order.join(' then ') + ': final price');
+  }
+  // The client half — no browser dealer-site POST on any save — is C1 + C2 (no client code can reach a
+  // dealer inventory endpoint) and the jsdom runtime gate.
 });

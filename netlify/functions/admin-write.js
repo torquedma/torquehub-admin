@@ -500,7 +500,12 @@ async function handlePatchInventoryPhotos({ data, svcKey }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  return { status: 200, body: { ok: true } };
+  // Temporary bridge until dealer-site pull feeds (Chief 2026-10-07, photo-race amendment): the photo
+  // PATCH is committed; republish this dealer's site server-side. saveListingEdits sends update_inventory
+  // and patch_inventory_photos concurrently, so whichever commits last republishes from committed state
+  // and the dealer site converges on the new gallery. Never rolls back the photo write.
+  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
+  return { status: 200, body: { ok: true, publish } };
 }
 
 // ---------------------------------------------------------------------------
