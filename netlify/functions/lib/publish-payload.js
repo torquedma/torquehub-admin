@@ -1,14 +1,13 @@
 'use strict';
 
-// Server-side port of buildDealerPayload from
-// torque-hub-admin/index.html:6069-6140.
+// Canonical server-side dealer payload builder (WTS / DAV / FDT).
 //
-// EMITS EXACTLY THE 26 KEYS the browser builder emits, and no others:
+// EMITS EXACTLY THE 27 KEYS, and no others:
 //   year, make, model, trim,
 //   condition, price, stock,
 //   days, fuel, vin,
 //   description, color,
-//   mileage, photos,
+//   mileage, hours, photos,
 //   engine, transmission, drivetrain,
 //   engine_description, transmission_description,
 //   category, subcategory, siteTag, featured, video_url,
@@ -16,8 +15,8 @@
 //
 // NOTES ON VALUE SOURCES:
 //
-//  - photos come from Supabase inventory.photos, mapped to the fallback
-//    branch's { url, name, fromUrl: true } shape (index.html:6121-6125).
+//  - photos come from Supabase inventory.photos, mapped to the
+//    { url, name, fromUrl: true } shape; entries without a url are dropped.
 //    Production evidence 2026-08-31: Wilson photo ordering is 9/9 exact
 //    for count, URL and order between Supabase and the live blob, including
 //    deliberately reordered WTS-614 (9,0,1,2…) and WTS-DTP-21 (1,0,2,3…).
@@ -26,18 +25,17 @@
 //    published state for the WTS population.
 //
 //  - color and siteTag are NOT columns in Supabase per INVENTORY_ADMIN_SELECT
-//    in admin-read.js. The browser resolves them from browser-only INVENTORY
-//    state which is never seeded with either by the admin-read load path,
-//    so the browser emits null anyway. Server emits null verbatim to keep
-//    the 26-key list identical.
+//    in admin-read.js. Server emits null for both to keep the 27-key list
+//    fixed.
 //
-//  - days is computed from created_at using the same formula the browser
-//    uses at index.html:6477 —
+//  - days is computed from created_at —
 //      created_at ? Math.floor((Date.now() - Date.parse(created_at)) / 86400000) : 0
 //
-//  - public_sold is deliberately NOT emitted. Confirmed absent from
-//    buildDealerPayload; live-blob observation 2026-08-31 showed
-//    public_sold undefined on every Wilson unit; equivalence forbids adding it.
+//  - hours is inventory.hours passed through raw (?? null, so a legitimate
+//    0 survives); no parsing or trimming.
+//
+//  - public_sold is deliberately NOT emitted; live-blob observation
+//    2026-08-31 showed public_sold undefined on every Wilson unit.
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 
@@ -45,7 +43,7 @@ async function buildDealerPayload(dealerKey, svcKey) {
   const cols = [
     'year', 'make', 'model', 'trim',
     'condition', 'price', 'stock', 'created_at',
-    'fuel', 'vin', 'description', 'mileage', 'photos',
+    'fuel', 'vin', 'description', 'mileage', 'hours', 'photos',
     'engine', 'transmission', 'drivetrain',
     'engine_description', 'transmission_description',
     'category', 'subcategory', 'featured', 'video_url',
@@ -86,6 +84,7 @@ async function buildDealerPayload(dealerKey, svcKey) {
     description:              u.description || null,
     color:                    null,
     mileage:                  u.mileage || null,
+    hours:                    u.hours ?? null,
     photos:                   (Array.isArray(u.photos) ? u.photos : [])
                                 .map(p => ({
                                   url:     p.url || p.dataUrl || null,

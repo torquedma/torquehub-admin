@@ -131,9 +131,9 @@ test('F6: drafts and archived rows never appear; sold published rows appear with
   assert.ok(sel.every(q => q.url.includes('&status=eq.published')), 'every SELECT must carry status=eq.published');
 });
 
-test('F7: exactly the 26-key contract on every unit; lowercase code accepted', async () => {
+test('F7: exactly the 27-key contract on every unit; lowercase code accepted', async () => {
   const KEYS = ['year', 'make', 'model', 'trim', 'condition', 'price', 'stock', 'days', 'fuel', 'vin', 'description', 'color',
-    'mileage', 'photos', 'engine', 'transmission', 'drivetrain', 'engine_description', 'transmission_description',
+    'mileage', 'hours', 'photos', 'engine', 'transmission', 'drivetrain', 'engine_description', 'transmission_description',
     'category', 'subcategory', 'siteTag', 'featured', 'video_url', 'sold', 'sold_type'].sort();
   const units = JSON.parse((await get({ dealer: 'wts' })).body);
   assert.ok(units.length > 0);
@@ -182,4 +182,29 @@ test('F11: the feed never writes and never exposes the service key', async () =>
   }
   assert.ok(requests.every(q => q.method === 'GET'), 'only GET requests may leave the feed');
   assert.ok(requests.every(q => q.url.startsWith('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?')));
+});
+
+test('F12: hours passes through raw (unparsed, 0 kept) right after mileage; mileage unchanged', async () => {
+  installFake([
+    row({ stock: 'H-1', dealer: DAV, mileage: '130476',  hours: '2387' }),
+    row({ stock: 'H-2', dealer: DAV, mileage: '154,382', hours: '1,285' }),
+    row({ stock: 'H-3', dealer: DAV, mileage: null,      hours: 0 }),
+    row({ stock: 'H-4', dealer: DAV, mileage: '2387',    hours: null }),
+  ]);
+  const units = await buildDealerPayload(DAV, SVC);
+  const by = Object.fromEntries(units.map(u => [u.stock, u]));
+  assert.deepEqual(units.map(u => u.stock), ['H-1', 'H-2', 'H-3', 'H-4']);
+  assert.ok(requests[0].url.includes(',mileage,hours,'), 'SELECT must request hours right after mileage');
+  assert.equal(by['H-1'].hours, '2387');
+  assert.equal(by['H-2'].hours, '1,285');
+  assert.equal(by['H-3'].hours, 0);
+  assert.equal(by['H-4'].hours, null);
+  assert.equal(by['H-1'].mileage, '130476');
+  assert.equal(by['H-2'].mileage, '154,382');
+  assert.equal(by['H-3'].mileage, null);
+  assert.equal(by['H-4'].mileage, '2387');
+  for (const u of units) {
+    const k = Object.keys(u);
+    assert.equal(k[k.indexOf('mileage') + 1], 'hours');
+  }
 });
