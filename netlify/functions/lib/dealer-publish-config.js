@@ -18,16 +18,24 @@
 // on its POST (validated against INVENTORY_TOKEN in that dealer's own repo,
 // e.g. wilson-trailer-sales/netlify/functions/inventory.js:36). The tokens
 // are never hardcoded here.
+//
+// `code` is the closed dealer-code map for the public pull feed
+// (dealer-feed.js, Chief ruling 2026-10-07, design 14NqveYH0QuEmYu2FiPdnOvZgmIiPNJ_RJZjmG19z8xA).
+// Only these three codes resolve; anything else is 404 at the feed. When the
+// push path is retired, functionUrl/tokenEnvVar go and `code` stays.
 const DEALERS = {
   'Davenport Motors': {
+    code: 'DAV',
     functionUrl: 'https://davenportmotors.net/.netlify/functions/inventory',
     tokenEnvVar: 'PUBLISH_TOKEN_DAV',
   },
   "Fat Daddy's Truck Sales": {
+    code: 'FDT',
     functionUrl: 'https://fatdaddystrucksales.netlify.app/.netlify/functions/inventory',
     tokenEnvVar: 'PUBLISH_TOKEN_FDT',
   },
   'Wilson Trailer Sales & Service': {
+    code: 'WTS',
     functionUrl: 'https://wilson-trailer-sales.netlify.app/.netlify/functions/inventory',
     tokenEnvVar: 'PUBLISH_TOKEN_WTS',
   },
@@ -38,4 +46,14 @@ function getDealerConfig(dealerKey) {
   return DEALERS[dealerKey] || null;
 }
 
-module.exports = { DEALERS, getDealerConfig };
+// Resolves a feed dealer code (WTS / DAV / FDT) to the inventory.dealer value.
+// Returns null for anything that is not exactly one of the configured codes.
+function getDealerByCode(code) {
+  if (!code || typeof code !== 'string') return null;
+  for (const [dealerKey, cfg] of Object.entries(DEALERS)) {
+    if (cfg.code === code) return dealerKey;
+  }
+  return null;
+}
+
+module.exports = { DEALERS, getDealerConfig, getDealerByCode };

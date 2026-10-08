@@ -1,0 +1,185 @@
+'use strict';
+// dealer-feed.test.js — public read-only dealer pull feed (Chief ruling 2026-10-07,
+// design 14NqveYH0QuEmYu2FiPdnOvZgmIiPNJ_RJZjmG19z8xA, Decision 1).
+// Run: node --test netlify/functions/__tests__/dealer-feed.test.js
+// No network, no database: the REAL dealer-feed handler and the REAL buildDealerPayload run
+// against an in-memory PostgREST fake that honors eq filters and records every request.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const SVC = 'svc-secret-value-never-in-output';
+process.env.SUPABASE_SERVICE_ROLE_KEY = SVC;
+
+const { DEALERS, getDealerConfig, getDealerByCode } = require('../lib/dealer-publish-config');
+const { buildDealerPayload } = require('../lib/publish-payload');
+const feed = require('../dealer-feed');
+
+const WTS = 'Wilson Trailer Sales & Service';
+const DAV = 'Davenport Motors';
+const FDT = "Fat Daddy's Truck Sales";
+
+function row(over) {
+  return {
+    year: 2018, make: 'Peerless', model: null, trim: "45' Flat Floor", condition: 'Used', price: '$19,900',
+    stock: 'X', created_at: '2026-09-01T00:00:00Z', fuel: null, vin: null, description: 'Key Details', mileage: null,
+    photos: [{ url: 'https://example.test/a.jpg', name: 'a' }, { dataUrl: 'https://example.test/b.jpg' }, { name: 'no-url' }],
+    engine: null, transmission: null, drivetrain: null, engine_description: null, transmission_description: null,
+    category: 'Trailers', subcategory: 'Chip Trailer', featured: 0, video_url: null, sold: false, sold_type: null,
+    status: 'published', dealer: WTS, ...over,
+  };
+}
+
+const FIXTURE = [
+  row({ stock: 'WTS-1', dealer: WTS }),
+  row({ stock: 'WTS-SOLD', dealer: WTS, sold: true, sold_type: 'manual' }),
+  row({ stock: 'WTS-DRAFT', dealer: WTS, status: 'draft' }),
+  row({ stock: 'WTS-ARCH', dealer: WTS, status: 'archived' }),
+  row({ stock: 'DAV-1', dealer: DAV, make: 'Ford', created_at: null }),
+  row({ stock: 'DAV-DRAFT', dealer: DAV, status: 'draft' }),
+  row({ stock: 'FDT-1', dealer: FDT, make: 'International', featured: 1 }),
+  row({ stock: 'OTHER-1', dealer: 'Allied Truck & Trailer Sales' }),
+];
+
+let requests = [];
+let failNext = null;
+function installFake(rows) {
+  requests = [];
+  global.fetch = async (url, opts = {}) => {
+    const method = (opts.method || 'GET').toUpperCase();
+    requests.push({ url, method, headers: opts.headers || {} });
+    const res = (json, status = 200) => ({ ok: status < 400, status, json: async () => json, text: async () => JSON.stringify(json) });
+    if (failNext) { const f = failNext; failNext = null; return res({ message: f }, 500); }
+    const m = url.match(/\/rest\/v1\/([a-z_]+)\?(.*)$/);
+    if (!m || m[1] !== 'inventory' || method !== 'GET') return res({ error: 'unexpected ' + method + ' ' + url }, 500);
+    const filters = [];
+    for (const part of m[2].split('&')) {
+      const i = part.indexOf('=');
+      const k = part.slice(0, i), v = part.slice(i + 1);
+      if (k === 'select' || k === 'limit') continue;
+      const d = v.indexOf('.');
+      filters.push([k, v.slice(0, d), decodeURIComponent(v.slice(d + 1))]);
+    }
+    const out = rows.filter(r => filters.every(([k, op, val]) => op === 'eq' && r[k] != null && String(r[k]) === val));
+    return res(JSON.parse(JSON.stringify(out)));
+  };
+}
+
+const realNow = Date.now;
+test.beforeEach(() => { installFake(FIXTURE); Date.now = () => Date.parse('2026-10-08T12:00:00Z'); });
+test.afterEach(() => { Date.now = realNow; failNext = null; });
+
+const get = (q) => feed.handler({ httpMethod: 'GET', queryStringParameters: q });
+
+test('F1: closed code map — exactly WTS/DAV/FDT resolve, to the configured inventory.dealer values', () => {
+  assert.equal(getDealerByCode('WTS'), WTS);
+  assert.equal(getDealerByCode('DAV'), DAV);
+  assert.equal(getDealerByCode('FDT'), FDT);
+  for (const bad of ['', 'wts', 'ATT', 'WTS ', '__proto__', 'constructor', 'toString', null, undefined, 7]) {
+    assert.equal(getDealerByCode(bad), null, `code ${String(bad)} must not resolve`);
+  }
+  assert.deepEqual(Object.values(DEALERS).map(c => c.code).sort(), ['DAV', 'FDT', 'WTS']);
+});
+
+test('F2: the push publisher config is unchanged apart from the added code field', () => {
+  assert.deepEqual(getDealerConfig(WTS), { code: 'WTS', functionUrl: 'https://wilson-trailer-sales.netlify.app/.netlify/functions/inventory', tokenEnvVar: 'PUBLISH_TOKEN_WTS' });
+  assert.deepEqual(getDealerConfig(DAV), { code: 'DAV', functionUrl: 'https://davenportmotors.net/.netlify/functions/inventory', tokenEnvVar: 'PUBLISH_TOKEN_DAV' });
+  assert.deepEqual(getDealerConfig(FDT), { code: 'FDT', functionUrl: 'https://fatdaddystrucksales.netlify.app/.netlify/functions/inventory', tokenEnvVar: 'PUBLISH_TOKEN_FDT' });
+});
+
+test('F3: unknown or missing dealer code -> 404, no-store, and no database call', async () => {
+  for (const q of [{ dealer: 'ATT' }, { dealer: '' }, {}, null, { dealer: '__proto__' }, { dealer: 'Wilson Trailer Sales & Service' }]) {
+    requests = [];
+    const r = await get(q);
+    assert.equal(r.statusCode, 404);
+    assert.equal(r.headers['Cache-Control'], 'no-store');
+    assert.deepEqual(JSON.parse(r.body), { error: 'unknown_dealer' });
+    assert.equal(requests.length, 0);
+  }
+});
+
+test('F4: non-GET -> 405 no-store; OPTIONS -> 204', async () => {
+  for (const m of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+    const r = await feed.handler({ httpMethod: m, queryStringParameters: { dealer: 'WTS' }, body: '[]' });
+    assert.equal(r.statusCode, 405);
+    assert.equal(r.headers['Cache-Control'], 'no-store');
+  }
+  const o = await feed.handler({ httpMethod: 'OPTIONS' });
+  assert.equal(o.statusCode, 204);
+  assert.equal(requests.length, 0);
+});
+
+test('F5: feed equivalence — body equals buildDealerPayload() for every configured dealer', async () => {
+  for (const [code, name] of [['WTS', WTS], ['DAV', DAV], ['FDT', FDT]]) {
+    const r = await get({ dealer: code });
+    assert.equal(r.statusCode, 200);
+    const expected = await buildDealerPayload(name, SVC);
+    assert.deepEqual(JSON.parse(r.body), expected, `${code} feed differs from buildDealerPayload`);
+    assert.equal(r.headers['X-Feed-Dealer'], code);
+    assert.equal(r.headers['X-Feed-Count'], String(expected.length));
+  }
+});
+
+test('F6: drafts and archived rows never appear; sold published rows appear with sold=true; other dealers excluded', async () => {
+  const wts = JSON.parse((await get({ dealer: 'WTS' })).body);
+  assert.deepEqual(wts.map(u => u.stock).sort(), ['WTS-1', 'WTS-SOLD']);
+  assert.equal(wts.find(u => u.stock === 'WTS-SOLD').sold, true);
+  const dav = JSON.parse((await get({ dealer: 'DAV' })).body);
+  assert.deepEqual(dav.map(u => u.stock), ['DAV-1']);
+  const fdt = JSON.parse((await get({ dealer: 'FDT' })).body);
+  assert.deepEqual(fdt.map(u => u.stock), ['FDT-1']);
+  const sel = requests.filter(q => q.url.includes('/rest/v1/inventory'));
+  assert.ok(sel.every(q => q.url.includes('&status=eq.published')), 'every SELECT must carry status=eq.published');
+});
+
+test('F7: exactly the 26-key contract on every unit; lowercase code accepted', async () => {
+  const KEYS = ['year', 'make', 'model', 'trim', 'condition', 'price', 'stock', 'days', 'fuel', 'vin', 'description', 'color',
+    'mileage', 'photos', 'engine', 'transmission', 'drivetrain', 'engine_description', 'transmission_description',
+    'category', 'subcategory', 'siteTag', 'featured', 'video_url', 'sold', 'sold_type'].sort();
+  const units = JSON.parse((await get({ dealer: 'wts' })).body);
+  assert.ok(units.length > 0);
+  for (const u of units) assert.deepEqual(Object.keys(u).sort(), KEYS);
+  assert.equal(units[0].photos.length, 2, 'photos without a url are dropped exactly as the push builder does');
+});
+
+test('F8: success headers — JSON, CORS, 60 s CDN cache', async () => {
+  const r = await get({ dealer: 'WTS' });
+  assert.equal(r.headers['Content-Type'], 'application/json');
+  assert.equal(r.headers['Access-Control-Allow-Origin'], '*');
+  assert.equal(r.headers['Cache-Control'], 'public, max-age=0, s-maxage=60');
+  assert.ok(!Number.isNaN(Date.parse(r.headers['X-Feed-Generated-At'])));
+});
+
+test('F9: database failure -> 502 no-store, generic body, no detail leaked', async () => {
+  failNext = 'relation "inventory" exploded: secret detail';
+  const quiet = console.error; console.error = () => {};
+  try {
+    const r = await get({ dealer: 'WTS' });
+    assert.equal(r.statusCode, 502);
+    assert.equal(r.headers['Cache-Control'], 'no-store');
+    assert.deepEqual(JSON.parse(r.body), { error: 'feed_unavailable' });
+    assert.ok(!r.body.includes('secret detail'));
+  } finally { console.error = quiet; }
+});
+
+test('F10: missing service key -> 500 no-store and no database call', async () => {
+  const saved = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const quiet = console.error; console.error = () => {};
+  try {
+    requests = [];
+    const r = await get({ dealer: 'WTS' });
+    assert.equal(r.statusCode, 500);
+    assert.equal(r.headers['Cache-Control'], 'no-store');
+    assert.equal(requests.length, 0);
+  } finally { process.env.SUPABASE_SERVICE_ROLE_KEY = saved; console.error = quiet; }
+});
+
+test('F11: the feed never writes and never exposes the service key', async () => {
+  for (const code of ['WTS', 'DAV', 'FDT', 'NOPE']) {
+    const r = await get({ dealer: code });
+    assert.ok(!r.body.includes(SVC));
+    assert.ok(!JSON.stringify(r.headers).includes(SVC));
+  }
+  assert.ok(requests.every(q => q.method === 'GET'), 'only GET requests may leave the feed');
+  assert.ok(requests.every(q => q.url.startsWith('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/inventory?')));
+});
