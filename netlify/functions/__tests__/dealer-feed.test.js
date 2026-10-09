@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 const SVC = 'svc-secret-value-never-in-output';
 process.env.SUPABASE_SERVICE_ROLE_KEY = SVC;
 
-const { DEALERS, getDealerConfig, getDealerByCode } = require('../lib/dealer-publish-config');
+const { DEALERS, getDealerByCode } = require('../lib/dealer-feed-codes');
 const { buildDealerPayload } = require('../lib/publish-payload');
 const feed = require('../dealer-feed');
 
@@ -80,10 +80,8 @@ test('F1: closed code map — exactly WTS/DAV/FDT resolve, to the configured inv
   assert.deepEqual(Object.values(DEALERS).map(c => c.code).sort(), ['DAV', 'FDT', 'WTS']);
 });
 
-test('F2: the push publisher config is unchanged apart from the added code field', () => {
-  assert.deepEqual(getDealerConfig(WTS), { code: 'WTS', functionUrl: 'https://wilson-trailer-sales.netlify.app/.netlify/functions/inventory', tokenEnvVar: 'PUBLISH_TOKEN_WTS' });
-  assert.deepEqual(getDealerConfig(DAV), { code: 'DAV', functionUrl: 'https://davenportmotors.net/.netlify/functions/inventory', tokenEnvVar: 'PUBLISH_TOKEN_DAV' });
-  assert.deepEqual(getDealerConfig(FDT), { code: 'FDT', functionUrl: 'https://fatdaddystrucksales.netlify.app/.netlify/functions/inventory', tokenEnvVar: 'PUBLISH_TOKEN_FDT' });
+test('F2: the dealer-code map carries only the closed feed codes — no push target or token fields remain', () => {
+  assert.deepEqual(DEALERS, { [DAV]: { code: 'DAV' }, [FDT]: { code: 'FDT' }, [WTS]: { code: 'WTS' } });
 });
 
 test('F3: unknown or missing dealer code -> 404, no-store, and no database call', async () => {

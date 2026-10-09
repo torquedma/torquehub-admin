@@ -1133,7 +1133,6 @@ document.querySelector('.sidebar').classList.toggle('open');
       <div class="settings-tabs">
         <div class="settings-tab active" onclick="switchSettingsTab('dealers',this)">Dealers</div>
         <div class="settings-tab" onclick="switchSettingsTab('import',this)">Import / Export</div>
-        <div class="settings-tab" onclick="switchSettingsTab('publish',this)">Publish</div>
         <div class="settings-tab" onclick="switchSettingsTab('feeds',this)">Feed Configs</div>
         <div class="settings-tab" onclick="switchSettingsTab('crm',this)">CRM</div>
         <div class="settings-tab" onclick="switchSettingsTab('seo',this)">SEO</div>
@@ -1173,23 +1172,6 @@ document.querySelector('.sidebar').classList.toggle('open');
             </div>
           </div>
           <div style="padding:14px 22px;font-size:13px;color:var(--text2)">Import inventory from a CSV feed (CFS, Dealer Spike, TruckPaper, or any standard format). Export all inventory as a spreadsheet.</div>
-        </div>
-      </div>
-
-      <!-- TAB: PUBLISH -->
-      <div class="settings-tab-panel" id="stab-publish">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Dealer Site Publish History</div>
-              <div class="card-sub">Dealer websites are updated by the server after each saved change. Every server publish is logged here.</div>
-            </div>
-          </div>
-          <div style="padding:18px 22px">
-            <div style="background:var(--surface2);border-radius:8px;padding:12px 14px">
-              <div id="publish-log-list" style="font-size:12px;color:var(--text3)">No publish history yet.</div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -3284,22 +3266,6 @@ function setInvFeaturedFilter(el) {
 }
 var invFeaturedOnly = false;
 
-// _notePublishResult — minimal visible failure surface for the server-side
-// publish leg of admin-write ops. Silent on 'success' or 'skipped'; toasts
-// and console-warns on 'failed'. Reads publish info from the admin-write
-// JSON response body's `publish` field.
-function _notePublishResult(publish, opLabel) {
-  if (!publish || publish.status === 'success' || publish.status === 'skipped') return;
-  console.warn('[server publish] ' + (opLabel || '') + ':', publish);
-  try {
-    const msg = document.getElementById('edit-saved-msg');
-    if (msg) {
-      msg.textContent = '⚠ Server publish failed: ' + (publish.dealer_name || 'unknown');
-      msg.classList.add('show');
-      setTimeout(() => { msg.textContent = '✓ Saved'; msg.classList.remove('show'); }, 4000);
-    }
-  } catch (_) {}
-}
 
 async function toggleFeatured(stock, val) {
   fetch('/.netlify/functions/admin-write', {
@@ -3311,7 +3277,6 @@ async function toggleFeatured(stock, val) {
     body: JSON.stringify({ operation: 'toggle_featured', data: { stock: stock, featured: val } })
   }).then(async r => {
     if (r.ok) {
-      const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'toggle_featured');
       const u = INVENTORY.find(u => u.stock === stock);
       if (u) u.featured = val;
       refreshAllViews();
@@ -3564,7 +3529,6 @@ async function saveListingEdits() {
         return;
       }
       if (result && result.id) newUnit.id = result.id;
-      _notePublishResult(result && result.publish, 'create_inventory');
       console.log('[saveListingEdits INSERT] Saved to gateway — stock:', stock);
     }).catch(err => {
       console.error('[saveListingEdits INSERT] Network error:', err.message);
@@ -3755,8 +3719,6 @@ async function saveListingEdits() {
         return;
       }
       u._originalStock = _savedStock;
-      const b = await r.json().catch(() => null);
-      _notePublishResult(b && b.publish, 'update_inventory');
       console.log('[saveListingEdits UPDATE] Saved to gateway:', u.stock);
       if (!_photoWrite) return;
       const pr = await fetch('/.netlify/functions/admin-write', {
@@ -3771,8 +3733,6 @@ async function saveListingEdits() {
         return;
       }
       PHOTO_BASELINE[_photoWrite.pkey] = _photoWrite.sig;
-      const pb = await pr.json().catch(() => null);
-      _notePublishResult(pb && pb.publish, 'patch_inventory_photos');
       console.log('[saveListingEdits PHOTOS] Photos saved to gateway:', _photoWrite.count, 'photos for', u.stock);
     }).catch(err => console.warn('[saveListingEdits] Save error:', err.message));
   }
@@ -5284,7 +5244,6 @@ async function confirmMarkSold() {
       }})
     }).then(async r => {
       if (r.ok) {
-        const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'mark_sold');
         console.log('Marked sold:', u.stock);
       } else {
         r.text().then(t => {
@@ -5316,7 +5275,6 @@ async function unmarkSold(key) {
       body: JSON.stringify({ operation: 'unmark_sold', data: { stock: u.stock, dealer: u.dealer } })
     }).then(async r => {
       if (r.ok) {
-        const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'unmark_sold');
         console.log('Unmarked sold:', u.stock);
       } else {
         r.text().then(t => {
@@ -5349,7 +5307,6 @@ async function removeListing(key) {
       body: JSON.stringify({ operation: 'remove_inventory', data: { stock: u.stock, dealer: u.dealer } })
     }).then(async r => {
       if (r.ok) {
-        const __body = await r.json().catch(() => null); if (__body) _notePublishResult(__body.publish, 'remove_inventory');
         console.log('Deleted:', u.stock);
       } else {
         r.text().then(t => {
@@ -6431,9 +6388,9 @@ function init() {
 
 // ===================== DEALER SITE PUBLISHING =====================
 // Browser-side dealer-site publishing was retired 2026-10-07 (Chief ruling, Drive
-// 1tf7HZWpvY0MBL8Edv_KvXtEBq6R7OcrT_dI4svkvd5g). Dealer sites are published only by the
-// server: admin-write.js -> lib/publish-to-dealer.js sends status='published' rows and
-// logs every attempt to publish_log. Purge the retired browser publish token/config.
+// 1tf7HZWpvY0MBL8Edv_KvXtEBq6R7OcrT_dI4svkvd5g) and the temporary server publisher was retired
+// 2026-10-09: the dealer sites read the ADMIN dealer feed directly and nothing pushes to them.
+// Purge the retired browser publish token/config (kept until the token-removal gate).
 try {
   localStorage.removeItem('torquehub_publish_config_v1');
   localStorage.removeItem('torquehub_publish_meta_v1');
@@ -6659,7 +6616,6 @@ function switchSettingsTab(tab, el) {
   if (el) el.classList.add('active');
   const panel = document.getElementById('stab-' + tab);
   if (panel) panel.classList.add('active');
-  if (tab === 'publish') renderPublishLog();
   if (tab === 'feeds') renderFeedConfigs();
 }
 
@@ -6957,23 +6913,6 @@ async function deleteContact(id) {
     body: JSON.stringify({ operation: 'delete_contact', data: { id } })
   });
   await loadContacts();
-}
-
-// ===================== PUBLISH LOG =====================
-async function renderPublishLog() {
-  try {
-    const r = await fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/publish_log?order=published_at.desc&limit=20', {
-      headers:{ 'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg' }
-    });
-    const logs = await r.json();
-    const el = document.getElementById('publish-log-list');
-    if (!el) return;
-    if (!logs.length) { el.textContent = 'No publish history yet.'; return; }
-    el.innerHTML = logs.map(l => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
-      <span>${l.dealer_name||'All Dealers'} — ${l.listing_count||0} listings</span>
-      <span style="color:var(--text3)">${new Date(l.published_at).toLocaleString()}</span>
-    </div>`).join('');
-  } catch(e) {}
 }
 
 // ===================== FEED CONFIGS =====================

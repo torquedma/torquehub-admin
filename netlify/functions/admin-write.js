@@ -2,7 +2,6 @@
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 const { stampFacts } = require('./lib/provenance');
-const { publishToDealerAndLog, lookupDealerByStock } = require('./lib/publish-to-dealer');
 const retreaver = require('./lib/retreaver');
 
 // ---------------------------------------------------------------------------
@@ -226,12 +225,7 @@ async function handleToggleFeatured({ data, svcKey }) {
     return { status: res.status, body: { error: errText } };
   }
 
-  // Server-side publish: toggle_featured's signature does not carry dealer,
-  // so we resolve dealer by stock via a small SELECT. Documented deliberate
-  // choice; see publish-to-dealer.js lookupDealerByStock().
-  const dealerKey = await lookupDealerByStock(stock, svcKey);
-  const publish   = await publishToDealerAndLog(dealerKey, svcKey);
-  return { status: 200, body: { ok: true, publish } };
+  return { status: 200, body: { ok: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -274,11 +268,7 @@ async function handleCreateInventory({ data, svcKey, userEmail }) {
   let inserted;
   try { inserted = JSON.parse(text); } catch { inserted = []; }
   const id = Array.isArray(inserted) && inserted[0] ? inserted[0].id || null : null;
-  // Temporary bridge until dealer-site pull feeds (Chief 2026-10-07): the insert is committed;
-  // republish this dealer's site server-side. The payload filters status='published', so a draft
-  // create republishes the dealer without exposing the draft. Never rolls back the insert.
-  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
-  return { status: 200, body: { ok: true, id, publish } };
+  return { status: 200, body: { ok: true, id } };
 }
 
 // ---------------------------------------------------------------------------
@@ -358,12 +348,7 @@ async function handleUpdateInventory({ data, svcKey, userEmail }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  // Temporary bridge until dealer-site pull feeds (Chief 2026-10-07): the update is committed;
-  // republish this dealer's site server-side. Covers draft -> published (unit appears) and
-  // published -> draft (unit disappears) because the payload filters status='published'.
-  // Never rolls back the update.
-  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
-  return { status: 200, body: { ok: true, publish } };
+  return { status: 200, body: { ok: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -500,12 +485,7 @@ async function handlePatchInventoryPhotos({ data, svcKey }) {
     const errText = await res.text();
     return { status: res.status, body: { error: errText } };
   }
-  // Temporary bridge until dealer-site pull feeds (Chief 2026-10-07, photo-race amendment): the photo
-  // PATCH is committed; republish this dealer's site server-side. saveListingEdits sends update_inventory
-  // and patch_inventory_photos concurrently, so whichever commits last republishes from committed state
-  // and the dealer site converges on the new gallery. Never rolls back the photo write.
-  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
-  return { status: 200, body: { ok: true, publish } };
+  return { status: 200, body: { ok: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -540,8 +520,7 @@ async function handleMarkSold({ data, svcKey }) {
     return { status: res.status, body: { error: errText } };
   }
 
-  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
-  return { status: 200, body: { ok: true, publish } };
+  return { status: 200, body: { ok: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -584,8 +563,7 @@ async function handleUnmarkSold({ data, svcKey }) {
     return { status: res.status, body: { error: errText } };
   }
 
-  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
-  return { status: 200, body: { ok: true, publish } };
+  return { status: 200, body: { ok: true } };
 }
 
 // ---------------------------------------------------------------------------
@@ -615,8 +593,7 @@ async function handleRemoveInventory({ data, svcKey }) {
     return { status: res.status, body: { error: errText } };
   }
 
-  const publish = await publishToDealerAndLog(data.dealer.trim(), svcKey);
-  return { status: 200, body: { ok: true, publish } };
+  return { status: 200, body: { ok: true } };
 }
 
 // ---------------------------------------------------------------------------

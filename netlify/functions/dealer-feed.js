@@ -8,9 +8,9 @@
 //
 //   GET /.netlify/functions/dealer-feed?dealer=WTS|DAV|FDT
 //
-// - The body is exactly buildDealerPayload(dealer) — the same function the
-//   server push publisher uses — so the feed and the push are equivalent by
-//   construction (26 keys, status = 'published' rows only).
+// - The body is exactly buildDealerPayload(dealer) — the canonical dealer payload
+//   (27 keys, status = 'published' rows only). The dealer sites read only this feed;
+//   the temporary server push publisher was retired (Chief 2026-10-09).
 // - No auth: the data is already public on the dealer sites. The Supabase
 //   service key stays inside this function and never appears in a response.
 // - Unknown or missing dealer code -> 404. Non-GET -> 405. Build failure -> 502.
@@ -20,7 +20,7 @@
 //   own cache on top.
 // - This function never writes anything.
 
-const { getDealerByCode } = require('./lib/dealer-publish-config');
+const { getDealerByCode } = require('./lib/dealer-feed-codes');
 const { buildDealerPayload } = require('./lib/publish-payload');
 
 const OK_CACHE = 'public, max-age=0, s-maxage=60';
