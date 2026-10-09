@@ -4,9 +4,9 @@
 //
 // Chief ruling 2026-10-07 on design 14NqveYH0QuEmYu2FiPdnOvZgmIiPNJ_RJZjmG19z8xA,
 // Decision 1: ONE public ADMIN GET endpoint backed by the existing
-// buildDealerPayload() contract, with a closed WTS/DAV/FDT dealer-code map.
+// buildDealerPayload() contract, with a closed dealer-code map (lib/dealer-feed-codes.js).
 //
-//   GET /.netlify/functions/dealer-feed?dealer=WTS|DAV|FDT
+//   GET /.netlify/functions/dealer-feed?dealer=ATC|DAV|FDT|WTS
 //
 // - The body is exactly buildDealerPayload(dealer) — the canonical dealer payload
 //   (27 keys, status = 'published' rows only). The dealer sites read only this feed;

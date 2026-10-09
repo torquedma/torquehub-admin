@@ -17,6 +17,7 @@ const feed = require('../dealer-feed');
 const WTS = 'Wilson Trailer Sales & Service';
 const DAV = 'Davenport Motors';
 const FDT = "Fat Daddy's Truck Sales";
+const ATC = 'Auto Connection 210 LLC';
 
 function row(over) {
   return {
@@ -38,6 +39,11 @@ const FIXTURE = [
   row({ stock: 'DAV-DRAFT', dealer: DAV, status: 'draft' }),
   row({ stock: 'FDT-1', dealer: FDT, make: 'International', featured: 1 }),
   row({ stock: 'OTHER-1', dealer: 'Allied Truck & Trailer Sales' }),
+  row({ stock: 'ATC-1', dealer: ATC, make: 'Ford', category: 'Trucks', subcategory: 'Box Truck' }),
+  row({ stock: 'ATC-SOLD', dealer: ATC, make: 'Chevrolet', category: 'Trucks', sold: true, sold_type: 'manual' }),
+  row({ stock: 'ATC-DRAFT', dealer: ATC, status: 'draft' }),
+  row({ stock: 'ATC-ARCH', dealer: ATC, status: 'archived' }),
+  row({ stock: 'ATC-NEARMISS', dealer: 'Auto Connection 210' }),
 ];
 
 let requests = [];
@@ -70,22 +76,24 @@ test.afterEach(() => { Date.now = realNow; failNext = null; });
 
 const get = (q) => feed.handler({ httpMethod: 'GET', queryStringParameters: q });
 
-test('F1: closed code map — exactly WTS/DAV/FDT resolve, to the configured inventory.dealer values', () => {
+test('F1: closed code map — exactly ATC/DAV/FDT/WTS resolve, to the configured inventory.dealer values', () => {
+  assert.equal(getDealerByCode('ATC'), ATC);
   assert.equal(getDealerByCode('WTS'), WTS);
   assert.equal(getDealerByCode('DAV'), DAV);
   assert.equal(getDealerByCode('FDT'), FDT);
-  for (const bad of ['', 'wts', 'ATT', 'WTS ', '__proto__', 'constructor', 'toString', null, undefined, 7]) {
+  for (const bad of ['', 'wts', 'atc', 'ATT', 'AT', 'ATC1', 'WTS ', '__proto__', 'constructor', 'toString', null, undefined, 7]) {
     assert.equal(getDealerByCode(bad), null, `code ${String(bad)} must not resolve`);
   }
-  assert.deepEqual(Object.values(DEALERS).map(c => c.code).sort(), ['DAV', 'FDT', 'WTS']);
+  assert.deepEqual(Object.values(DEALERS).map(c => c.code).sort(), ['ATC', 'DAV', 'FDT', 'WTS']);
 });
 
 test('F2: the dealer-code map carries only the closed feed codes — no push target or token fields remain', () => {
-  assert.deepEqual(DEALERS, { [DAV]: { code: 'DAV' }, [FDT]: { code: 'FDT' }, [WTS]: { code: 'WTS' } });
+  assert.deepEqual(DEALERS, { [ATC]: { code: 'ATC' }, [DAV]: { code: 'DAV' }, [FDT]: { code: 'FDT' }, [WTS]: { code: 'WTS' } });
 });
 
 test('F3: unknown or missing dealer code -> 404, no-store, and no database call', async () => {
-  for (const q of [{ dealer: 'ATT' }, { dealer: '' }, {}, null, { dealer: '__proto__' }, { dealer: 'Wilson Trailer Sales & Service' }]) {
+  for (const q of [{ dealer: 'ATT' }, { dealer: '' }, {}, null, { dealer: '__proto__' }, { dealer: 'Wilson Trailer Sales & Service' },
+    { dealer: 'Auto Connection 210 LLC' }, { dealer: 'ATC1' }, { dealer: 'AT' }]) {
     requests = [];
     const r = await get(q);
     assert.equal(r.statusCode, 404);
@@ -107,7 +115,7 @@ test('F4: non-GET -> 405 no-store; OPTIONS -> 204', async () => {
 });
 
 test('F5: feed equivalence — body equals buildDealerPayload() for every configured dealer', async () => {
-  for (const [code, name] of [['WTS', WTS], ['DAV', DAV], ['FDT', FDT]]) {
+  for (const [code, name] of [['ATC', ATC], ['WTS', WTS], ['DAV', DAV], ['FDT', FDT]]) {
     const r = await get({ dealer: code });
     assert.equal(r.statusCode, 200);
     const expected = await buildDealerPayload(name, SVC);
@@ -173,7 +181,7 @@ test('F10: missing service key -> 500 no-store and no database call', async () =
 });
 
 test('F11: the feed never writes and never exposes the service key', async () => {
-  for (const code of ['WTS', 'DAV', 'FDT', 'NOPE']) {
+  for (const code of ['ATC', 'WTS', 'DAV', 'FDT', 'NOPE']) {
     const r = await get({ dealer: code });
     assert.ok(!r.body.includes(SVC));
     assert.ok(!JSON.stringify(r.headers).includes(SVC));
@@ -204,5 +212,35 @@ test('F12: hours passes through raw (unparsed, 0 kept) right after mileage; mile
   for (const u of units) {
     const k = Object.keys(u);
     assert.equal(k[k.indexOf('mileage') + 1], 'hours');
+  }
+});
+
+test('F13: ATC — only Auto Connection 210 LLC published rows (sold included, drafts/archived/near-miss dealer excluded), 27-key contract, exact dealer filter', async () => {
+  requests = [];
+  const r = await get({ dealer: 'ATC' });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.headers['X-Feed-Dealer'], 'ATC');
+  const units = JSON.parse(r.body);
+  assert.deepEqual(units.map(u => u.stock).sort(), ['ATC-1', 'ATC-SOLD']);
+  assert.equal(units.find(u => u.stock === 'ATC-SOLD').sold, true);
+  assert.equal(units.find(u => u.stock === 'ATC-1').sold, false);
+  const KEYS = ['year', 'make', 'model', 'trim', 'condition', 'price', 'stock', 'days', 'fuel', 'vin', 'description', 'color',
+    'mileage', 'hours', 'photos', 'engine', 'transmission', 'drivetrain', 'engine_description', 'transmission_description',
+    'category', 'subcategory', 'siteTag', 'featured', 'video_url', 'sold', 'sold_type'].sort();
+  for (const u of units) assert.deepEqual(Object.keys(u).sort(), KEYS);
+  const sel = requests.filter(q => q.url.includes('/rest/v1/inventory'));
+  assert.equal(sel.length, 1);
+  assert.ok(sel[0].url.includes('dealer=eq.' + encodeURIComponent(ATC)), 'SELECT must filter on the exact inventory.dealer value');
+  assert.ok(sel[0].url.includes('&status=eq.published'), 'SELECT must carry status=eq.published');
+  const lower = await get({ dealer: 'atc' });
+  assert.equal(lower.body, r.body, 'lowercase code resolves to the same feed');
+});
+
+test('F14: adding ATC leaves the WTS/DAV/FDT feed bodies byte-identical (with vs without ATC rows present)', async () => {
+  const withAtc = {};
+  for (const code of ['WTS', 'DAV', 'FDT']) withAtc[code] = (await get({ dealer: code })).body;
+  installFake(FIXTURE.filter(r => r.dealer !== ATC && r.dealer !== 'Auto Connection 210'));
+  for (const code of ['WTS', 'DAV', 'FDT']) {
+    assert.equal((await get({ dealer: code })).body, withAtc[code], code + ' feed changed when ATC rows were present');
   }
 });
