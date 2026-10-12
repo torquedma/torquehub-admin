@@ -1,5 +1,5 @@
 'use strict';
-const { stampFacts, buildClaim, compatibleValues } = require('./provenance');
+const { stampFacts, buildClaim, compatibleValues, readAdjudication } = require('./provenance');
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -152,6 +152,38 @@ console.log('\n--- SYNC-MERGE: genuine CONFLICT from feed vs verified is preserv
   });
   check('verified engine primary held against conflicting feed', r.engine.trust === 'verified' && r.engine.value === 'Detroit DD13');
   check('conflicting feed claim preserved (not silently dropped)', Array.isArray(r.engine.claims) && r.engine.claims.some(c => c.value === 'Cat'));
+}
+
+console.log('\n--- ADJUDICATION MARKER: readAdjudication classifies; stampFacts never creates one ---');
+{
+  // SYNTHETIC TEST values — not an authorization record.
+  const m = { v: 1, value: 'New', authority: 'owner', authorized_by: 'TEST-ONLY', authorized_on: '1970-01-01',
+    basis: 'owner_confirmation', evidence: [{ kind: 'test', ref: 'TEST-ONLY' }], ruling: 'TEST-ONLY',
+    recorded_by: 'governed_sql', recorded_at: '1970-01-01T00:00:00Z' };
+  const fact = (o) => Object.assign({ value: 'New', source: 'human_admin', trust: 'attributed', as_of: '2026-10-01' }, o);
+  check('no fact -> none', readAdjudication(null).state === 'none');
+  check('ordinary human_admin stamp -> none (source alone is not an adjudication)', readAdjudication(fact({})).state === 'none');
+  check('no adjudication key -> none', readAdjudication(fact({})).state === 'none' && !('adjudication' in fact({})));
+  check('adjudication: null -> MALFORMED (key present; Chief final review 2026-10-11)', readAdjudication(fact({ adjudication: null })).state === 'malformed' && readAdjudication(fact({ adjudication: null })).reason === 'marker is null');
+  check('adjudication: null on a feed-source fact -> MALFORMED', readAdjudication({ value: 'Used', source: 'sandhills_direct', trust: 'attributed', adjudication: null }).state === 'malformed');
+  check('adjudication: false / 0 / "" / [] -> MALFORMED', [false, 0, '', []].every((x) => readAdjudication(fact({ adjudication: x })).state === 'malformed'));
+  check('null / non-object / array fact -> none', [null, undefined, 'New', ['adjudication']].every((x) => readAdjudication(x).state === 'none'));
+  check('well-formed marker on agreeing human_admin primary -> valid', readAdjudication(fact({ adjudication: m })).state === 'valid');
+  check('unreplaced date token -> malformed', readAdjudication(fact({ adjudication: Object.assign({}, m, { authorized_on: '<OWNER_AUTH_DATE>' }) })).state === 'malformed');
+  check('unreplaced recorded_at token -> malformed', readAdjudication(fact({ adjudication: Object.assign({}, m, { recorded_at: '<RECORDED_AT:SQL_NOW>' }) })).state === 'malformed');
+  check('unreplaced ruling token -> malformed', readAdjudication(fact({ adjudication: Object.assign({}, m, { ruling: '<CHIEF_RULING_REF>' }) })).state === 'malformed');
+  check('string v -> malformed', readAdjudication(fact({ adjudication: Object.assign({}, m, { v: '1' }) })).state === 'malformed');
+  check('recorded_by other than governed_sql -> malformed', readAdjudication(fact({ adjudication: Object.assign({}, m, { recorded_by: 'admin-write' }) })).state === 'malformed');
+  check('empty evidence -> malformed', readAdjudication(fact({ adjudication: Object.assign({}, m, { evidence: [] }) })).state === 'malformed');
+  check('primary value differs -> inconsistent', readAdjudication(fact({ value: 'Used', adjudication: m })).state === 'inconsistent');
+  check('feed-source primary -> inconsistent', readAdjudication(fact({ source: 'sandhills_direct', adjudication: m })).state === 'inconsistent');
+  // Characterization (why every honoring writer must skip the fact, and why admin-write needs its guard):
+  const base = { condition: fact({ adjudication: m }) };
+  check('stampFacts never emits a marker', !('adjudication' in stampFacts(null, { condition: 'New' }, { source: 'human_admin', trust: 'attributed', mode: 'overwrite' }).condition));
+  check('fill-empty stamp keeps the marker', eq(stampFacts(base, { condition: 'Used' }, { source: 'sandhills_direct', trust: 'attributed' }).condition.adjudication, m));
+  check('fill-empty stamp keeps a NULL marker key too (it stays malformed, never silently ordinary)', (() => { const c = stampFacts({ condition: fact({ adjudication: null }) }, { condition: 'Used' }, { source: 'sandhills_direct', trust: 'attributed' }).condition; return Object.prototype.hasOwnProperty.call(c, 'adjudication') && c.adjudication === null && readAdjudication(c).state === 'malformed'; })());
+  check('equal-trust OVERWRITE (Admin save) DROPS the marker — admin-write must not stamp a marked fact', !('adjudication' in stampFacts(base, { condition: 'New' }, { source: 'human_admin', trust: 'attributed', mode: 'overwrite' }).condition));
+  check('higher-trust stamp DROPS the marker — no verified producer writes condition today', !('adjudication' in stampFacts(base, { condition: 'New' }, { source: 'vin_decode', trust: 'verified' }).condition));
 }
 
 console.log(`\n=== ${pass} passed, ${fail} failed ===\n`);

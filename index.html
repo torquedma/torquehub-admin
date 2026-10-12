@@ -2652,6 +2652,7 @@ function populateEditForm(u) {
   document.getElementById("edit-stock").value = stockVal.startsWith("NEW-") ? "" : stockVal;
   document.getElementById("edit-days").value = u.days || "";
   document.getElementById("edit-condition").value = u.condition || "Used";
+  renderConditionAdjudication(u);
   document.getElementById("edit-fuel").value = u.fuel || "";
   document.getElementById("edit-mileage").value = u.mileage || "";
   document.getElementById("edit-engine").value = u.engine || "";
@@ -3192,6 +3193,28 @@ function toggleModelLock() {
   if (ind) ind.style.display = u.model_locked ? "block" : "none";
 }
 
+// COND-ADJ-UI-START — Owner-adjudicated condition (Chief 2026-10-11). admin-write is the control; this keeps the
+// editor honest: the Condition select is read-only on a marked row, and a refused save says so instead of failing quietly.
+function conditionAdjudicated(u) {
+  // Key presence, as admin-write and the database guard decide it: an explicit null marker is held too.
+  var c = u && u.provenance && u.provenance.condition;
+  return !!(c && typeof c === "object" && Object.prototype.hasOwnProperty.call(c, "adjudication"));
+}
+function renderConditionAdjudication(u) {
+  var sel = document.getElementById("edit-condition");
+  if (!sel) return;
+  var held = conditionAdjudicated(u);
+  sel.disabled = held;
+  sel.title = held ? "Owner-adjudicated condition: changed only by a governed release" : "";
+}
+function adminWriteRefusalMessage(status, text) {
+  if (status !== 409 && status !== 503) return "";
+  var j = null;
+  try { j = JSON.parse(text); } catch (e) { j = null; }
+  return (j && j.message) || "This listing was not saved.";
+}
+// COND-ADJ-UI-END
+
 // 2026-10-01 P4 Stage 1: vin_locked is written ONLY by its own admin-write operation
 // (set_vin_lock), immediately, never by saveListingEdits. Unlock asks for confirmation.
 function renderVinLock(u) {
@@ -3715,6 +3738,8 @@ async function saveListingEdits() {
         const t = await r.text().catch(() => '');
         console.warn('[saveListingEdits UPDATE] Gateway error:', t);
         if (r.status === 401 || r.status === 403) alert('Your session may have expired. Please log in again.');
+        const _refusal = adminWriteRefusalMessage(r.status, t);
+        if (_refusal) alert(_refusal);
         if (_photoWrite) console.warn('[saveListingEdits PHOTOS] Not sent — the listing update failed for', u.stock);
         return;
       }

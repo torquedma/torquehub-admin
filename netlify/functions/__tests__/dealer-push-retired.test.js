@@ -120,7 +120,16 @@ function makeWorld(rows, { dealerStatus = 200, patchStatus = 204 } = {}) {
     }
     const hit = w.inventory.filter((r) => filters.every(([k, op, v]) => op === 'eq' && r[k] != null && String(r[k]) === v));
     if (method === 'GET') return res(clone(hit));
-    if (method === 'PATCH') { if (w.patchStatus >= 400) return res({ error: 'db down' }, w.patchStatus); const b = JSON.parse(opts.body); hit.forEach((r) => Object.assign(r, b)); w.order.push('db'); return res(null, 204); }
+    if (method === 'PATCH') {
+      if (w.patchStatus >= 400) return res({ error: 'db down' }, w.patchStatus);
+      const b = JSON.parse(opts.body); hit.forEach((r) => Object.assign(r, b)); w.order.push('db');
+      // As PostgREST: Prefer return=representation answers 200 with the affected rows, projected to ?select=.
+      if (/return=representation/.test((opts.headers && opts.headers.Prefer) || '')) {
+        const sel = (qs.split('&').find((x) => x.startsWith('select=')) || 'select=*').slice(7).split(',');
+        return res(hit.map((r) => (sel[0] === '*' ? clone(r) : Object.fromEntries(sel.map((c) => [c, r[c] === undefined ? null : r[c]])))), 200);
+      }
+      return res(null, 204);
+    }
     if (method === 'DELETE') { w.inventory = w.inventory.filter((r) => !hit.includes(r)); w.order.push('db'); return res(null, 204); }
     if (method === 'POST') { const ins = JSON.parse(opts.body).map((r, n) => ({ id: 'new-' + n, ...r })); w.inventory.push(...ins); w.order.push('db'); return res(clone(ins), 201); }
     return res({ error: 'unexpected method' }, 500);

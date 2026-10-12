@@ -1,7 +1,7 @@
 'use strict';
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
-const { stampFacts } = require('./lib/provenance');
+const { stampFacts, readAdjudication } = require('./lib/provenance');
 const retreaver = require('./lib/retreaver');
 
 // ---------------------------------------------------------------------------
@@ -292,15 +292,18 @@ async function handleUpdateInventory({ data, svcKey, userEmail }) {
   for (const k of provFactKeys) {
     if (payload[k] !== undefined && payload[k] !== null && payload[k] !== '') provFacts[k] = payload[k];
   }
-  if (Object.keys(provFacts).length > 0) {
-    // Fetch existing provenance as the MERGE BASE. FAIL-SAFE: if this fetch fails, we must NOT
-    // write provenance at all — writing from a null base on an UPDATE would replace the whole
-    // provenance object with just the edited fields, clobbering untouched (incl. verified) facts.
-    let existingProv = null;
-    let existingProvFetchOk = false;
+  // Fetch existing provenance as the MERGE BASE. FAIL-SAFE: if this fetch fails, we must NOT
+  // write provenance at all — writing from a null base on an UPDATE would replace the whole
+  // provenance object with just the edited fields, clobbering untouched (incl. verified) facts.
+  // It is also the base for the condition-adjudication guard below, so it runs whenever the
+  // payload carries condition (every Save & Close sends it), even as a blank.
+  let existingProv = null;
+  let existingCondition = null;
+  let existingProvFetchOk = false;
+  if (Object.keys(provFacts).length > 0 || 'condition' in payload) {
     try {
       const getUrl = `${SUPABASE_URL}/rest/v1/inventory`
-        + `?select=provenance`
+        + `?select=provenance,condition`
         + `&stock=eq.${encodeURIComponent(data.filterStock.trim())}`
         + `&dealer=eq.${encodeURIComponent(data.dealer.trim())}`;
       const getRes = await fetch(getUrl, {
@@ -313,10 +316,51 @@ async function handleUpdateInventory({ data, svcKey, userEmail }) {
       if (getRes.ok) {
         const rows = await getRes.json();
         existingProv = (Array.isArray(rows) && rows[0] && rows[0].provenance) ? rows[0].provenance : null;
+        existingCondition = (Array.isArray(rows) && rows[0] && rows[0].condition != null) ? String(rows[0].condition) : null;
         existingProvFetchOk = true;
       }
     } catch (e) { existingProvFetchOk = false; }
+  }
 
+  // CONDITION ADJUDICATION GUARD (Chief BIQ DATA FIRST amendment, 2026-10-11). provenance.condition.adjudication
+  // is created and released ONLY by governed, Owner-authorized SQL (see readAdjudication in lib/provenance.js).
+  // An ordinary save can never create it (provenance is not in the allowlists; stampFacts never emits it), and
+  // must never destroy it: an equal-trust overwrite stamp replaces the whole provenance.condition object. So on a
+  // marked row (the key is present: valid, inconsistent or malformed, an explicit null included) Admin never
+  // writes condition. A submitted condition that is blank, equals the held value, or equals the stored column (the
+  // value the editor loaded) is not a change and is dropped; a different condition is refused (409) with nothing
+  // written. If the base cannot be read the marker cannot be checked, so a save carrying condition is refused (503)
+  // instead of being written unguarded. This check is the friendly path; the database guard
+  // (fn_inventory_condition_adjudication_guard) is the control that also covers a marker created, changed or
+  // released after the read above.
+  if ('condition' in payload) {
+    if (!existingProvFetchOk) {
+      console.warn(`admin-write update_inventory: provenance unreadable for stock=${data.filterStock} dealer=${data.dealer} — save refused (condition adjudication cannot be checked).`);
+      return { status: 503, body: { error: 'provenance_unavailable', message: 'This listing could not be checked for an Owner-adjudicated condition, so nothing was saved. Please try again.' } };
+    }
+    const adj = readAdjudication(existingProv && existingProv.condition);
+    if (adj.state !== 'none') {
+      const fact = existingProv.condition;
+      const held = adj.state === 'malformed' ? (fact.value == null ? '' : String(fact.value)) : adj.marker.value;
+      const incoming = payload.condition == null ? '' : String(payload.condition).trim();
+      if (incoming !== '' && incoming !== held && incoming !== existingCondition) {
+        console.warn(`[ADJUDICATED-CONDITION] admin-write refused stock=${data.filterStock} dealer=${data.dealer}: condition is held (${adj.state}); incoming "${incoming}"`);
+        const message = adj.state === 'valid'
+          ? `Condition on ${data.filterStock} is Owner-adjudicated as "${held}" and can only be changed by a governed release. Nothing was saved.`
+          : `Condition on ${data.filterStock} is held for a governed reconcile of its Owner-adjudication marker and can only be changed by governed SQL. Nothing was saved.`;
+        return { status: 409, body: { error: 'condition_adjudicated', adjudicated_value: held, adjudication_state: adj.state, message } };
+      }
+      if (adj.state !== 'valid') {
+        console.warn(`[ADJUDICATION-${adj.state.toUpperCase()}] admin-write stock=${data.filterStock} dealer=${data.dealer}: ${adj.reason}; condition held, governed reconcile required`);
+      } else if (existingCondition !== held) {
+        console.warn(`[ADJUDICATION-INCONSISTENT] admin-write stock=${data.filterStock} dealer=${data.dealer}: column "${existingCondition}" is not the adjudicated "${held}"; condition held, governed reconcile required`);
+      }
+      delete payload.condition;
+      delete provFacts.condition;
+    }
+  }
+
+  if (Object.keys(provFacts).length > 0) {
     if (existingProvFetchOk) {
       // Merge from the real base (existingProv may legitimately be null for a never-stamped row —
       // that's a genuine first-write, which is correct).
@@ -331,7 +375,8 @@ async function handleUpdateInventory({ data, svcKey, userEmail }) {
 
   const url = `${SUPABASE_URL}/rest/v1/inventory`
     + `?stock=eq.${encodeURIComponent(data.filterStock.trim())}`
-    + `&dealer=eq.${encodeURIComponent(data.dealer.trim())}`;
+    + `&dealer=eq.${encodeURIComponent(data.dealer.trim())}`
+    + `&select=stock`;
 
   const res = await fetch(url, {
     method: 'PATCH',
@@ -339,14 +384,38 @@ async function handleUpdateInventory({ data, svcKey, userEmail }) {
       'apikey':        svcKey,
       'Authorization': 'Bearer ' + svcKey,
       'Content-Type':  'application/json',
-      'Prefer':        'return=minimal',
+      'Prefer':        'return=representation',
     },
     body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
     const errText = await res.text();
+    // The database condition-adjudication guard rejects a write computed from a condition / provenance.condition
+    // the row no longer has (a governed marker create, change or release landed after the read above) with SQLSTATE
+    // PT409, which PostgREST answers as HTTP 409. The statement is rejected whole: nothing was written.
+    let code = null;
+    try { code = JSON.parse(errText).code; } catch (e) { code = null; }
+    if (res.status === 409 && code === 'PT409') {
+      console.warn(`[ADJUDICATION-GUARD] admin-write update_inventory refused by the database for stock=${data.filterStock} dealer=${data.dealer}: ${errText}`);
+      return { status: 409, body: { error: 'condition_adjudication_changed',
+        message: `${data.filterStock} changed while it was open (its Owner-adjudicated condition was set, changed or released by a governed update). Nothing was saved. Reopen the listing and save again.` } };
+    }
     return { status: res.status, body: { error: errText } };
+  }
+  let rows = null;
+  try { rows = await res.json(); } catch (e) { rows = null; }
+  // Exactly one row. (stock, dealer) is UNIQUE (inventory_stock_dealer_unique, a full unique index), so the database
+  // itself allows at most one. Zero means nothing was written (the row was renamed or removed after it was opened):
+  // report it, never succeed silently.
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { status: 409, body: { error: 'update_matched_no_row',
+      message: `${data.filterStock} was not found for ${data.dealer} (it may have been renamed or removed after it was opened). Nothing was saved.` } };
+  }
+  if (rows.length !== 1) {
+    // Unreachable while the unique index exists. Never report success for an unexpected row count.
+    console.error(`[UPDATE-ROWCOUNT] admin-write update_inventory stock=${data.filterStock} dealer=${data.dealer} affected ${rows.length} rows`);
+    return { status: 500, body: { error: 'update_row_count', message: `The save affected ${rows.length} rows instead of 1. Report this listing to the operator.` } };
   }
   return { status: 200, body: { ok: true } };
 }

@@ -186,9 +186,61 @@ function buildClaim({ value, source, trust, relation, note }) {
   return claim;
 }
 
+// ---- Adjudication marker (fact-object shape; helper-owned) ----------------------------------------
+//
+// provenance[<fact>].adjudication records that the OWNER adjudicated this fact's value. It is created
+// and released ONLY by governed, Owner-authorized SQL (recorded_by 'governed_sql'). Nothing else can
+// create it: stampFacts never emits the key, and no client allowlist forwards provenance. A writer
+// that honors it (sync-truckpaper receiver, admin-write update_inventory) does not write the fact while
+// the key is present, so the marker is never stamped over. readAdjudication CLASSIFIES; it never repairs.
+//   none         — the fact has NO adjudication key; it is ordinary (an ordinary human_admin stamp included).
+//   valid        — well-formed, and the primary is human_admin carrying the adjudicated value.
+//   inconsistent — well-formed, but the primary no longer carries the adjudicated value.
+//   malformed    — the adjudication key is PRESENT but not well-formed, including an explicit null (Chief final
+//                  review 2026-10-11) and an unreplaced placeholder date or recorded_at token (an unexecuted
+//                  template can never protect anything, and can never unprotect a row either).
+// KEY PRESENCE decides protection, exactly as the database guard (jsonb ? 'adjudication') does: a null or broken
+// marker is still a marker. Callers hold the fact for every state except 'none' and log the last two for governed
+// reconcile.
+const ADJUDICATION_BASES = new Set(['owner_confirmation', 'seller_listing_capture']);
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/;
+// A real value: a non-empty string that is not an unreplaced template token such as "<CHIEF_RULING_REF>".
+const nonEmpty = (s) => typeof s === 'string' && s.trim() !== '' && !/^<[^>]*>$/.test(s.trim());
+
+function readAdjudication(fact) {
+  // jsonb cannot hold undefined, so an own key whose value is undefined is not a stored key.
+  if (!fact || typeof fact !== 'object' || Array.isArray(fact)
+      || !Object.prototype.hasOwnProperty.call(fact, 'adjudication') || fact.adjudication === undefined) {
+    return { state: 'none' };
+  }
+  const a = fact.adjudication;
+  const bad = (reason) => ({ state: 'malformed', reason, marker: a });
+  if (a === null) return bad('marker is null');
+  if (typeof a !== 'object' || Array.isArray(a)) return bad('marker is not an object');
+  if (a.v !== 1) return bad('v must be 1');
+  if (!nonEmpty(a.value)) return bad('value missing');
+  if (a.authority !== 'owner') return bad('authority must be owner');
+  if (!nonEmpty(a.authorized_by)) return bad('authorized_by missing');
+  if (!(typeof a.authorized_on === 'string' && ISO_DATE.test(a.authorized_on))) return bad('authorized_on must be YYYY-MM-DD');
+  if (!ADJUDICATION_BASES.has(a.basis)) return bad('basis invalid');
+  if (!Array.isArray(a.evidence) || a.evidence.length === 0
+      || !a.evidence.every((e) => e && typeof e === 'object' && nonEmpty(e.kind) && nonEmpty(e.ref))) {
+    return bad('evidence missing');
+  }
+  if (!nonEmpty(a.ruling)) return bad('ruling missing');
+  if (a.recorded_by !== 'governed_sql') return bad('recorded_by must be governed_sql');
+  if (!(typeof a.recorded_at === 'string' && ISO_TIMESTAMP.test(a.recorded_at))) return bad('recorded_at must be an ISO timestamp');
+  if (fact.source !== 'human_admin' || String(fact.value) !== a.value) {
+    return { state: 'inconsistent', reason: `primary ${fact.source}:"${fact.value}" is not the adjudicated "${a.value}"`, marker: a };
+  }
+  return { state: 'valid', marker: a };
+}
+
 module.exports = {
   stampFacts,
   buildClaim,
+  readAdjudication,
   // exported for testing / caller validation
   TRUST_LEVELS, SOURCE_VALUES, RELATIONS, MODES,
   compatibleValues,
