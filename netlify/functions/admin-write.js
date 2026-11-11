@@ -43,6 +43,12 @@ const DEALER_UPDATE_FIELDS = [
 ];
 
 const CONTACT_FIELDS = ['name', 'phone', 'email', 'notes'];
+// Admin manual lead entry (P2.1, CRM v1.2). Operational fields only: no finance/credit
+// field can be written through this operation. Source is a closed set; status is forced.
+const LEAD_CREATE_FIELDS = ['customer_name', 'customer_phone', 'customer_email', 'dealer_name', 'message'];
+const LEAD_MANUAL_SOURCES = {
+  phone: 'admin_phone', text: 'admin_text', email: 'admin_email', form: 'admin_form', manual: 'admin_manual',
+};
 
 // Walkaround review queue — restricted enums for the review op.
 const WALKAROUND_REVIEW_STATUSES = new Set(['approved', 'rejected']);
@@ -85,6 +91,7 @@ const OPERATIONS = {
   rename_dealer:          handleRenameDealer,
   remove_dealer:          handleRemoveDealer,
   update_dealer:          handleUpdateDealer,
+  create_lead:            handleCreateLead,
   save_contact:           handleSaveContact,
   delete_contact:         handleDeleteContact,
   review_walkaround:      handleReviewWalkaround,
@@ -887,6 +894,49 @@ async function handleRemoveDealer({ data, svcKey }) {
     return { status: delRes.status, body: { error: errText } };
   }
   return { status: 200, body: { ok: true } };
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION: create_lead (P2.1)
+// POST /rest/v1/leads  Prefer: return=representation (id only)
+// data: { customer_name, customer_phone?, customer_email?, dealer_name?, message?, channel }
+// Name plus at least one of phone/email is required. Unknown fields are dropped.
+// status is always 'new'; source is mapped from the closed channel set; nothing is notified.
+// ---------------------------------------------------------------------------
+async function handleCreateLead({ data, svcKey, userEmail }) {
+  const err = requireString(data, 'customer_name');
+  if (err) return { status: 400, body: { error: err } };
+  const row = {};
+  for (const f of LEAD_CREATE_FIELDS) {
+    if (typeof data[f] === 'string' && data[f].trim() !== '') row[f] = data[f].trim().slice(0, 4000);
+  }
+  if (!row.customer_phone && !row.customer_email) {
+    return { status: 400, body: { error: 'customer_phone or customer_email is required' } };
+  }
+  const channel = typeof data.channel === 'string' ? data.channel.trim().toLowerCase() : 'manual';
+  const source = LEAD_MANUAL_SOURCES[channel];
+  if (!source) return { status: 400, body: { error: 'channel must be one of ' + Object.keys(LEAD_MANUAL_SOURCES).join(', ') } };
+  row.source = source;
+  row.status = 'new';
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/leads?select=id`, {
+    method: 'POST',
+    headers: {
+      'apikey':        svcKey,
+      'Authorization': 'Bearer ' + svcKey,
+      'Content-Type':  'application/json',
+      'Prefer':        'return=representation',
+    },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { status: res.status, body: { error: errText } };
+  }
+  const out = await res.json();
+  const id = Array.isArray(out) && out[0] ? out[0].id : null;
+  console.log('[admin-write] create_lead by', userEmail, 'id', id, 'source', source);
+  return { status: 200, body: { ok: true, id } };
 }
 
 // ---------------------------------------------------------------------------

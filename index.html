@@ -6842,24 +6842,30 @@ function renderLeadsView() {
 
 function openAddLeadModal() {
   const name = prompt('Customer name:'); if (!name) return;
-  const phone = prompt('Phone (optional):') || '';
-  const email = prompt('Email (optional):') || '';
+  const phone = prompt('Phone (phone or email required):') || '';
+  const email = prompt('Email (phone or email required):') || '';
+  if (!phone.trim() && !email.trim()) { alert('Lead not saved: enter a phone number or an email.'); return; }
   const dealer = prompt('Dealer name:') || '';
-  const source = prompt('Source (email/text/phone/form/manual):', 'manual') || 'manual';
+  const channel = prompt('Channel (phone/text/email/form/manual):', 'manual') || 'manual';
   const message = prompt('Message/notes (optional):') || '';
-  saveLead({ customer_name:name, customer_phone:phone, customer_email:email, dealer_name:dealer, source, message, status:'new' });
+  saveLead({ customer_name:name, customer_phone:phone, customer_email:email, dealer_name:dealer, channel, message });
 }
 
 async function saveLead(lead) {
   try {
-    await fetch('https://bxsikkmqasydosmblzov.supabase.co/rest/v1/leads', {
-      method:'POST',
-      headers:{ 'apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4c2lra21xYXN5ZG9zbWJsem92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTc1OTksImV4cCI6MjA5MDQ3MzU5OX0.JMEI7cx2tddmbvfqm_qxiIWp7f5Phuk5l0Y487DUSZg', 'Content-Type':'application/json', 'Prefer':'return=minimal' },
-      body: JSON.stringify(lead)
+    const r = await fetch('/.netlify/functions/admin-write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await getValidToken()) },
+      body: JSON.stringify({ operation: 'create_lead', data: lead })
     });
+    let j = null; try { j = await r.json(); } catch (_) {}
+    if (!r.ok || !j || !j.ok) {
+      alert('Lead NOT saved: ' + ((j && j.error) ? j.error : ('HTTP ' + r.status)));
+      return;
+    }
     await loadLeads();
     renderDashboardStats();
-  } catch(e) { alert('Error saving lead: '+e.message); }
+  } catch(e) { alert('Lead NOT saved: '+e.message); }
 }
 
 function viewLead(id) {

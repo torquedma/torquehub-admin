@@ -11,7 +11,7 @@ const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 const LEADS_SELECT = [
   'id','created_at','customer_name','customer_phone','customer_email',
   'dealer_name','lender','source','status','message','stock',
-  'unit_title','source_url','credit_score','rep','referrer'
+  'unit_title','source_url','rep','referrer'
 ].join(',');
 
 const CONTACTS_SELECT = [
