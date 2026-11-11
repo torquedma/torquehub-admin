@@ -1,6 +1,7 @@
 const https = require('https');
 const { generateDescription } = require('./lib/generate-description');
 const { CANONICAL_SUBCATEGORIES, SUBCATEGORY_ALIASES, canonicalize } = require('./lib/taxonomy.generated.js');
+const { preserveCuratedPhotoOrder } = require('./lib/preserve-photo-order');
 
 const SUPABASE_URL = 'https://bxsikkmqasydosmblzov.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -254,7 +255,7 @@ exports.handler = async (event) => {
     console.log('Parsed ' + feedItems.length + ' items');
     if (!feedItems.length) return { statusCode: 200, body: JSON.stringify({ error: 'No items parsed' }) };
 
-    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,vin_locked,sold,dx_locked,status,completion_state,completion_attempts', 'GET');
+    const existing = await supabaseFetch('/rest/v1/inventory?dealer=eq.' + encodeURIComponent(DEALER) + '&select=stock,subcategory_locked,model_locked,vin_locked,sold,dx_locked,status,completion_state,completion_attempts,photos', 'GET');
     const existingRows = JSON.parse(existing.body);
     const existingStocks = new Set(existingRows.map(r => normalizeHgrStock(r.stock)));
     // soldStocks is LOAD-BEARING: already-sold rows never reappear in the feed, so without
@@ -270,6 +271,9 @@ exports.handler = async (event) => {
     // run silently overwrites human-approved Canonical DX on locked rows — which is
     // exactly what erased 163 reviewed Overviews on 2026-08-31. Do not remove.
     const dxLockedStocks = new Set(existingRows.filter(r => r.dx_locked).map(r => normalizeHgrStock(r.stock)));
+    // 2026-11-11 CURATED PHOTO ORDER (Chief 1 -398/-401, HST -324): stored gallery per stock, so an
+    // update keeps an Owner-curated order for the photos the feed still carries (see PATCH below).
+    const storedPhotosByStock = new Map(existingRows.map(r => [normalizeHgrStock(r.stock), r.photos]));
     const feedStocks = new Set(feedItems.map(i => i.stock));
     const toDelete = [...existingStocks].filter(s => !feedStocks.has(s) && !soldStocks.has(s));
 
@@ -373,6 +377,12 @@ exports.handler = async (event) => {
           delete patchPayload.sold;
           delete patchPayload.sold_type;
           delete patchPayload.sold_date;
+        }
+        // 2026-11-11 CURATED PHOTO ORDER: keep the stored order for photos the feed still carries, drop
+        // photos the feed removed, append new feed photos. first_photo/photo_count are generated from photos.
+        const storedPhotos = storedPhotosByStock.get(item.stock);
+        if (Array.isArray(storedPhotos) && Array.isArray(patchPayload.photos)) {
+          patchPayload = Object.assign({}, patchPayload, { photos: preserveCuratedPhotoOrder(storedPhotos, patchPayload.photos) });
         }
         const r = await supabaseFetch('/rest/v1/inventory?stock=eq.' + encodeURIComponent(item.stock) + '&dealer=eq.' + encodeURIComponent(DEALER), 'PATCH', patchPayload);
         if (r.status >= 400) { console.error('PATCH error', r.status, r.body.slice(0,200)); errors++; } else updated++;
